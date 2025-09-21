@@ -12,6 +12,7 @@ const countFrameMax = 1
 const resolution = 10
 
 // test com
+// test 2
 
 var grille = new Array(canvas.width / resolution).fill(0).map(() => new Array(canvas.height / resolution).fill(0));
 var grilleNext = new Array(canvas.width / resolution).fill(0).map(() => new Array(canvas.height / resolution).fill(0));
