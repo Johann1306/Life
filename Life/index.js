@@ -38,7 +38,7 @@ function drawGrille(grid) {
 	for (let i = 0; i < canvas.width / resolution; i++) {
 		for (let j = 0; j < canvas.height / resolution; j++) {
 			if (grid[i][j] === 1) {
-				c.fillStyle = 'green'
+				c.fillStyle = 'blue'
 				c.fillRect(i * resolution, j * resolution, resolution - 1, resolution - 1)
 			} else {
 				c.fillStyle = 'black'
