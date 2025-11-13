@@ -1,24 +1,232 @@
 <!DOCTYPE html>
+<html lang="fr">
 <head>
-	<style>
-		* {
-			box-sizing: border-box;
-			font-family: 'Press Start 2P', cursive;
-			margin: 0px;
-		}
-
-		.image {
-			transform: scaleX(-1);
-		}
-	</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conway's Game of Life</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
+<body class="bg-gray-100 dark:bg-gray-900">
+  <div class="flex h-screen">
+    <div id="game-grid" class="w-2/3 p-4 overflow-auto">
+      <canvas id="game-canvas" class="w-full h-96"></canvas>
+      <div class="mt-4 text-center text-gray-700 dark:text-gray-300">
+        <span id="generation">Generation: 0</span>
+      </div>
+    </div>
+    <div id="pattern-library" class="w-1/3 p-4 overflow-auto">
+      <h2 class="text-xl font-bold mb-4">Pattern Library</h2>
+      <div id="patterns-container" class="space-y-4">
+        <div class="pattern" data-pattern="block" style="display: flex; align-items: center;">
+          <canvas class="pattern-preview" width="100" height="100"></canvas>
+          <span class="ml-2">Block (Still life)</span>
+        </div>
+        <div class="pattern" data-pattern="blinker" style="display: flex; align-items: center;">
+          <canvas class="pattern-preview" width="100" height="100"></canvas>
+          <span class="ml-2">Blinker (Oscillator)</span>
+        </div>
+        <div class="pattern" data-pattern="glider" style="display: flex; align-items: center;">
+          <canvas class="pattern-preview" width="100" height="100"></canvas>
+          <span class="ml-2">Glider (Spaceship)</span>
+        </div>
+      </div>
+    </div>
+  </div>
 
-<body>
+  <div class="fixed bottom-4 right-4 z-50">
+    <button id="start-pause" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+      ▶️ Start
+    </button>
+    <button id="reset" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded ml-2">
+      🔄 Reset
+    </button>
+    <button id="randomize" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded ml-2">
+      🎲 Randomize
+    </button>
+    <div class="ml-2">
+      <label for="speed" class="mr-2">Speed:</label>
+      <input type="range" id="speed" min="100" max="1000" value="500">
+    </div>
+  </div>
 
-	<!-- conteneur rouge -->
-	<div style="position: relative; display: inline-block">
+  <script>
+    // Dark mode toggle
+    const darkModeToggle = document.createElement('button');
+    darkModeToggle.innerHTML = '🌙 Dark Mode';
+    darkModeToggle.className = 'bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded ml-2 mt-2';
+    document.body.appendChild(darkModeToggle);
 
-		<canvas></canvas>
-	</div>
-	<script src="index.js"></script>
+    // Game class
+    class Game {
+      constructor() {
+        this.grid = Array.from({ length: 20 }, () => Array(20).fill(0));
+        this.canvas = document.getElementById('game-canvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.canvas.width = 400;
+        this.canvas.height = 400;
+        this.isRunning = false;
+        this.speed = 500;
+        this.generation = 0;
+        this.selectedPattern = null;
+        this.darkMode = false;
+        this.init();
+      }
+
+      init() {
+        this.drawGrid();
+        this.setupEventListeners();
+      }
+
+      drawGrid() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        for (let row = 0; row < 20; row++) {
+          for (let col = 0; col < 20; col++) {
+            const x = col * 20;
+            const y = row * 20;
+            if (this.grid[row][col]) {
+              this.ctx.fillStyle = '#000';
+            } else {
+              this.ctx.fillStyle = '#fff';
+            }
+            this.ctx.fillRect(x, y, 20, 20);
+          }
+        }
+      }
+
+      update() {
+        const nextGrid = Array.from({ length: 20 }, () => Array(20).fill(0));
+        for (let row = 0; row < 20; row++) {
+          for (let col = 0; col < 20; col++) {
+            const neighbors = this.countNeighbors(row, col);
+            if (this.grid[row][col]) {
+              if (neighbors === 2 || neighbors === 3) {
+                nextGrid[row][col] = 1;
+              } else {
+                nextGrid[row][col] = 0;
+              }
+            } else {
+              if (neighbors === 3) {
+                nextGrid[row][col] = 1;
+              } else {
+                nextGrid[row][col] = 0;
+              }
+            }
+          }
+        }
+        this.grid = nextGrid;
+        this.generation++;
+        document.getElementById('generation').textContent = `Generation: ${this.generation}`;
+        this.drawGrid();
+      }
+
+      countNeighbors(row, col) {
+        let count = 0;
+        for (let r = -1; r <= 1; r++) {
+          for (let c = -1; c <= 1; c++) {
+            if (r === 0 && c === 0) continue;
+            const nr = (row + r + 20) % 20;
+            const nc = (col + c + 20) % 20;
+            count += this.grid[nr][nc];
+          }
+        }
+        return count;
+      }
+
+      setupEventListeners() {
+        document.getElementById('start-pause').addEventListener('click', () => {
+          this.isRunning = !this.isRunning;
+          document.getElementById('start-pause').textContent = this.isRunning ? '⏸️ Pause' : '▶️ Start';
+        });
+
+        document.getElementById('reset').addEventListener('click', () => {
+          this.grid = Array.from({ length: 20 }, () => Array(20).fill(0));
+          this.drawGrid();
+        });
+
+        document.getElementById('randomize').addEventListener('click', () => {
+          this.grid = Array.from({ length: 20 }, () => Array(20).fill(0));
+          for (let i = 0; i < 20; i++) {
+            for (let j = 0; j < 20; j++) {
+              this.grid[i][j] = Math.random() > 0.5 ? 1 : 0;
+            }
+          }
+          this.drawGrid();
+        });
+
+        document.getElementById('speed').addEventListener('input', (e) => {
+          this.speed = e.target.value;
+        });
+
+        // ... more event listeners
+      }
+    }
+
+    // Pattern class
+    class Pattern {
+      constructor(name, pattern, type) {
+        this.name = name;
+        this.pattern = pattern;
+        this.type = type;
+      }
+
+      draw(ctx, x, y, size) {
+        const { rows, cols } = this.pattern;
+        for (let row = 0; row < rows; row++) {
+          for (let col = 0; col < cols; col++) {
+            if (this.pattern[row][col]) {
+              ctx.fillStyle = '#000';
+            } else {
+              ctx.fillStyle = '#fff';
+            }
+            ctx.fillRect(x + col * size, y + row * size, size, size);
+          }
+        }
+      }
+    }
+
+    // Predefined patterns
+    const patterns = [
+      new Pattern('Block', [[1,1],[1,0],[0,1],[0,0]], 'still-life'),
+      new Pattern('Blinker', [[1,0],[1,1],[1,2],[0,1],[2,1]], 'oscillator'),
+      new Pattern('Glider', [[0,0],[0,1],[1,1],[1,2],[2,1]], 'spaceship')
+    ];
+
+    // Initialize the game
+    const game = new Game();
+
+    // Draw patterns in the library
+    const patternsContainer = document.getElementById('patterns-container');
+    patterns.forEach(pattern => {
+      const patternElement = document.createElement('div');
+      patternElement.className = 'pattern';
+      patternElement.dataset.pattern = pattern.name;
+      patternElement.innerHTML = `
+        <canvas class="pattern-preview" width="100" height="100"></canvas>
+        <span class="ml-2">${pattern.name} (${pattern.type})</span>
+      `;
+      patternsContainer.appendChild(patternElement);
+    });
+
+    // Event listeners for pattern clicks
+    document.getElementById('patterns-container').addEventListener('click', (e) => {
+      if (e.target.classList.contains('pattern')) {
+        const patternName = e.target.dataset.pattern;
+        const pattern = patterns.find(p => p.name === patternName);
+        if (pattern) {
+          game.selectedPattern = pattern;
+        }
+      }
+    });
+
+    // Start the game loop
+    function gameLoop() {
+      if (game.isRunning) {
+        game.update();
+        requestAnimationFrame(gameLoop);
+      }
+    }
+
+    gameLoop();
+  </script>
 </body>
+</html>
