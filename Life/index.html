@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jeu de Snake en Vanille JS</title>
+    <title>Jeu de Snake Pro</title>
     <style>
         body {
             display: flex;
@@ -12,54 +12,86 @@
             justify-content: center;
             height: 100vh;
             margin: 0;
-            background-color: #222;
-            font-family: Arial, sans-serif;
+            background-color: #1a1a1a; /* Fond plus sombre */
+            font-family: 'Consolas', monospace; /* Police de style jeu rétro */
             color: #eee;
+            overflow: hidden; /* Empêche le défilement */
         }
 
-        #game-area {
-            background-color: #333;
-            border: 4px solid #555;
-            box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+        #score-container {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 40px;
+            font-size: 1.5em;
+            font-weight: bold;
         }
 
         #score-board {
-            margin-bottom: 20px;
-            font-size: 1.5em;
-            font-weight: bold;
-            color: #0f0; /* Vert vif pour le score */
+            color: #0f0; /* Vert vif */
+        }
+
+        #high-score-board {
+            color: #ffcc00; /* Jaune or */
+        }
+
+        #game-area {
+            background-color: #2b2b2b;
+            border: 4px solid #444;
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.7); /* Ombre plus forte et néon */
+            transition: box-shadow 0.2s ease-in-out; /* Transition pour l'effet de mort */
+        }
+
+        .game-over-shadow {
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.9) !important; /* Ombre rouge à la mort */
         }
     </style>
 </head>
 <body>
 
-    <div id="score-board">Score: 0</div>
+    <div id="score-container">
+        <div id="score-board">Score: 0</div>
+        <div id="high-score-board">Meilleur Score: 0</div>
+    </div>
     <canvas id="game-area" width="400" height="400"></canvas>
 
     <script>
-        // Récupération de l'élément canvas et de son contexte de dessin
+        // --- Éléments du DOM et Configuration ---
         const canvas = document.getElementById('game-area');
         const ctx = canvas.getContext('2d');
         const scoreBoard = document.getElementById('score-board');
+        const highScoreBoard = document.getElementById('high-score-board');
+        const gameArea = document.getElementById('game-area');
 
-        // Configuration du jeu
-        const gridSize = 20; // Taille d'un "carré" du serpent ou de la nourriture
-        const tileCount = canvas.width / gridSize; // Nombre de carrés par côté (20x20)
-        let snake = [{ x: 10, y: 10 }]; // Position initiale du serpent (au milieu)
+        const gridSize = 20; 
+        const tileCount = canvas.width / gridSize; 
+        const INITIAL_SPEED = 150; 
+        const SPEED_INCREASE = 5;  
+        const MIN_SPEED = 50;      
+        const HIGH_SCORE_KEY = 'snakeHighScore'; // Clé pour localStorage
+
+        let snake = [{ x: 10, y: 10 }]; 
         let food = {};
         let score = 0;
+        let highScore = parseInt(localStorage.getItem(HIGH_SCORE_KEY) || 0); // Récupère ou initialise le meilleur score
         let velocityX = 0;
-        let velocityY = 0; // Direction initiale : arrêtée
+        let velocityY = 0; 
         let nextVelocityX = 0;
-        let nextVelocityY = 0; // Prochaine direction pour éviter le demi-tour instantané
+        let nextVelocityY = 0;
         let gameLoopInterval;
-        const gameSpeed = 150; // Vitesse du jeu en millisecondes (plus petit = plus rapide)
+        let gameSpeed = INITIAL_SPEED;
+        let isGameOver = true; // Ajout d'un drapeau d'état du jeu
 
         // --- Fonctions du Jeu ---
 
-        /**
-         * Place la nourriture à un endroit aléatoire où le serpent n'est pas.
-         */
+        /** Met à jour et redéfinit l'intervalle de la boucle de jeu. */
+        function updateGameInterval() {
+            if (gameLoopInterval) {
+                clearInterval(gameLoopInterval);
+            }
+            gameLoopInterval = setInterval(gameLoop, gameSpeed);
+        }
+
+        /** Place la nourriture. */
         function placeFood() {
             do {
                 food.x = Math.floor(Math.random() * tileCount);
@@ -67,13 +99,7 @@
             } while (isSnakeCollision(food.x, food.y, true));
         }
 
-        /**
-         * Vérifie si les coordonnées données correspondent à un segment du serpent.
-         * @param {number} x - Coordonnée X.
-         * @param {number} y - Coordonnée Y.
-         * @param {boolean} [checkHead=false] - Inclure la tête du serpent dans la vérification.
-         * @returns {boolean}
-         */
+        /** Vérifie les collisions. */
         function isSnakeCollision(x, y, checkHead = false) {
             for (let i = checkHead ? 0 : 1; i < snake.length; i++) {
                 if (snake[i].x === x && snake[i].y === y) {
@@ -83,145 +109,171 @@
             return false;
         }
 
-        /**
-         * Initialise ou réinitialise le jeu.
-         */
+        /** Initialise ou réinitialise le jeu. */
         function resetGame() {
             snake = [{ x: 10, y: 10 }];
             score = 0;
+            gameSpeed = INITIAL_SPEED;
             velocityX = 0;
             velocityY = 0;
             nextVelocityX = 0;
             nextVelocityY = 0;
+            isGameOver = false; // Le jeu est en cours
             scoreBoard.textContent = `Score: 0`;
+            gameArea.classList.remove('game-over-shadow'); // Retire l'effet de mort
             placeFood();
-
-            // S'assurer qu'un seul intervalle de jeu est actif
+            drawGame();
+            
             if (gameLoopInterval) {
                 clearInterval(gameLoopInterval);
             }
-            gameLoopInterval = setInterval(gameLoop, gameSpeed);
         }
 
-        /**
-         * Boucle principale du jeu. Appelée périodiquement.
-         */
+        /** Gère l'accélération et le dessin. */
         function gameLoop() {
             // Appliquer la prochaine direction
             velocityX = nextVelocityX;
             velocityY = nextVelocityY;
 
-            // 1. Mouvement de la tête
             let headX = snake[0].x + velocityX;
             let headY = snake[0].y + velocityY;
 
-            // 2. Vérification des collisions avec les murs
-            if (headX < 0 || headX >= tileCount || headY < 0 || headY >= tileCount) {
+            // Collisions avec les murs ou soi-même
+            if (headX < 0 || headX >= tileCount || headY < 0 || headY >= tileCount || isSnakeCollision(headX, headY, false)) {
                 gameOver();
                 return;
             }
 
-            // 3. Vérification des auto-collisions (le serpent mord sa queue)
-            if (isSnakeCollision(headX, headY, false)) {
-                gameOver();
-                return;
-            }
-
-            // 4. Insertion de la nouvelle tête
             let newHead = { x: headX, y: headY };
-            snake.unshift(newHead); // Ajoute la nouvelle tête au début du tableau
+            snake.unshift(newHead);
 
-            // 5. Vérification si la nourriture est mangée
+            // Nourriture mangée
             if (headX === food.x && headY === food.y) {
                 score++;
                 scoreBoard.textContent = `Score: ${score}`;
-                placeFood(); // Placer la nouvelle nourriture
-                // Le serpent ne rétrécit pas (ne pas retirer la queue)
+                placeFood(); 
+                
+                // Accélération
+                if (gameSpeed > MIN_SPEED) {
+                    gameSpeed -= SPEED_INCREASE;
+                    updateGameInterval(); 
+                }
+
+                // *** Effet visuel : Flash de la nourriture ***
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.5)'; // Flash vert clair
+                ctx.fillRect(headX * gridSize, headY * gridSize, gridSize, gridSize);
             } else {
-                snake.pop(); // Retirer l'ancienne queue (mouvement normal)
+                snake.pop(); // Mouvement normal
             }
 
-            // 6. Dessin du jeu
             drawGame();
         }
 
-        /**
-         * Dessine l'état actuel du jeu sur le canvas.
-         */
+        /** Dessine l'état actuel du jeu. */
         function drawGame() {
             // Fond (efface l'image précédente)
-            ctx.fillStyle = '#333';
+            ctx.fillStyle = '#2b2b2b';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Dessin de la nourriture (Rouge)
-            ctx.fillStyle = 'red';
-            ctx.fillRect(food.x * gridSize, food.y * gridSize, gridSize - 1, gridSize - 1);
+            // Dessin de la nourriture (avec effet de pulsation)
+            const pulseFactor = Math.sin(Date.now() / 300) * 0.1 + 1; // Pulsation basée sur le temps
+            const foodSize = gridSize * pulseFactor;
+            const offset = (gridSize - foodSize) / 2;
 
-            // Dessin du serpent (Vert)
-            ctx.fillStyle = '#0f0';
+            ctx.fillStyle = 'red';
+            ctx.shadowColor = 'red';
+            ctx.shadowBlur = 10; // Effet de lueur sur la nourriture
+            ctx.fillRect(food.x * gridSize + offset, food.y * gridSize + offset, foodSize - 1, foodSize - 1);
+            ctx.shadowBlur = 0; // Réinitialise l'ombre pour le serpent
+
+            // Dessin du serpent
             snake.forEach((segment, index) => {
-                ctx.fillStyle = index === 0 ? '#0c0' : '#0f0'; // Tête légèrement différente
+                ctx.fillStyle = index === 0 ? '#0c0' : '#0f0'; // Tête et corps
                 ctx.fillRect(segment.x * gridSize, segment.y * gridSize, gridSize - 1, gridSize - 1);
             });
         }
 
-        /**
-         * Arrête le jeu et affiche le message "Game Over".
-         */
+        /** Arrête le jeu et gère le score final. */
         function gameOver() {
+            isGameOver = true; // Marque le jeu comme terminé
             clearInterval(gameLoopInterval);
+            gameArea.classList.add('game-over-shadow'); // Ajoute l'effet visuel de mort
+
+            // Mise à jour du meilleur score
+            let isNewHighScore = false;
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem(HIGH_SCORE_KEY, highScore); // Stockage dans le navigateur
+                highScoreBoard.textContent = `Meilleur Score: ${highScore}`;
+                isNewHighScore = true;
+            }
+
+            // Affichage Game Over
             ctx.fillStyle = 'white';
-            ctx.font = '30px Arial';
+            ctx.font = '30px Consolas';
             ctx.textAlign = 'center';
-            ctx.fillText('Game Over!', canvas.width / 2, canvas.height / 2);
-            ctx.font = '15px Arial';
-            ctx.fillText(`Score final: ${score}`, canvas.width / 2, canvas.height / 2 + 30);
-            ctx.fillText('Appuyez sur une flèche pour recommencer', canvas.width / 2, canvas.height / 2 + 55);
+            ctx.fillText('GAME OVER!', canvas.width / 2, canvas.height / 2);
+            
+            ctx.font = '15px Consolas';
+            ctx.fillStyle = isNewHighScore ? '#ffcc00' : 'white'; // Couleur différente si nouveau record
+            ctx.fillText(`Score final: ${score}${isNewHighScore ? ' (Nouveau Record!)' : ''}`, canvas.width / 2, canvas.height / 2 + 30);
+            
+            ctx.fillStyle = 'white';
+            ctx.fillText('Appuyez sur une flèche ou ZQSD pour recommencer', canvas.width / 2, canvas.height / 2 + 55);
         }
 
-        // --- Gestion des Entrées Utilisateur ---
+        // --- Gestion des Entrées Utilisateur (Corrigé) ---
 
         document.addEventListener('keydown', (e) => {
             let tempX = nextVelocityX;
             let tempY = nextVelocityY;
-
-            // Déterminer la nouvelle direction
-            switch (e.key) {
-                case 'ArrowUp':
-                case 'z':
-                    if (velocityY !== 1) { tempX = 0; tempY = -1; }
-                    break;
-                case 'ArrowDown':
-                case 's':
-                    if (velocityY !== -1) { tempX = 0; tempY = 1; }
-                    break;
-                case 'ArrowLeft':
-                case 'q':
-                    if (velocityX !== 1) { tempX = -1; tempY = 0; }
-                    break;
-                case 'ArrowRight':
-                case 'd':
-                    if (velocityX !== -1) { tempX = 1; tempY = 0; }
-                    break;
-                default:
-                    return; // Ignorer les autres touches
-            }
             
-            // Vérifier si le jeu a besoin d'être redémarré
-            if (velocityX === 0 && velocityY === 0 && (tempX !== 0 || tempY !== 0)) {
-                // Si le serpent est immobile (début ou fin de partie), on redémarre
+            // Si le jeu est terminé, tout mouvement valide redémarre le jeu
+            if (isGameOver && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'z', 's', 'q', 'd'].includes(e.key)) {
                 resetGame();
+                updateGameInterval(); // Démarre la boucle de jeu
+                return; // Ne pas traiter le mouvement immédiatement, juste redémarrer
             }
 
-            // Stocker la prochaine direction
-            nextVelocityX = tempX;
-            nextVelocityY = tempY;
+            // Si le jeu n'est pas en cours, on ne traite que les touches de direction
+            if (!isGameOver) {
+                switch (e.key) {
+                    case 'ArrowUp': case 'z':
+                        if (velocityY !== 1) { tempX = 0; tempY = -1; }
+                        break;
+                    case 'ArrowDown': case 's':
+                        if (velocityY !== -1) { tempX = 0; tempY = 1; }
+                        break;
+                    case 'ArrowLeft': case 'q':
+                        if (velocityX !== 1) { tempX = -1; tempY = 0; }
+                        break;
+                    case 'ArrowRight': case 'd':
+                        if (velocityX !== -1) { tempX = 1; tempY = 0; }
+                        break;
+                    default:
+                        return;
+                }
+                
+                // Si le serpent est immobile (début de partie), on lance le jeu
+                if (velocityX === 0 && velocityY === 0 && (tempX !== 0 || tempY !== 0)) {
+                    updateGameInterval(); 
+                }
+
+                // Stocker la prochaine direction
+                nextVelocityX = tempX;
+                nextVelocityY = tempY;
+            }
         });
 
-        // Initialisation de la première partie (pour placer la nourriture et dessiner le fond)
-        resetGame();
-        clearInterval(gameLoopInterval); // Arrêter l'intervalle après l'initialisation pour attendre le mouvement initial
-        drawGame(); // Dessiner l'état initial
+        // Initialisation du jeu : affiche le meilleur score et l'état de départ
+        highScoreBoard.textContent = `Meilleur Score: ${highScore}`;
+        resetGame(); 
+        isGameOver = true; // Remet à "Game Over" pour que la première flèche lance le jeu
+        
+        ctx.fillStyle = 'white';
+        ctx.font = '20px Consolas';
+        ctx.textAlign = 'center';
+        ctx.fillText('Appuyez sur une flèche ou ZQSD pour commencer', canvas.width / 2, canvas.height / 2 + 30);
     </script>
 </body>
 </html>
