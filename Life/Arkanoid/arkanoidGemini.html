@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Versus Arkanoid</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505;
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #gameContainer {
+            position: relative;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.8);
+        }
+
+        canvas {
+            background: radial-gradient(circle at center, #1a1a1a 0%, #000000 100%);
+            border: 4px solid #333;
+            display: block;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            padding: 0 50px;
+            box-sizing: border-box;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 10px currentColor;
+        }
+
+        .p1-score {
+            color: #00ff66;
+        }
+
+        .p2-score {
+            color: #00ccff;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px #fff;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 5px;
+        }
+
+        p {
+            font-size: 18px;
+            color: #ccc;
+            margin: 5px 0;
+            text-align: center;
+        }
+
+        .controls {
+            display: flex;
+            gap: 40px;
+            margin-top: 30px;
+            margin-bottom: 30px;
+            text-align: left;
+        }
+
+        .control-box {
+            border: 1px solid #444;
+            padding: 20px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .key {
+            display: inline-block;
+            background: #333;
+            padding: 2px 8px;
+            border-radius: 4px;
+            border-bottom: 2px solid #111;
+            font-size: 14px;
+            color: #fff;
+            font-weight: bold;
+        }
+
+        button {
+            padding: 15px 40px;
+            font-size: 24px;
+            background: linear-gradient(45deg, #ff0055, #ff5500);
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-family: inherit;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            box-shadow: 0 0 20px rgba(255, 85, 0, 0.6);
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(255, 85, 0, 0.8);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="900" height="600"></canvas>
+
+        <div id="ui-layer">
+            <div class="p1-score">JOUEUR 1: <span id="scoreP1">0</span> (Vies: <span id="livesP1">5</span>)</div>
+            <div class="p2-score">JOUEUR 2: <span id="scoreP2">0</span> (Vies: <span id="livesP2">5</span>)</div>
+        </div>
+
+        <div id="overlay">
+            <h1 id="titleText">NEON VERSUS</h1>
+            <p id="winnerText" style="font-size: 32px; color: yellow; display:none;"></p>
+
+            <div class="controls">
+                <div class="control-box" style="border-color: #00ff66; box-shadow: 0 0 10px rgba(0,255,102,0.2);">
+                    <h3 style="color: #00ff66; margin-top:0;">JOUEUR 1 (Vert)</h3>
+                    <p>Haut/Bas: <span class="key">Z</span> <span class="key">S</span></p>
+                    <p>Boost: <span class="key">Espace</span></p>
+                </div>
+                <div class="control-box" style="border-color: #00ccff; box-shadow: 0 0 10px rgba(0,204,255,0.2);">
+                    <h3 style="color: #00ccff; margin-top:0;">JOUEUR 2 (Bleu)</h3>
+                    <p>Haut/Bas: <span class="key">↑</span> <span class="key">↓</span></p>
+                    <p>Boost: <span class="key">Entrée</span></p>
+                </div>
+            </div>
+
+            <p>Détruisez les briques au centre.</p>
+            <p>Ne laissez pas la balle passer derrière vous !</p>
+            <br>
+            <button id="startBtn" onclick="startGame()">COMMENCER</button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * CONFIGURATION & CONSTANTES
+         */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game State
+        let animationId;
+        let isGameRunning = false;
+        let particles = [];
+        let shakeTime = 0;
+
+        // Constantes Gameplay
+        const PADDLE_WIDTH = 15;
+        const PADDLE_HEIGHT = 90;
+        const BALL_RADIUS = 8;
+        const INITIAL_BALL_SPEED = 6;
+        const MAX_BALL_SPEED = 14;
+        const PADDLE_SPEED = 7;
+        const BOOST_SPEED = 14; // Vitesse quand boost activé
+        const LIVES_START = 5;
+
+        // Couleurs
+        const COLOR_P1 = '#00ff66';
+        const COLOR_P2 = '#00ccff';
+        const COLOR_BALL = '#ffffff';
+        const BRICK_COLORS = ['#ff0055', '#ffaa00', '#ffff00', '#aa00ff'];
+
+        // Objets
+        const keys = {
+            z: false, s: false, ' ': false, // P1
+            ArrowUp: false, ArrowDown: false, Enter: false // P2
+        };
+
+        // Joueurs
+        const player1 = {
+            x: 30,
+            y: canvas.height / 2 - PADDLE_HEIGHT / 2,
+            w: PADDLE_WIDTH,
+            h: PADDLE_HEIGHT,
+            color: COLOR_P1,
+            score: 0,
+            lives: LIVES_START,
+            dy: 0,
+            isBoosting: false
+        };
+
+        const player2 = {
+            x: canvas.width - 30 - PADDLE_WIDTH,
+            y: canvas.height / 2 - PADDLE_HEIGHT / 2,
+            w: PADDLE_WIDTH,
+            h: PADDLE_HEIGHT,
+            color: COLOR_P2,
+            score: 0,
+            lives: LIVES_START,
+            dy: 0,
+            isBoosting: false
+        };
+
+        // Balle
+        const ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            dx: 0,
+            dy: 0,
+            speed: INITIAL_BALL_SPEED,
+            radius: BALL_RADIUS,
+            lastHitBy: null // 'p1', 'p2', ou null
+        };
+
+        // Briques
+        let bricks = [];
+        const BRICK_ROWS = 10;
+        const BRICK_COLS = 4;
+        const BRICK_W = 20;
+        const BRICK_H = 40;
+        const BRICK_GAP = 5;
+
+        /**
+         * GESTION DES ENTRÉES
+         */
+        window.addEventListener('keydown', (e) => {
+            // Normalisation pour Z/S (Azerty/Qwerty support basique via key)
+            if (e.key.toLowerCase() === 'z') keys.z = true;
+            if (e.key.toLowerCase() === 's') keys.s = true;
+            if (e.key === ' ') keys[' '] = true;
+            if (e.key === 'ArrowUp') keys.ArrowUp = true;
+            if (e.key === 'ArrowDown') keys.ArrowDown = true;
+            if (e.key === 'Enter') keys.Enter = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key.toLowerCase() === 'z') keys.z = false;
+            if (e.key.toLowerCase() === 's') keys.s = false;
+            if (e.key === ' ') keys[' '] = false;
+            if (e.key === 'ArrowUp') keys.ArrowUp = false;
+            if (e.key === 'ArrowDown') keys.ArrowDown = false;
+            if (e.key === 'Enter') keys.Enter = false;
+        });
+
+        /**
+         * LOGIQUE DU JEU
+         */
+
+        function initBricks() {
+            bricks = [];
+            const startX = (canvas.width - (BRICK_COLS * (BRICK_W + BRICK_GAP))) / 2;
+            const startY = (canvas.height - (BRICK_ROWS * (BRICK_H + BRICK_GAP))) / 2;
+
+            for (let c = 0; c < BRICK_COLS; c++) {
+                for (let r = 0; r < BRICK_ROWS; r++) {
+                    bricks.push({
+                        x: startX + c * (BRICK_W + BRICK_GAP),
+                        y: startY + r * (BRICK_H + BRICK_GAP),
+                        status: 1,
+                        color: BRICK_COLORS[c % BRICK_COLORS.length]
+                    });
+                }
+            }
+        }
+
+        function resetBall(scorer) {
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height / 2;
+            ball.speed = INITIAL_BALL_SPEED;
+            ball.lastHitBy = null;
+
+            // La balle part vers celui qui vient de perdre le point
+            let dir = scorer === 'p1' ? 1 : -1;
+            ball.dx = dir * ball.speed;
+            ball.dy = (Math.random() * 2 - 1) * ball.speed; // Angle aléatoire
+        }
+
+        function startGame() {
+            document.getElementById('overlay').classList.add('hidden');
+            document.getElementById('winnerText').style.display = 'none';
+            document.getElementById('startBtn').innerText = "REJOUER";
+
+            // Reset stats
+            player1.score = 0;
+            player1.lives = LIVES_START;
+            player2.score = 0;
+            player2.lives = LIVES_START;
+
+            updateUI();
+            initBricks();
+            resetBall(Math.random() > 0.5 ? 'p1' : 'p2');
+
+            isGameRunning = true;
+            animate();
+        }
+
+        function gameOver(winnerName) {
+            isGameRunning = false;
+            cancelAnimationFrame(animationId);
+
+            const overlay = document.getElementById('overlay');
+            const title = document.getElementById('titleText');
+            const winText = document.getElementById('winnerText');
+
+            title.innerText = "PARTIE TERMINÉE";
+            winText.innerText = `VICTOIRE : ${winnerName}`;
+            winText.style.display = 'block';
+
+            overlay.classList.remove('hidden');
+        }
+
+        /**
+         * PARTICLES (Effets visuels)
+         */
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    dx: (Math.random() - 0.5) * 8,
+                    dy: (Math.random() - 0.5) * 8,
+                    life: 1.0,
+                    color: color
+                });
+            }
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.dx;
+                p.y += p.dy;
+                p.life -= 0.02;
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        /**
+         * UPDATE & DRAW
+         */
+        function update() {
+            // --- Mouvement Joueur 1 ---
+            let speedP1 = keys[' '] ? BOOST_SPEED : PADDLE_SPEED;
+            player1.isBoosting = keys[' '];
+            if (keys.z) player1.y -= speedP1;
+            if (keys.s) player1.y += speedP1;
+
+            // Clamp P1
+            if (player1.y < 0) player1.y = 0;
+            if (player1.y + player1.h > canvas.height) player1.y = canvas.height - player1.h;
+
+            // --- Mouvement Joueur 2 ---
+            let speedP2 = keys.Enter ? BOOST_SPEED : PADDLE_SPEED;
+            player2.isBoosting = keys.Enter;
+            if (keys.ArrowUp) player2.y -= speedP2;
+            if (keys.ArrowDown) player2.y += speedP2;
+
+            // Clamp P2
+            if (player2.y < 0) player2.y = 0;
+            if (player2.y + player2.h > canvas.height) player2.y = canvas.height - player2.h;
+
+            // --- Mouvement Balle ---
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+
+            // Rebond Murs Haut/Bas
+            if (ball.y - ball.radius < 0 || ball.y + ball.radius > canvas.height) {
+                ball.dy = -ball.dy;
+                // Petit effet de "shake" sur les murs
+                shakeTime = 5;
+            }
+
+            // --- Collisions Raquettes ---
+
+            // Check P1
+            if (ball.x - ball.radius < player1.x + player1.w &&
+                ball.x + ball.radius > player1.x &&
+                ball.y > player1.y && ball.y < player1.y + player1.h) {
+
+                // Calcul de l'angle en fonction de l'impact
+                let collidePoint = ball.y - (player1.y + player1.h / 2);
+                collidePoint = collidePoint / (player1.h / 2);
+                let angleRad = (Math.PI / 4) * collidePoint;
+
+                // Augmenter vitesse
+                if (ball.speed < MAX_BALL_SPEED) ball.speed *= 1.05;
+
+                let direction = 1; // Vers la droite
+                ball.dx = direction * ball.speed * Math.cos(angleRad);
+                ball.dy = ball.speed * Math.sin(angleRad);
+
+                // Empêcher la balle de rester collée dans la raquette
+                ball.x = player1.x + player1.w + ball.radius;
+                ball.lastHitBy = 'p1';
+            }
+
+            // Check P2
+            if (ball.x + ball.radius > player2.x &&
+                ball.x - ball.radius < player2.x + player2.w &&
+                ball.y > player2.y && ball.y < player2.y + player2.h) {
+
+                let collidePoint = ball.y - (player2.y + player2.h / 2);
+                collidePoint = collidePoint / (player2.h / 2);
+                let angleRad = (Math.PI / 4) * collidePoint;
+
+                if (ball.speed < MAX_BALL_SPEED) ball.speed *= 1.05;
+
+                let direction = -1; // Vers la gauche
+                ball.dx = direction * ball.speed * Math.cos(angleRad);
+                ball.dy = ball.speed * Math.sin(angleRad);
+
+                ball.x = player2.x - ball.radius;
+                ball.lastHitBy = 'p2';
+            }
+
+            // --- Collisions Briques ---
+            let allBricksCleared = true;
+            for (let b of bricks) {
+                if (b.status === 1) {
+                    allBricksCleared = false;
+                    // Collision AABB simple
+                    if (ball.x > b.x && ball.x < b.x + BRICK_W &&
+                        ball.y > b.y && ball.y < b.y + BRICK_H) {
+
+                        ball.dy = -ball.dy; // Rebond simple
+                        b.status = 0;
+                        createExplosion(b.x + BRICK_W / 2, b.y + BRICK_H / 2, b.color);
+                        shakeTime = 3;
+
+                        // Scoring
+                        if (ball.lastHitBy === 'p1') {
+                            player1.score += 10;
+                        } else if (ball.lastHitBy === 'p2') {
+                            player2.score += 10;
+                        }
+                        updateUI();
+                    }
+                }
+            }
+
+            // Si toutes les briques sont détruites, on les remet
+            if (allBricksCleared) {
+                initBricks();
+                ball.speed = INITIAL_BALL_SPEED; // Reset speed pour ne pas devenir fou
+            }
+
+            // --- Scoring / Sortie de zone ---
+            // Balle sort à gauche (P1 perd une vie / P2 marque ?)
+            if (ball.x + ball.radius < 0) {
+                player1.lives--;
+                player2.score += 50; // Bonus pour avoir passé la défense
+                shakeTime = 15;
+                updateUI();
+                if (player1.lives <= 0) gameOver("JOUEUR 2");
+                else resetBall('p2');
+            }
+            // Balle sort à droite
+            else if (ball.x - ball.radius > canvas.width) {
+                player2.lives--;
+                player1.score += 50;
+                shakeTime = 15;
+                updateUI();
+                if (player2.lives <= 0) gameOver("JOUEUR 1");
+                else resetBall('p1');
+            }
+
+            updateParticles();
+        }
+
+        function updateUI() {
+            document.getElementById('scoreP1').innerText = player1.score;
+            document.getElementById('livesP1').innerText = player1.lives;
+            document.getElementById('scoreP2').innerText = player2.score;
+            document.getElementById('livesP2').innerText = player2.lives;
+        }
+
+        function draw() {
+            // Screen shake effect
+            let shakeX = 0, shakeY = 0;
+            if (shakeTime > 0) {
+                shakeX = Math.random() * 5 - 2.5;
+                shakeY = Math.random() * 5 - 2.5;
+                shakeTime--;
+            }
+
+            ctx.save();
+            ctx.translate(shakeX, shakeY);
+
+            // Clear Screen
+            ctx.fillStyle = 'rgba(0,0,0,0.3)'; // Trail effect
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Ligne centrale
+            ctx.beginPath();
+            ctx.setLineDash([10, 15]);
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw Bricks
+            bricks.forEach(b => {
+                if (b.status === 1) {
+                    ctx.fillStyle = b.color;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = b.color;
+                    ctx.fillRect(b.x, b.y, BRICK_W, BRICK_H);
+                    ctx.shadowBlur = 0;
+                }
+            });
+
+            // Draw Paddle 1
+            ctx.fillStyle = player1.isBoosting ? '#fff' : player1.color;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = player1.color;
+            ctx.fillRect(player1.x, player1.y, player1.w, player1.h);
+
+            // Draw Paddle 2
+            ctx.fillStyle = player2.isBoosting ? '#fff' : player2.color;
+            ctx.shadowColor = player2.color;
+            ctx.fillRect(player2.x, player2.y, player2.w, player2.h);
+
+            ctx.shadowBlur = 0;
+
+            // Draw Ball
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = COLOR_BALL;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#fff';
+            ctx.fill();
+            ctx.closePath();
+            ctx.shadowBlur = 0;
+
+            // Draw Particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 4, 4);
+                ctx.globalAlpha = 1.0;
+            });
+
+            ctx.restore();
+        }
+
+        function animate() {
+            if (!isGameRunning) return;
+            update();
+            draw();
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // Initial draw
+        draw();
+
+    </script>
+</body>
+
+</html>

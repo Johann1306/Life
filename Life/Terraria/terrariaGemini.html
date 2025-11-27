@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PixelDiggers - Prototype Sandbox 2D</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* CSS spécifique au pixel art et au jeu */
+        :root {
+            --tile-size: 16px; /* Taille de base d'une tuile pour le pixel art */
+            --player-color: #f7a387;
+            --sky-color: #87ceeb;
+            --dirt-color: #8b4513;
+            --stone-color: #808080;
+            --grass-color: #4CAF50;
+            --hotbar-bg: rgba(30, 30, 30, 0.9);
+            --ui-font: 'Press Start 2P', monospace; /* Police pixel art */
+        }
+
+        /* Police de secours si 'Press Start 2P' n'est pas disponible (non-loading) */
+        @font-face {
+            font-family: 'Press Start 2P';
+            src: url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        }
+
+        body {
+            background-color: #1f2937; /* Fond gris foncé */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden; /* Empêche le scrolling */
+            font-family: var(--ui-font);
+            image-rendering: pixelated; /* Maintient le style pixel art */
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            max-width: 1000px; /* Limite la largeur du jeu pour PC */
+            max-height: 600px; /* Limite la hauteur du jeu pour PC */
+            aspect-ratio: 1000 / 600; /* Garde un ratio pour le canvas */
+        }
+
+        canvas {
+            display: block;
+            background-color: var(--sky-color);
+            border: 4px solid #000;
+            box-shadow: 0 0 0 4px #444;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Styles de l'interface utilisateur */
+        .pixel-ui {
+            font-size: 10px;
+            color: white;
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        #hotbar {
+            position: absolute;
+            bottom: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            padding: 4px;
+            background: var(--hotbar-bg);
+            border: 2px solid #555;
+            border-radius: 4px;
+            z-index: 100;
+        }
+
+        .hotbar-slot {
+            width: 32px;
+            height: 32px;
+            margin: 2px;
+            background: #222;
+            border: 2px solid #555;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .hotbar-slot.selected {
+            border-color: yellow;
+            box-shadow: 0 0 5px yellow;
+        }
+
+        .item-count {
+            position: absolute;
+            bottom: 0px;
+            right: 1px;
+            font-size: 8px;
+        }
+
+        .mobile-controls {
+            display: none; /* Caché par défaut */
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            pointer-events: none; /* Permet les clics/touches sur le canvas en dessous */
+        }
+
+        .mobile-controls button {
+            pointer-events: auto; /* Active les événements sur les boutons */
+            width: 60px;
+            height: 60px;
+            background: rgba(100, 100, 100, 0.7);
+            border: 2px solid #fff;
+            color: #fff;
+            font-size: 16px;
+            position: absolute;
+            border-radius: 8px;
+            user-select: none;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: sans-serif; /* Plus lisible pour les commandes tactiles */
+            box-shadow: 2px 2px 0 #000;
+        }
+
+        #mobile-left { bottom: 10px; left: 10px; }
+        #mobile-right { bottom: 10px; left: 80px; }
+        #mobile-jump { bottom: 10px; right: 10px; }
+        #mobile-action { bottom: 80px; right: 10px; }
+
+        @media (max-width: 768px) {
+            .mobile-controls {
+                display: block; /* Affiché sur mobile */
+            }
+            #gameContainer {
+                max-width: 100%;
+                max-height: 100vh;
+                height: 100vh;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Barre d'accès rapide (Hotbar) -->
+        <div id="hotbar" class="pixel-ui">
+            <!-- Les slots seront générés par JS -->
+        </div>
+
+        <!-- Interface de Santé -->
+        <div id="healthUI" class="pixel-ui" style="position: absolute; top: 10px; left: 10px; display: flex;">
+            <!-- Les coeurs seront affichés ici -->
+        </div>
+
+        <!-- Menu de Crafting (Initialement caché) -->
+        <div id="craftingMenu" class="pixel-ui bg-gray-800 p-4 border-4 border-gray-600 rounded-md"
+             style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 200; display: none; width: 300px;">
+            <h3 class="text-xl mb-3 text-center">Table de Fabrication</h3>
+            <div id="craftingRecipes" class="space-y-2">
+                <!-- Les recettes seront ajoutées ici -->
+            </div>
+            <button onclick="Game.toggleCraftingMenu()" class="mt-4 w-full bg-red-600 hover:bg-red-700 py-1">Fermer</button>
+        </div>
+
+        <!-- Contrôles Virtuels Mobiles -->
+        <div class="mobile-controls">
+            <button id="mobile-left">◀</button>
+            <button id="mobile-right">▶</button>
+            <button id="mobile-jump">▲</button>
+            <button id="mobile-action" ontouchstart="Game.handleTouchAction(true)" ontouchend="Game.handleTouchAction(false)">🛠️</button>
+        </div>
+    </div>
+
+    <script>
+        // =================================================================================
+        // JAVASCRIPT: MOTEUR DE JEU "PIXELDIGGERS"
+        // =================================================================================
+
+        // Configuration Globale
+        const TILE_SIZE = 16;
+        const WORLD_WIDTH_TILES = 120; // 1920 pixels de large pour un "Petit" monde
+        const WORLD_HEIGHT_TILES = 80;  // 1280 pixels de haut
+        const CHUNK_SIZE = 16; // Pour l'optimisation future
+        const SKY_LEVEL = 30; // Niveau où commence la terre
+        const GAME_SPEED = 1000 / 60; // 60 FPS
+        const GRAVITY = 0.5;
+
+        // Références DOM
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const hotbarElement = document.getElementById('hotbar');
+        const healthUIElement = document.getElementById('healthUI');
+        const craftingMenu = document.getElementById('craftingMenu');
+        const craftingRecipesElement = document.getElementById('craftingRecipes');
+
+        // Mappage des Tuiles et Entités
+        const Tiles = {
+            AIR: 0,
+            DIRT: 1, // Terre
+            GRASS: 2, // Herbe
+            STONE: 3, // Pierre
+            COPPER_ORE: 4, // Minerai de Cuivre
+            WOOD: 5, // Bois
+            LEAVES: 6, // Feuilles
+            TORCH: 7, // Torche (lumière)
+            CORRUPT_STONE: 8, // Biome Corrompu
+            WATER: 9, // Eau (simple pour le proto)
+        };
+
+        // Propriétés des Tuiles
+        const TileProps = {
+            [Tiles.AIR]: { solid: false, destructible: false, color: null, drop: null, hardness: 0 },
+            [Tiles.DIRT]: { solid: true, destructible: true, color: '#8b4513', drop: 'Dirt', hardness: 5 },
+            [Tiles.GRASS]: { solid: true, destructible: true, color: '#4CAF50', drop: 'Dirt', hardness: 5 },
+            [Tiles.STONE]: { solid: true, destructible: true, color: '#808080', drop: 'Stone', hardness: 10 },
+            [Tiles.COPPER_ORE]: { solid: true, destructible: true, color: '#a0522d', drop: 'Copper_Ore', hardness: 20 },
+            [Tiles.WOOD]: { solid: true, destructible: true, color: '#5C3317', drop: 'Wood', hardness: 8 },
+            [Tiles.LEAVES]: { solid: false, destructible: true, color: '#2E8B57', drop: 'Wood', hardness: 3 },
+            [Tiles.TORCH]: { solid: false, destructible: true, color: '#ffd700', drop: 'Torch', hardness: 1 },
+            [Tiles.CORRUPT_STONE]: { solid: true, destructible: true, color: '#550055', drop: 'Corrupt_Stone', hardness: 30 },
+            [Tiles.WATER]: { solid: false, destructible: false, color: '#4682b4', drop: null, hardness: 0 },
+        };
+
+        // Définition des Recettes de Crafting
+        const Recipes = [
+            { id: 'Copper_Pickaxe', name: 'Pioche de Cuivre', result: { item: 'Copper_Pickaxe', count: 1 }, requires: { Copper_Ore: 8, Wood: 4 } },
+            { id: 'Torch', name: 'Torche', result: { item: 'Torch', count: 5 }, requires: { Wood: 1, Dirt: 1 } },
+            { id: 'Stone_Block', name: 'Bloc de Pierre', result: { item: 'Stone_Block', count: 1 }, requires: { Stone: 1 } },
+            { id: 'Wooden_Sword', name: 'Épée en Bois', result: { item: 'Wooden_Sword', count: 1 }, requires: { Wood: 10 } },
+        ];
+
+        // Définition des Outils
+        const Tools = {
+            'Wooden_Sword': { type: 'weapon', power: 5 },
+            'Copper_Pickaxe': { type: 'pickaxe', power: 10, tier: 1 },
+            'Wooden_Axe': { type: 'axe', power: 8, tier: 1 },
+            'Torch': { type: 'placeable', tile: Tiles.TORCH },
+            'Dirt': { type: 'placeable', tile: Tiles.DIRT },
+            'Stone_Block': { type: 'placeable', tile: Tiles.STONE },
+        };
+
+        // Objet de Gestion du Jeu
+        const Game = {
+            world: [],
+            player: { x: 0, y: 0, width: TILE_SIZE, height: TILE_SIZE * 2, health: 100, maxHealth: 100, velX: 0, velY: 0, speed: 4, jumpPower: 10, isGrounded: false, isFacingRight: true },
+            camera: { x: 0, y: 0 },
+            inventory: { Dirt: 99, Stone: 50, Wood: 30, Copper_Ore: 0, Copper_Pickaxe: 1, Wooden_Axe: 1, Torch: 15 },
+            hotbar: ['Copper_Pickaxe', 'Wooden_Axe', 'Torch', 'Dirt', 'Stone_Block', null, null, null],
+            selectedSlot: 0,
+            isCraftingOpen: false,
+            keys: {},
+            touch: { left: false, right: false, jump: false, action: false, actionHeld: false, touchTarget: { x: -1, y: -1 } },
+            mobileMode: false,
+            lastFrameTime: 0,
+            deltaTime: 0,
+            targetTile: { x: -1, y: -1, progress: 0, mining: false, tool: null }, // Tuile ciblée pour le minage
+            entities: [], // Liste des ennemis et PNJ
+        };
+
+        // =================================================================================
+        // GESTION DU MONDE
+        // =================================================================================
+
+        /**
+         * Génère un monde de base avec une surface et des cavernes.
+         */
+        Game.generateWorld = function() {
+            this.world = [];
+            for (let y = 0; y < WORLD_HEIGHT_TILES; y++) {
+                this.world[y] = [];
+                for (let x = 0; x < WORLD_WIDTH_TILES; x++) {
+                    let tile = Tiles.AIR;
+                    if (y >= SKY_LEVEL) {
+                        // Niveau de la terre
+                        if (y === SKY_LEVEL) {
+                            tile = Tiles.GRASS;
+                        } else if (y < SKY_LEVEL + 5) {
+                            tile = Tiles.DIRT;
+                        } else {
+                            tile = Tiles.STONE;
+                            // Ajout de minerais aléatoire et de cavernes
+                            if (Math.random() < 0.02) {
+                                tile = Tiles.COPPER_ORE;
+                            } else if (Math.random() < 0.05) {
+                                // Simple caverne
+                                tile = Tiles.AIR;
+                            } else if (Math.random() < 0.005) {
+                                // Biome corrompu de base
+                                tile = Tiles.CORRUPT_STONE;
+                            }
+                        }
+                    }
+                    this.world[y][x] = tile;
+                }
+            }
+
+            // Générer des arbres et des flaques d'eau
+            for (let x = 0; x < WORLD_WIDTH_TILES; x++) {
+                if (this.world[SKY_LEVEL][x] === Tiles.GRASS) {
+                    // Arbres
+                    if (Math.random() < 0.05) {
+                        this.generateTree(x, SKY_LEVEL - 1);
+                    }
+                    // Flaques d'eau (simple)
+                    if (Math.random() < 0.01) {
+                         this.world[SKY_LEVEL][x] = Tiles.WATER;
+                         this.world[SKY_LEVEL+1][x] = Tiles.WATER;
+                    }
+                }
+            }
+
+            // Placer le joueur au centre du ciel
+            this.player.x = (WORLD_WIDTH_TILES / 2) * TILE_SIZE;
+            this.player.y = (SKY_LEVEL - 3) * TILE_SIZE;
+
+            // Générer quelques ennemis de base
+            this.entities.push(new Entity(this.player.x + 100, this.player.y, 'Slime', 20, 5, '#00ff00'));
+            this.entities.push(new Entity(this.player.x - 100, this.player.y, 'Slime', 20, 5, '#00ff00'));
+        };
+
+        /**
+         * Génère un arbre basique (Tronc + Feuilles).
+         * @param {number} x - Coordonnée X de la base du tronc.
+         * @param {number} y - Coordonnée Y de la base du tronc.
+         */
+        Game.generateTree = function(x, y) {
+            const height = 4 + Math.floor(Math.random() * 3); // 4 à 6 tuiles de haut
+            for (let i = 0; i < height; i++) {
+                if (y - i >= 0) {
+                    this.setTile(x, y - i, Tiles.WOOD);
+                }
+            }
+            // Feuillage simple
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    if (y - height + dy >= 0 && this.getTile(x + dx, y - height + dy) === Tiles.AIR) {
+                        this.setTile(x + dx, y - height + dy, Tiles.LEAVES);
+                    }
+                }
+            }
+        };
+
+        /**
+         * Retourne le type de tuile à (x, y).
+         * @param {number} x - Index de tuile X.
+         * @param {number} y - Index de tuile Y.
+         * @returns {number} Type de tuile.
+         */
+        Game.getTile = function(x, y) {
+            if (x < 0 || x >= WORLD_WIDTH_TILES || y < 0 || y >= WORLD_HEIGHT_TILES) {
+                return Tiles.STONE; // Bordure du monde
+            }
+            return this.world[y][x];
+        };
+
+        /**
+         * Définit le type de tuile à (x, y) et met à jour les tuiles adjacentes.
+         * @param {number} x - Index de tuile X.
+         * @param {number} y - Index de tuile Y.
+         * @param {number} type - Nouveau type de tuile.
+         */
+        Game.setTile = function(x, y, type) {
+            if (x >= 0 && x < WORLD_WIDTH_TILES && y >= 0 && y < WORLD_HEIGHT_TILES) {
+                this.world[y][x] = type;
+                // Logique pour enlever l'herbe si la tuile du dessus est cassée
+                if (type === Tiles.AIR && y + 1 < WORLD_HEIGHT_TILES && this.world[y + 1][x] === Tiles.GRASS) {
+                    this.world[y + 1][x] = Tiles.DIRT;
+                }
+            }
+        };
+
+        /**
+         * Ajoute un objet à l'inventaire du joueur.
+         * @param {string} item - Nom de l'objet.
+         * @param {number} count - Nombre d'objets.
+         */
+        Game.addItem = function(item, count) {
+            this.inventory[item] = (this.inventory[item] || 0) + count;
+            this.updateHotbarUI();
+        };
+
+        /**
+         * Retire un objet de l'inventaire.
+         * @param {string} item - Nom de l'objet.
+         * @param {number} count - Nombre d'objets.
+         * @returns {boolean} Vrai si la suppression a réussi.
+         */
+        Game.removeItem = function(item, count) {
+            if (this.inventory[item] && this.inventory[item] >= count) {
+                this.inventory[item] -= count;
+                if (this.inventory[item] <= 0) {
+                    delete this.inventory[item];
+                }
+                this.updateHotbarUI();
+                return true;
+            }
+            return false;
+        };
+
+        /**
+         * Vérifie si une tuile est solide pour la collision.
+         * @param {number} x - Index de tuile X.
+         * @param {number} y - Index de tuile Y.
+         * @returns {boolean}
+         */
+        Game.isSolid = function(x, y) {
+            const tileType = this.getTile(x, y);
+            const props = TileProps[tileType];
+            return props && props.solid;
+        };
+
+        // =================================================================================
+        // GESTION DU JOUEUR ET DE LA PHYSIQUE
+        // =================================================================================
+
+        /**
+         * Met à jour la position et les états du joueur.
+         */
+        Game.updatePlayer = function() {
+            const p = this.player;
+
+            // 1. Gérer les entrées et le mouvement
+            p.velX = 0;
+            let moving = false;
+
+            if (this.keys['KeyA'] || this.keys['ArrowLeft'] || this.touch.left) {
+                p.velX = -p.speed;
+                p.isFacingRight = false;
+                moving = true;
+            }
+            if (this.keys['KeyD'] || this.keys['ArrowRight'] || this.touch.right) {
+                p.velX = p.speed;
+                p.isFacingRight = true;
+                moving = true;
+            }
+
+            if ((this.keys['Space'] || this.touch.jump) && p.isGrounded) {
+                p.velY = -p.jumpPower;
+                p.isGrounded = false;
+            }
+
+            // 2. Appliquer la gravité
+            p.velY += GRAVITY;
+            p.velY = Math.min(p.velY, 15); // Limite la vitesse de chute
+
+            // 3. Collision horizontale
+            p.x += p.velX;
+            this.resolveHorizontalCollision();
+
+            // 4. Collision verticale
+            p.y += p.velY;
+            this.resolveVerticalCollision();
+
+            // 5. Centrer la caméra
+            this.camera.x = p.x - canvas.width / 2 + p.width / 2;
+            this.camera.y = p.y - canvas.height / 2 + p.height / 2;
+
+            // Limiter la caméra aux bords du monde
+            const worldPixelWidth = WORLD_WIDTH_TILES * TILE_SIZE;
+            const worldPixelHeight = WORLD_HEIGHT_TILES * TILE_SIZE;
+            this.camera.x = Math.max(0, Math.min(this.camera.x, worldPixelWidth - canvas.width));
+            this.camera.y = Math.max(0, Math.min(this.camera.y, worldPixelHeight - canvas.height));
+        };
+
+        /**
+         * Gère la collision horizontale du joueur avec les tuiles.
+         */
+        Game.resolveHorizontalCollision = function() {
+            const p = this.player;
+            const tileX1 = Math.floor(p.x / TILE_SIZE);
+            const tileX2 = Math.floor((p.x + p.width - 1) / TILE_SIZE);
+            const tileY1 = Math.floor(p.y / TILE_SIZE);
+            const tileY2 = Math.floor((p.y + p.height - 1) / TILE_SIZE);
+
+            for (let y = tileY1; y <= tileY2; y++) {
+                if (p.velX > 0) { // Déplacement vers la droite
+                    if (this.isSolid(tileX2, y)) {
+                        p.x = tileX2 * TILE_SIZE - p.width;
+                        p.velX = 0;
+                        return;
+                    }
+                } else if (p.velX < 0) { // Déplacement vers la gauche
+                    if (this.isSolid(tileX1, y)) {
+                        p.x = (tileX1 + 1) * TILE_SIZE;
+                        p.velX = 0;
+                        return;
+                    }
+                }
+            }
+        };
+
+        /**
+         * Gère la collision verticale du joueur avec les tuiles.
+         */
+        Game.resolveVerticalCollision = function() {
+            const p = this.player;
+            const tileX1 = Math.floor(p.x / TILE_SIZE);
+            const tileX2 = Math.floor((p.x + p.width - 1) / TILE_SIZE);
+            const tileY1 = Math.floor(p.y / TILE_SIZE);
+            const tileY2 = Math.floor((p.y + p.height - 1) / TILE_SIZE);
+
+            p.isGrounded = false;
+
+            for (let x = tileX1; x <= tileX2; x++) {
+                if (p.velY > 0) { // Chute
+                    if (this.isSolid(x, tileY2)) {
+                        p.y = tileY2 * TILE_SIZE - p.height;
+                        p.velY = 0;
+                        p.isGrounded = true;
+                        return;
+                    }
+                } else if (p.velY < 0) { // Saut
+                    if (this.isSolid(x, tileY1)) {
+                        p.y = (tileY1 + 1) * TILE_SIZE;
+                        p.velY = 0;
+                        return;
+                    }
+                }
+            }
+        };
+
+        // =================================================================================
+        // ACTIONS (MINAGE, PLACEMENT, COMBAT)
+        // =================================================================================
+
+        /**
+         * Déclenche l'action principale du joueur (Minage/Placement/Attaque).
+         * @param {number} clientX - Coordonnée X de la souris/toucher.
+         * @param {number} clientY - Coordonnée Y de la souris/toucher.
+         */
+        Game.handleAction = function(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            const canvasX = clientX - rect.left;
+            const canvasY = clientY - rect.top;
+
+            // Coordonnées du monde
+            const worldX = canvasX + this.camera.x;
+            const worldY = canvasY + this.camera.y;
+
+            // Indices de tuile ciblée
+            const targetTileX = Math.floor(worldX / TILE_SIZE);
+            const targetTileY = Math.floor(worldY / TILE_SIZE);
+
+            const selectedItem = this.hotbar[this.selectedSlot];
+            if (!selectedItem) return;
+            const toolProps = Tools[selectedItem];
+
+            // Distance de portée
+            const playerCenterX = this.player.x + this.player.width / 2;
+            const playerCenterY = this.player.y + this.player.height / 2;
+            const distance = Math.sqrt(
+                Math.pow(targetTileX * TILE_SIZE + TILE_SIZE / 2 - playerCenterX, 2) +
+                Math.pow(targetTileY * TILE_SIZE + TILE_SIZE / 2 - playerCenterY, 2)
+            );
+
+            if (distance > TILE_SIZE * 5) return; // Portée limitée à 5 tuiles
+
+            if (toolProps && toolProps.type === 'placeable') {
+                this.placeTile(targetTileX, targetTileY, toolProps.tile, selectedItem);
+            } else if (toolProps && (toolProps.type === 'pickaxe' || toolProps.type === 'axe' || toolProps.type === 'weapon')) {
+                // Minage
+                const tileType = this.getTile(targetTileX, targetTileY);
+                if (TileProps[tileType] && TileProps[tileType].destructible) {
+                    this.targetTile = {
+                        x: targetTileX,
+                        y: targetTileY,
+                        progress: 0,
+                        mining: true,
+                        tool: toolProps
+                    };
+                } else if (toolProps.type === 'weapon') {
+                    // Attaque d'entité (simple)
+                    this.attackEntity(worldX, worldY, toolProps.power);
+                }
+            }
+        };
+
+        /**
+         * Place une tuile dans le monde.
+         * @param {number} x - Index de tuile X.
+         * @param {number} y - Index de tuile Y.
+         * @param {number} tileType - Type de tuile à placer.
+         * @param {string} itemName - Nom de l'objet de l'inventaire.
+         */
+        Game.placeTile = function(x, y, tileType, itemName) {
+            const currentTile = this.getTile(x, y);
+
+            // Ne pas placer sur une tuile solide ou si le joueur est dedans
+            if (currentTile !== Tiles.AIR && currentTile !== Tiles.LEAVES) return;
+            if (this.isPlayerInTile(x, y)) return;
+
+            if (this.removeItem(itemName, 1)) {
+                this.setTile(x, y, tileType);
+                this.targetTile.mining = false; // Arrête le minage en cours
+            }
+        };
+
+        /**
+         * Vérifie si le joueur est dans une tuile spécifique.
+         */
+        Game.isPlayerInTile = function(tx, ty) {
+            const p = this.player;
+            const tileRect = {
+                x: tx * TILE_SIZE,
+                y: ty * TILE_SIZE,
+                width: TILE_SIZE,
+                height: TILE_SIZE
+            };
+
+            // Simple AABB collision check
+            return p.x < tileRect.x + tileRect.width &&
+                   p.x + p.width > tileRect.x &&
+                   p.y < tileRect.y + tileRect.height &&
+                   p.y + p.height > tileRect.y;
+        };
+
+        /**
+         * Met à jour le processus de minage.
+         */
+        Game.updateMining = function() {
+            if (!this.targetTile.mining || !this.targetTile.tool) return;
+
+            const t = this.targetTile;
+            const tileType = this.getTile(t.x, t.y);
+            const props = TileProps[tileType];
+            const tool = t.tool;
+
+            if (!props || !props.destructible || tileType === Tiles.AIR) {
+                t.mining = false;
+                t.progress = 0;
+                return;
+            }
+
+            // Vérifier si la bonne tuile est toujours ciblée et à portée
+            const playerCenterX = this.player.x + this.player.width / 2;
+            const playerCenterY = this.player.y + this.player.height / 2;
+            const distance = Math.sqrt(
+                Math.pow(t.x * TILE_SIZE + TILE_SIZE / 2 - playerCenterX, 2) +
+                Math.pow(t.y * TILE_SIZE + TILE_SIZE / 2 - playerCenterY, 2)
+            );
+            if (distance > TILE_SIZE * 5) {
+                t.mining = false;
+                t.progress = 0;
+                return;
+            }
+
+            // Calcul du progrès de minage (simplifié : plus la dureté est faible, plus c'est rapide)
+            const miningPower = tool.power * (tool.type === 'pickaxe' && props.drop !== 'Wood' ? 1 : (tool.type === 'axe' && props.drop === 'Wood' ? 1 : 0.5));
+            t.progress += miningPower * (this.deltaTime / 1000); // Progress basé sur le temps
+
+            if (t.progress >= props.hardness) {
+                // Tuile cassée !
+                this.setTile(t.x, t.y, Tiles.AIR);
+                this.addItem(props.drop, 1);
+                t.mining = false;
+                t.progress = 0;
+            }
+        };
+
+        /**
+         * Attaque une entité dans la zone ciblée.
+         * @param {number} worldX - Coordonnée X dans le monde.
+         * @param {number} worldY - Coordonnée Y dans le monde.
+         * @param {number} damage - Dégâts infligés.
+         */
+        Game.attackEntity = function(worldX, worldY, damage) {
+            for (let i = 0; i < this.entities.length; i++) {
+                const e = this.entities[i];
+                if (
+                    worldX > e.x && worldX < e.x + e.width &&
+                    worldY > e.y && worldY < e.y + e.height
+                ) {
+                    e.takeDamage(damage);
+                    return;
+                }
+            }
+        };
+
+        // =================================================================================
+        // GESTION DES ENTITÉS (ENNEMIS)
+        // =================================================================================
+
+        /**
+         * Classe de base pour les entités (joueur, ennemis, PNJ).
+         */
+        class Entity {
+            constructor(x, y, name, health, damage, color) {
+                this.x = x;
+                this.y = y;
+                this.width = TILE_SIZE;
+                this.height = TILE_SIZE;
+                this.name = name;
+                this.health = health;
+                this.maxHealth = health;
+                this.damage = damage;
+                this.color = color;
+                this.velX = 0;
+                this.velY = 0;
+                this.isDead = false;
+            }
+
+            update() {
+                if (this.isDead) return;
+
+                // Simple AI de Slime : saut aléatoire + poursuite du joueur
+                if (this.name === 'Slime') {
+                    if (this.velY === 0) {
+                        if (Math.random() < 0.01) { // Saut aléatoire
+                            this.velY = -5;
+                            this.velX = (Math.random() > 0.5 ? 1 : -1) * 2;
+                        }
+                    }
+                    // Gravité
+                    this.velY += GRAVITY;
+                }
+
+                this.x += this.velX;
+                this.y += this.velY;
+                this.resolveCollision();
+                this.checkPlayerCollision();
+            }
+
+            resolveCollision() {
+                // Logique de collision simplifiée pour les entités
+                const tileY2 = Math.floor((this.y + this.height - 1) / TILE_SIZE);
+                const tileX = Math.floor((this.x + this.width / 2) / TILE_SIZE);
+
+                if (Game.isSolid(tileX, tileY2)) {
+                    this.y = tileY2 * TILE_SIZE - this.height;
+                    this.velY = 0;
+                }
+            }
+
+            checkPlayerCollision() {
+                const p = Game.player;
+                if (
+                    this.x < p.x + p.width &&
+                    this.x + this.width > p.x &&
+                    this.y < p.y + p.height &&
+                    this.y + this.height > p.y
+                ) {
+                    // Collision: Le joueur prend des dégâts (simplifié, pas d'invincibilité)
+                    p.health -= this.damage;
+                    Game.updateHealthUI();
+                    // Knockback simple
+                    p.velY = -5;
+                    p.velX = (p.x < this.x ? -5 : 5);
+
+                    if (p.health <= 0) {
+                        // Gérer la mort du joueur
+                        Game.playerDied();
+                    }
+                }
+            }
+
+            takeDamage(damage) {
+                this.health -= damage;
+                if (this.health <= 0) {
+                    this.isDead = true;
+                }
+            }
+
+            draw() {
+                if (this.isDead) return;
+                const camX = this.x - Game.camera.x;
+                const camY = this.y - Game.camera.y;
+
+                // Dessiner l'entité (simple bloc coloré)
+                ctx.fillStyle = this.color;
+                ctx.fillRect(camX, camY, this.width, this.height);
+
+                // Barre de vie (simplifiée)
+                ctx.fillStyle = 'red';
+                ctx.fillRect(camX, camY - 5, this.width, 2);
+                ctx.fillStyle = 'lime';
+                ctx.fillRect(camX, camY - 5, this.width * (this.health / this.maxHealth), 2);
+            }
+        }
+
+        /**
+         * Met à jour toutes les entités.
+         */
+        Game.updateEntities = function() {
+            for (let i = this.entities.length - 1; i >= 0; i--) {
+                const entity = this.entities[i];
+                entity.update();
+                if (entity.isDead) {
+                    this.entities.splice(i, 1); // Supprimer l'entité morte
+                }
+            }
+        };
+
+        Game.playerDied = function() {
+            alert("Vous êtes mort ! Redémarrage...");
+            this.generateWorld(); // Réinitialiser le monde et le joueur
+            this.player.health = this.player.maxHealth;
+            this.updateHealthUI();
+        };
+
+        // =================================================================================
+        // GESTION DU RENDU
+        // =================================================================================
+
+        /**
+         * Dessine le monde visible sur le canvas.
+         */
+        Game.drawWorld = function() {
+            const startX = Math.floor(this.camera.x / TILE_SIZE);
+            const endX = Math.ceil((this.camera.x + canvas.width) / TILE_SIZE);
+            const startY = Math.floor(this.camera.y / TILE_SIZE);
+            const endY = Math.ceil((this.camera.y + canvas.height) / TILE_SIZE);
+
+            for (let y = startY; y < endY; y++) {
+                for (let x = startX; x < endX; x++) {
+                    const tileType = this.getTile(x, y);
+                    const props = TileProps[tileType];
+
+                    if (props && props.color) {
+                        const drawX = x * TILE_SIZE - this.camera.x;
+                        const drawY = y * TILE_SIZE - this.camera.y;
+
+                        // Dessiner le bloc
+                        ctx.fillStyle = props.color;
+                        ctx.fillRect(drawX, drawY, TILE_SIZE, TILE_SIZE);
+
+                        // Effet pixel art : ombres/contours
+                        ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+                        ctx.strokeRect(drawX, drawY, TILE_SIZE, TILE_SIZE);
+                    }
+
+                    // Rendu de l'eau (simple)
+                    if (tileType === Tiles.WATER) {
+                        const drawX = x * TILE_SIZE - this.camera.x;
+                        const drawY = y * TILE_SIZE - this.camera.y;
+                        ctx.fillStyle = TileProps[Tiles.WATER].color;
+                        ctx.globalAlpha = 0.7;
+                        ctx.fillRect(drawX, drawY, TILE_SIZE, TILE_SIZE);
+                        ctx.globalAlpha = 1.0;
+                    }
+                }
+            }
+        };
+
+        /**
+         * Dessine les entités.
+         */
+        Game.drawEntities = function() {
+            this.entities.forEach(entity => entity.draw());
+        };
+
+        /**
+         * Dessine le joueur.
+         */
+        Game.drawPlayer = function() {
+            const p = this.player;
+            const camX = p.x - this.camera.x;
+            const camY = p.y - this.camera.y;
+
+            // Corps du joueur (simple rectangle)
+            ctx.fillStyle = 'var(--player-color)';
+            ctx.fillRect(camX, camY, p.width, p.height);
+
+            // Indicateur de direction (tête simple)
+            ctx.fillStyle = 'black';
+            ctx.fillRect(camX + (p.isFacingRight ? p.width - 4 : 0), camY, 4, 4);
+
+            // Outil sélectionné
+            const selectedItem = this.hotbar[this.selectedSlot];
+            if (selectedItem && Tools[selectedItem].type !== 'placeable') {
+                ctx.fillStyle = '#ff0000'; // Outil rouge (épée/pioche placeholder)
+                ctx.fillRect(camX + (p.isFacingRight ? p.width : -4), camY + p.height / 2, 8, 4);
+            }
+        };
+
+        /**
+         * Dessine l'indicateur de minage (cercle de progression).
+         */
+        Game.drawMiningIndicator = function() {
+            if (!this.targetTile.mining) return;
+
+            const t = this.targetTile;
+            const tileProps = TileProps[this.getTile(t.x, t.y)];
+            if (!tileProps) return;
+
+            const drawX = t.x * TILE_SIZE - this.camera.x + TILE_SIZE / 2;
+            const drawY = t.y * TILE_SIZE - this.camera.y + TILE_SIZE / 2;
+
+            const progressRatio = t.progress / tileProps.hardness;
+
+            ctx.beginPath();
+            ctx.arc(drawX, drawY, TILE_SIZE / 2, 0, progressRatio * 2 * Math.PI);
+            ctx.strokeStyle = 'yellow';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.closePath();
+        };
+
+        /**
+         * Fonction principale de dessin.
+         */
+        Game.draw = function() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dessiner l'arrière-plan (ciel / fond de caverne)
+            ctx.fillStyle = this.camera.y < (SKY_LEVEL * TILE_SIZE / 2) ? 'var(--sky-color)' : '#111111';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            this.drawWorld();
+            this.drawEntities();
+            this.drawPlayer();
+            this.drawMiningIndicator();
+        };
+
+        // =================================================================================
+        // GESTION DE L'INTERFACE UTILISATEUR (UI)
+        // =================================================================================
+
+        /**
+         * Met à jour la hotbar visuelle.
+         */
+        Game.updateHotbarUI = function() {
+            hotbarElement.innerHTML = '';
+            this.hotbar.forEach((itemId, index) => {
+                const slot = document.createElement('div');
+                slot.className = `hotbar-slot ${index === this.selectedSlot ? 'selected' : ''}`;
+                slot.setAttribute('data-index', index);
+                slot.onclick = () => {
+                    this.selectedSlot = index;
+                    this.updateHotbarUI();
+                    this.targetTile.mining = false;
+                };
+
+                let itemText = '';
+                let itemCount = 0;
+
+                if (itemId) {
+                    itemCount = this.inventory[itemId] || 0;
+                    itemText = itemId.replace(/_/g, ' '); // Nom de l'objet simple pour l'affichage
+                }
+
+                slot.innerHTML = `
+                    <span style="font-size:12px;">${itemText.substring(0, 4)}</span>
+                    ${itemCount > 0 ? `<span class="item-count">${itemCount}</span>` : ''}
+                `;
+                hotbarElement.appendChild(slot);
+            });
+        };
+
+        /**
+         * Met à jour l'affichage de la barre de vie.
+         */
+        Game.updateHealthUI = function() {
+            healthUIElement.innerHTML = '';
+            const hearts = Math.ceil(this.player.health / 20); // Chaque cœur représente 20 HP
+            for (let i = 0; i < this.player.maxHealth / 20; i++) {
+                let icon = '';
+                if (i < hearts) {
+                    icon = '❤️'; // Coeur plein
+                } else {
+                    icon = '🖤'; // Coeur vide
+                }
+                const heart = document.createElement('span');
+                heart.style.fontSize = '20px';
+                heart.innerHTML = icon;
+                healthUIElement.appendChild(heart);
+            }
+        };
+
+        /**
+         * Ouvre/ferme le menu de crafting et met à jour les recettes.
+         */
+        Game.toggleCraftingMenu = function() {
+            this.isCraftingOpen = !this.isCraftingOpen;
+            craftingMenu.style.display = this.isCraftingOpen ? 'block' : 'none';
+
+            if (this.isCraftingOpen) {
+                this.updateCraftingRecipes();
+            }
+        };
+
+        /**
+         * Met à jour la liste des recettes.
+         */
+        Game.updateCraftingRecipes = function() {
+            craftingRecipesElement.innerHTML = '';
+            Recipes.forEach(recipe => {
+                let canCraft = true;
+                const reqs = Object.entries(recipe.requires).map(([item, count]) => {
+                    const has = this.inventory[item] || 0;
+                    if (has < count) canCraft = false;
+                    return `<span style="color: ${has >= count ? 'lime' : 'red'};">${item}: ${count} (${has})</span>`;
+                }).join(', ');
+
+                const recipeDiv = document.createElement('div');
+                recipeDiv.className = `p-2 ${canCraft ? 'bg-gray-700' : 'bg-gray-900'} flex justify-between items-center border border-gray-600`;
+                recipeDiv.innerHTML = `
+                    <div style="font-size:10px;">
+                        <strong>${recipe.name} (x${recipe.result.count})</strong><br>
+                        <small>${reqs}</small>
+                    </div>
+                    <button class="craft-button bg-green-600 hover:bg-green-700 py-1 px-2 text-xs ${!canCraft ? 'opacity-50 cursor-not-allowed' : ''}"
+                            ${!canCraft ? 'disabled' : ''}
+                            onclick="Game.craftItem('${recipe.id}')">
+                        Créer
+                    </button>
+                `;
+                craftingRecipesElement.appendChild(recipeDiv);
+            });
+        };
+
+        /**
+         * Tente de crafter un objet.
+         * @param {string} recipeId - ID de la recette.
+         */
+        Game.craftItem = function(recipeId) {
+            const recipe = Recipes.find(r => r.id === recipeId);
+            if (!recipe) return;
+
+            let canCraft = true;
+            for (const [item, count] of Object.entries(recipe.requires)) {
+                if ((this.inventory[item] || 0) < count) {
+                    canCraft = false;
+                    break;
+                }
+            }
+
+            if (canCraft) {
+                // Consommer les ingrédients
+                for (const [item, count] of Object.entries(recipe.requires)) {
+                    this.removeItem(item, count);
+                }
+                // Ajouter l'objet créé
+                this.addItem(recipe.result.item, recipe.result.count);
+
+                // Mettre à jour l'UI
+                this.updateCraftingRecipes();
+            }
+        };
+
+        // =================================================================================
+        // GESTION DES ÉVÉNEMENTS (INPUT)
+        // =================================================================================
+
+        /**
+         * Redimensionne le canvas pour s'adapter à la fenêtre.
+         */
+        Game.resizeCanvas = function() {
+            const container = document.getElementById('gameContainer');
+            canvas.width = container.offsetWidth;
+            canvas.height = container.offsetHeight;
+
+            // Détecter si l'on est en mode mobile (petit écran)
+            this.mobileMode = window.innerWidth <= 768;
+        };
+
+        // Événements clavier
+        window.addEventListener('keydown', (e) => {
+            Game.keys[e.code] = true;
+            if (e.code.startsWith('Digit')) {
+                const slotIndex = parseInt(e.key) - 1;
+                if (slotIndex >= 0 && slotIndex < Game.hotbar.length) {
+                    Game.selectedSlot = slotIndex;
+                    Game.updateHotbarUI();
+                }
+            }
+            if (e.code === 'KeyE') {
+                Game.toggleCraftingMenu();
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            Game.keys[e.code] = false;
+            if (e.code === 'Mouse0' || e.code === 'Click') {
+                Game.targetTile.mining = false; // Arrêter le minage au relâchement du clic
+            }
+        });
+
+        // Événements souris pour le minage/placement
+        canvas.addEventListener('mousedown', (e) => {
+            if (Game.isCraftingOpen) return;
+            // Ne pas gérer les clics si les contrôles tactiles sont visibles et actifs
+            if (Game.mobileMode) return;
+            
+            Game.handleAction(e.clientX, e.clientY);
+        });
+
+        // Événements tactiles pour le mouvement et l'action
+        Game.handleTouchMove = function(e) {
+            // Réinitialiser les mouvements virtuels
+            this.touch.left = false;
+            this.touch.right = false;
+
+            for (let touch of e.touches) {
+                const targetId = touch.target.id;
+                if (targetId === 'mobile-left') this.touch.left = true;
+                if (targetId === 'mobile-right') this.touch.right = true;
+                if (targetId === 'mobile-jump') this.touch.jump = true;
+            }
+            // Empêche le scrolling et le zoom
+            e.preventDefault();
+        };
+
+        Game.handleTouchAction = function(isStart) {
+            this.touch.actionHeld = isStart;
+            this.targetTile.mining = false; // Arrêter le minage quand l'action est relâchée
+        };
+        
+        // Attacher les événements tactiles aux contrôles virtuels
+        document.getElementById('mobile-left').addEventListener('touchstart', (e) => { Game.touch.left = true; e.preventDefault(); }, { passive: false });
+        document.getElementById('mobile-left').addEventListener('touchend', () => { Game.touch.left = false; });
+        document.getElementById('mobile-right').addEventListener('touchstart', (e) => { Game.touch.right = true; e.preventDefault(); }, { passive: false });
+        document.getElementById('mobile-right').addEventListener('touchend', () => { Game.touch.right = false; });
+        document.getElementById('mobile-jump').addEventListener('touchstart', (e) => { Game.touch.jump = true; e.preventDefault(); }, { passive: false });
+        document.getElementById('mobile-jump').addEventListener('touchend', () => { Game.touch.jump = false; });
+
+        // Événement d'action sur le canvas mobile
+        canvas.addEventListener('touchstart', (e) => {
+            if (!Game.mobileMode || Game.isCraftingOpen) return;
+            const touch = e.touches[0];
+            Game.touch.touchTarget.x = touch.clientX;
+            Game.touch.touchTarget.y = touch.clientY;
+            
+            if (Game.touch.actionHeld) {
+                 // L'action virtuelle est pressée, démarrer le minage/placement sur la tuile touchée
+                 Game.handleAction(touch.clientX, touch.clientY);
+            }
+        });
+        
+        // Gérer le minage continu sur mobile (si le bouton d'action est maintenu)
+        canvas.addEventListener('touchmove', (e) => {
+            if (!Game.mobileMode || !Game.touch.actionHeld || Game.isCraftingOpen) return;
+            const touch = e.touches[0];
+            // Le doigt glisse. Si le targetTile change, on réévalue l'action
+            const rect = canvas.getBoundingClientRect();
+            const worldX = touch.clientX - rect.left + Game.camera.x;
+            const worldY = touch.clientY - rect.top + Game.camera.y;
+            const targetTileX = Math.floor(worldX / TILE_SIZE);
+            const targetTileY = Math.floor(worldY / TILE_SIZE);
+
+            if (Game.targetTile.x !== targetTileX || Game.targetTile.y !== targetTileY) {
+                // Nouvelle tuile ciblée
+                Game.targetTile.mining = false;
+                Game.handleAction(touch.clientX, touch.clientY);
+            }
+            e.preventDefault();
+        });
+
+        canvas.addEventListener('touchend', () => {
+            Game.targetTile.mining = false;
+            Game.touch.touchTarget.x = -1;
+            Game.touch.touchTarget.y = -1;
+            Game.touch.jump = false;
+        });
+
+        window.addEventListener('resize', Game.resizeCanvas);
+
+        // =================================================================================
+        // BOUCLE DE JEU PRINCIPALE
+        // =================================================================================
+
+        /**
+         * La boucle de jeu (Game Loop) pour la mise à jour et le rendu.
+         */
+        function gameLoop(timestamp) {
+            // Calcul du Delta Time pour un mouvement indépendant du framerate
+            Game.deltaTime = timestamp - Game.lastFrameTime;
+            Game.lastFrameTime = timestamp;
+
+            if (!Game.isCraftingOpen) {
+                // 1. Mise à jour des États
+                Game.updatePlayer();
+                Game.updateMining();
+                Game.updateEntities();
+            }
+
+            // 2. Rendu
+            Game.draw();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // =================================================================================
+        // INITIALISATION
+        // =================================================================================
+
+        window.onload = function() {
+            Game.resizeCanvas();
+            Game.generateWorld();
+            Game.updateHotbarUI();
+            Game.updateHealthUI();
+            requestAnimationFrame(gameLoop);
+        };
+    </script>
+
+</body>
+</html>

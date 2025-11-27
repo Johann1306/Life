@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hub de Jeux - Comparaison IA</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        :root {
+            --primary: #6a11cb;
+            --secondary: #2575fc;
+            --accent: #ff2d75;
+            --dark: #121212;
+            --light: #f8f9fa;
+            --gray: #2d2d2d;
+            --card-bg: rgba(30, 30, 40, 0.8);
+            --sidebar-width: 280px;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--dark), #1a1a2e);
+            color: var(--light);
+            min-height: 100vh;
+            overflow-x: hidden;
+            display: flex;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: rgba(20, 20, 30, 0.9);
+            height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+            padding: 2rem 1rem;
+            overflow-y: auto;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .logo h1 {
+            font-size: 1.8rem;
+            background: linear-gradient(to right, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .logo p {
+            color: #a0a0c0;
+            font-size: 0.9rem;
+        }
+
+        .menu-category {
+            margin-bottom: 1.5rem;
+        }
+
+        .menu-title {
+            font-size: 1rem;
+            color: #7a7a9e;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.8rem;
+            padding-left: 0.5rem;
+        }
+
+        .menu-items {
+            list-style: none;
+        }
+
+        .menu-item {
+            margin-bottom: 0.5rem;
+        }
+
+        .menu-item a {
+            display: flex;
+            align-items: center;
+            padding: 0.8rem 1rem;
+            color: #c0c0e0;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .menu-item a:hover {
+            background: rgba(106, 17, 203, 0.2);
+            color: white;
+        }
+
+        .menu-item a.active {
+            background: rgba(106, 17, 203, 0.3);
+            color: white;
+            box-shadow: 0 0 10px rgba(106, 17, 203, 0.5);
+        }
+
+        .menu-item i {
+            margin-right: 0.8rem;
+            width: 20px;
+            text-align: center;
+        }
+
+        .menu-item .badge {
+            position: absolute;
+            right: 1rem;
+            background: var(--accent);
+            color: white;
+            border-radius: 10px;
+            padding: 0.2rem 0.5rem;
+            font-size: 0.7rem;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: var(--sidebar-width);
+            padding: 2rem;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .page-title h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(to right, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-title p {
+            color: #a0a0c0;
+        }
+
+        .search-bar {
+            position: relative;
+            width: 300px;
+        }
+
+        .search-bar input {
+            width: 100%;
+            padding: 0.8rem 1.5rem;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50px;
+            color: var(--light);
+            font-size: 1rem;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .search-bar input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 15px rgba(106, 17, 203, 0.5);
+        }
+
+        .search-bar i {
+            position: absolute;
+            right: 1.5rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #a0a0c0;
+        }
+
+        /* IA Selector */
+        .ia-selector {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .ia-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #a0a0c0;
+            padding: 0.7rem 1.5rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .ia-btn.active,
+        .ia-btn:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .ia-btn i {
+            font-size: 1.2rem;
+        }
+
+        /* Games Grid */
+        .games-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .game-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            transition: all 0.4s ease;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .game-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 35px rgba(106, 17, 203, 0.4);
+            border-color: rgba(106, 17, 203, 0.3);
+        }
+
+        .game-preview {
+            height: 180px;
+            position: relative;
+            overflow: hidden;
+            background: #000;
+        }
+
+        .game-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            pointer-events: none;
+            filter: brightness(0.7);
+            transition: filter 0.3s ease;
+        }
+
+        .game-card:hover .game-iframe {
+            filter: brightness(1);
+        }
+
+        .game-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.7));
+            display: flex;
+            align-items: flex-end;
+            padding: 1.5rem;
+            opacity: 1;
+            transition: opacity 0.3s ease;
+        }
+
+        .game-card:hover .game-overlay {
+            opacity: 0;
+        }
+
+        .play-button {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--accent);
+            color: white;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            opacity: 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(255, 45, 117, 0.4);
+            cursor: pointer;
+        }
+
+        .game-card:hover .play-button {
+            opacity: 1;
+        }
+
+        .play-button:hover {
+            background: #ff1a66;
+            transform: translate(-50%, -50%) scale(1.1);
+        }
+
+        .game-info {
+            padding: 1.5rem;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .game-title {
+            font-size: 1.3rem;
+            margin-bottom: 0.5rem;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .ia-badge {
+            background: var(--primary);
+            color: white;
+            padding: 0.3rem 0.7rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+        }
+
+        .game-description {
+            color: #a0a0c0;
+            margin-bottom: 1rem;
+            flex-grow: 1;
+            line-height: 1.5;
+            font-size: 0.9rem;
+        }
+
+        .game-meta {
+            display: flex;
+            justify-content: space-between;
+            color: #7a7a9e;
+            font-size: 0.9rem;
+            margin-top: auto;
+        }
+
+        .game-tags {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .tag {
+            background: rgba(106, 17, 203, 0.2);
+            color: #b28aff;
+            padding: 0.3rem 0.7rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 1000px;
+            max-height: 90vh;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            padding: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            color: white;
+        }
+
+        .close-button {
+            background: none;
+            border: none;
+            color: #a0a0c0;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+
+        .close-button:hover {
+            color: var(--accent);
+        }
+
+        .modal-body {
+            flex-grow: 1;
+            overflow: hidden;
+        }
+
+        .modal-iframe {
+            width: 100%;
+            height: 100%;
+            min-height: 500px;
+            border: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .sidebar {
+                width: 250px;
+            }
+
+            .main-content {
+                margin-left: 250px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+
+            .sidebar.active {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .search-bar {
+                width: 100%;
+            }
+
+            .games-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .menu-toggle {
+                display: block;
+                position: fixed;
+                top: 1rem;
+                left: 1rem;
+                z-index: 101;
+                background: var(--primary);
+                color: white;
+                border: none;
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                font-size: 1.2rem;
+                cursor: pointer;
+                box-shadow: 0 0 10px rgba(106, 17, 203, 0.5);
+            }
+        }
+
+        .menu-toggle {
+            display: none;
+        }
+
+        /* Animation d'entrée */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .game-card {
+            animation: fadeInUp 0.5s ease forwards;
+            opacity: 0;
+        }
+
+        .game-card:nth-child(1) {
+            animation-delay: 0.1s;
+        }
+
+        .game-card:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .game-card:nth-child(3) {
+            animation-delay: 0.3s;
+        }
+
+        .game-card:nth-child(4) {
+            animation-delay: 0.4s;
+        }
+
+        .game-card:nth-child(5) {
+            animation-delay: 0.5s;
+        }
+
+        .game-card:nth-child(6) {
+            animation-delay: 0.6s;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Menu Toggle pour mobile -->
+    <button class="menu-toggle" id="menuToggle">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="logo">
+            <h1>GameHub IA</h1>
+            <p>Comparez les jeux générés par IA</p>
+        </div>
+
+        <div class="menu-category">
+            <h3 class="menu-title">Catégories de Jeux</h3>
+            <ul class="menu-items" id="categoriesList">
+                <!-- Généré dynamiquement -->
+            </ul>
+        </div>
+
+        <div class="menu-category">
+            <h3 class="menu-title">Filtres IA</h3>
+            <ul class="menu-items" id="iaList">
+                <!-- Généré dynamiquement -->
+            </ul>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="header">
+            <div class="page-title">
+                <h1 id="pageHeading">Tous les jeux</h1>
+                <p id="pageSubtitle">Comparaison des versions générées par différentes IA</p>
+            </div>
+            <div class="search-bar">
+                <input type="text" id="searchInput" placeholder="Rechercher un jeu...">
+                <i class="fas fa-search"></i>
+            </div>
+        </div>
+
+        <div class="ia-selector" id="iaSelector">
+            <!-- Généré dynamiquement -->
+        </div>
+
+        <div class="games-grid" id="gamesGrid">
+            <!-- Les cartes de jeux seront générées dynamiquement -->
+        </div>
+    </div>
+
+    <!-- Modal pour afficher le jeu en plein écran -->
+    <div class="modal" id="gameModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="modalGameTitle">Titre du jeu</h2>
+                <button class="close-button" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <iframe class="modal-iframe" id="modalIframe" src="" frameborder="0"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration des catégories et IA
+        const categories = [
+            "Arkanoid", "Combat", "Commando", "Foot", "Lemmings",
+            "Mario", "Minecraft", "Race", "Snake", "SpaceShooter",
+            "Tennis", "Terraria"
+        ];
+
+        const iaList = [
+            { id: "claude", name: "Claude", icon: "fas fa-brain" },
+            { id: "copilot", name: "Copilot", icon: "fas fa-wind" },
+            { id: "deepseek", name: "Deepseek", icon: "fas fa-search" },
+            { id: "gemini", name: "Gemini", icon: "fas fa-gem" },
+            { id: "gpt", name: "GPT", icon: "fas fa-comment" },
+            { id: "mistral", name: "Mistral", icon: "fas fa-cloud" }
+        ];
+
+        // Métadonnées pour chaque catégorie
+        const categoryMetadata = {
+            "Arkanoid": {
+                description: "Jeu de casse-briques classique avec des power-ups et des niveaux de difficulté croissante.",
+                tags: ["Casse-briques", "Classique", "Arcade"],
+                players: "1 joueur",
+                duration: "10-15 min",
+                icon: "fas fa-table-tennis"
+            },
+            "Combat": {
+                description: "Jeu de combat avec différents personnages et arènes.",
+                tags: ["Combat", "VS", "Arcade"],
+                players: "1-2 joueurs",
+                duration: "5-10 min",
+                icon: "fas fa-fist-raised"
+            },
+            "Commando": {
+                description: "Jeu de tir à défilement horizontal avec des missions variées.",
+                tags: ["Action", "Tir", "Arcade"],
+                players: "1 joueur",
+                duration: "15-20 min",
+                icon: "fas fa-running"
+            },
+            "Foot": {
+                description: "Jeu de football rapide avec des contrôles simples.",
+                tags: ["Sport", "Football", "Compétition"],
+                players: "1-2 joueurs",
+                duration: "5-10 min",
+                icon: "fas fa-futbol"
+            },
+            "Lemmings": {
+                description: "Jeu de puzzle où vous guidez des lemings à travers des niveaux périlleux.",
+                tags: ["Puzzle", "Stratégie", "Classique"],
+                players: "1 joueur",
+                duration: "20-30 min",
+                icon: "fas fa-users"
+            },
+            "Mario": {
+                description: "Jeu de plateforme classique avec des sauts et des power-ups.",
+                tags: ["Platformer", "Classique", "Aventure"],
+                players: "1 joueur",
+                duration: "20-30 min",
+                icon: "fas fa-mushroom"
+            },
+            "Minecraft": {
+                description: "Jeu de construction et d'aventure dans un monde cubique.",
+                tags: ["Construction", "Aventure", "Sandbox"],
+                players: "1 joueur",
+                duration: "30-60 min",
+                icon: "fas fa-cube"
+            },
+            "Race": {
+                description: "Jeu de course rapide avec différents circuits et véhicules.",
+                tags: ["Course", "Vitesse", "Arcade"],
+                players: "1-2 joueurs",
+                duration: "5-10 min",
+                icon: "fas fa-flag-checkered"
+            },
+            "Snake": {
+                description: "Jeu du serpent classique où vous mangez des fruits pour grandir.",
+                tags: ["Classique", "Snake", "Arcade"],
+                players: "1 joueur",
+                duration: "5-10 min",
+                icon: "fas fa-snake"
+            },
+            "SpaceShooter": {
+                description: "Jeu de shoot 'em up spatial avec des vagues d'ennemis.",
+                tags: ["Shooter", "Espace", "Arcade"],
+                players: "1 joueur",
+                duration: "15-20 min",
+                icon: "fas fa-space-shuttle"
+            },
+            "Tennis": {
+                description: "Jeu de tennis rapide avec des contrôles simples.",
+                tags: ["Sport", "Tennis", "Compétition"],
+                players: "1-2 joueurs",
+                duration: "5-10 min",
+                icon: "fas fa-table-tennis"
+            },
+            "Terraria": {
+                description: "Jeu d'aventure et d'exploration dans un monde 2D.",
+                tags: ["Aventure", "Exploration", "Sandbox"],
+                players: "1 joueur",
+                duration: "30-60 min",
+                icon: "fas fa-mountain"
+            }
+        };
+
+        // Génération automatique des jeux basée sur la structure de répertoires
+        function generateGames() {
+            const games = [];
+            let id = 1;
+
+            categories.forEach(category => {
+                iaList.forEach(ia => {
+                    // Génération du nom de fichier selon la convention
+                    const fileName = `${category.toLowerCase()}${ia.name.charAt(0).toUpperCase() + ia.name.slice(1)}.html`;
+                    const filePath = `Life/${category}/${fileName}`;
+
+                    // Récupération des métadonnées de la catégorie
+                    const metadata = categoryMetadata[category];
+
+                    games.push({
+                        id: id++,
+                        title: category,
+                        description: metadata.description,
+                        file: filePath,
+                        category: category,
+                        ia: ia.id,
+                        tags: [...metadata.tags],
+                        players: metadata.players,
+                        duration: metadata.duration
+                    });
+                });
+            });
+
+            return games;
+        }
+
+        // Références aux éléments DOM
+        const gamesGrid = document.getElementById('gamesGrid');
+        const searchInput = document.getElementById('searchInput');
+        const gameModal = document.getElementById('gameModal');
+        const modalIframe = document.getElementById('modalIframe');
+        const modalGameTitle = document.getElementById('modalGameTitle');
+        const closeModal = document.getElementById('closeModal');
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.getElementById('sidebar');
+        const pageHeading = document.getElementById('pageHeading');
+        const pageSubtitle = document.getElementById('pageSubtitle');
+        const categoriesList = document.getElementById('categoriesList');
+        const iaListElement = document.getElementById('iaList');
+        const iaSelector = document.getElementById('iaSelector');
+
+        // Variables d'état
+        let currentCategory = 'all';
+        let currentIA = 'all';
+        let searchQuery = '';
+        let games = [];
+
+        // Générer les cartes de jeux
+        function renderGames() {
+            gamesGrid.innerHTML = '';
+
+            const filteredGames = games.filter(game => {
+                const categoryMatch = currentCategory === 'all' || game.category === currentCategory;
+                const iaMatch = currentIA === 'all' || game.ia === currentIA;
+                const searchMatch = searchQuery === '' ||
+                    game.title.toLowerCase().includes(searchQuery) ||
+                    game.description.toLowerCase().includes(searchQuery) ||
+                    game.tags.some(tag => tag.toLowerCase().includes(searchQuery));
+
+                return categoryMatch && iaMatch && searchMatch;
+            });
+
+            if (filteredGames.length === 0) {
+                gamesGrid.innerHTML = `
+                    <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; color: #7a7a9e;">
+                        <i class="fas fa-gamepad" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+                        <h3>Aucun jeu trouvé</h3>
+                        <p>Essayez de modifier vos filtres ou votre recherche</p>
+                    </div>
+                `;
+                return;
+            }
+
+            filteredGames.forEach(game => {
+                const gameCard = document.createElement('div');
+                gameCard.className = 'game-card';
+
+                gameCard.innerHTML = `
+                    <div class="game-preview">
+                        <iframe class="game-iframe" src="${game.file}" scrolling="no"></iframe>
+                        <div class="game-overlay">
+                            <h3 class="game-title">${game.title}</h3>
+                        </div>
+                        <div class="play-button">
+                            <i class="fas fa-play"></i>
+                        </div>
+                    </div>
+                    <div class="game-info">
+                        <div class="game-title">
+                            ${game.title}
+                            <span class="ia-badge">${game.ia.charAt(0).toUpperCase() + game.ia.slice(1)}</span>
+                        </div>
+                        <p class="game-description">${game.description}</p>
+                        <div class="game-tags">
+                            ${game.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+                        </div>
+                        <div class="game-meta">
+                            <span><i class="fas fa-users"></i> ${game.players}</span>
+                            <span><i class="fas fa-clock"></i> ${game.duration}</span>
+                        </div>
+                    </div>
+                `;
+
+                // Ajouter l'événement pour ouvrir le jeu en modal
+                const playButton = gameCard.querySelector('.play-button');
+                playButton.addEventListener('click', () => openGameModal(game));
+
+                gamesGrid.appendChild(gameCard);
+            });
+        }
+
+        // Ouvrir le jeu en modal
+        function openGameModal(game) {
+            modalIframe.src = game.file;
+            modalGameTitle.textContent = `${game.title} - ${game.ia.charAt(0).toUpperCase() + game.ia.slice(1)}`;
+            gameModal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        // Fermer la modal
+        function closeGameModal() {
+            gameModal.style.display = 'none';
+            modalIframe.src = '';
+            document.body.style.overflow = 'auto';
+        }
+
+        // Mettre à jour les titres de page
+        function updatePageTitles() {
+            if (currentCategory === 'all') {
+                pageHeading.textContent = 'Tous les jeux';
+                pageSubtitle.textContent = 'Comparaison des versions générées par différentes IA';
+            } else {
+                pageHeading.textContent = currentCategory;
+                pageSubtitle.textContent = `Versions ${currentCategory} générées par différentes IA`;
+            }
+        }
+
+        // Générer les menus de catégories
+        function generateCategoryMenu() {
+            // Ajouter l'option "Tous les jeux"
+            const allItem = document.createElement('li');
+            allItem.className = 'menu-item';
+            allItem.innerHTML = `
+                <a href="#" class="active" data-category="all">
+                    <i class="fas fa-gamepad"></i>
+                    Tous les jeux
+                    <span class="badge">${games.length}</span>
+                </a>
+            `;
+            categoriesList.appendChild(allItem);
+
+            // Ajouter chaque catégorie
+            categories.forEach(category => {
+                const categoryGames = games.filter(game => game.category === category);
+                const item = document.createElement('li');
+                item.className = 'menu-item';
+                item.innerHTML = `
+                    <a href="#" data-category="${category}">
+                        <i class="${categoryMetadata[category].icon}"></i>
+                        ${category}
+                        <span class="badge">${categoryGames.length}</span>
+                    </a>
+                `;
+                categoriesList.appendChild(item);
+            });
+        }
+
+        // Générer les menus d'IA
+        function generateIAMenu() {
+            // Ajouter l'option "Toutes les IA"
+            const allItem = document.createElement('li');
+            allItem.className = 'menu-item';
+            allItem.innerHTML = `
+                <a href="#" data-ia="all" class="active">
+                    <i class="fas fa-robot"></i>
+                    Toutes les IA
+                </a>
+            `;
+            iaListElement.appendChild(allItem);
+
+            // Ajouter chaque IA
+            iaList.forEach(ia => {
+                const item = document.createElement('li');
+                item.className = 'menu-item';
+                item.innerHTML = `
+                    <a href="#" data-ia="${ia.id}">
+                        <i class="${ia.icon}"></i>
+                        ${ia.name}
+                    </a>
+                `;
+                iaListElement.appendChild(item);
+            });
+        }
+
+        // Générer les boutons d'IA
+        function generateIAButtons() {
+            // Ajouter le bouton "Toutes les IA"
+            const allButton = document.createElement('button');
+            allButton.className = 'ia-btn active';
+            allButton.setAttribute('data-ia', 'all');
+            allButton.innerHTML = `
+                <i class="fas fa-robot"></i>
+                Toutes les IA
+            `;
+            iaSelector.appendChild(allButton);
+
+            // Ajouter chaque bouton d'IA
+            iaList.forEach(ia => {
+                const button = document.createElement('button');
+                button.className = 'ia-btn';
+                button.setAttribute('data-ia', ia.id);
+                button.innerHTML = `
+                    <i class="${ia.icon}"></i>
+                    ${ia.name}
+                `;
+                iaSelector.appendChild(button);
+            });
+        }
+
+        // Initialisation
+        document.addEventListener('DOMContentLoaded', () => {
+            // Générer les jeux
+            games = generateGames();
+
+            // Générer les menus
+            generateCategoryMenu();
+            generateIAMenu();
+            generateIAButtons();
+
+            // Afficher tous les jeux au chargement
+            renderGames();
+            updatePageTitles();
+
+            // Récupérer les éléments de menu après leur génération
+            const menuItems = document.querySelectorAll('.menu-item a');
+            const iaButtons = document.querySelectorAll('.ia-btn');
+
+            // Gestion des catégories dans le menu
+            menuItems.forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.preventDefault();
+
+                    // Retirer la classe active de tous les éléments
+                    menuItems.forEach(i => i.classList.remove('active'));
+
+                    // Ajouter la classe active à l'élément cliqué
+                    item.classList.add('active');
+
+                    // Mettre à jour la catégorie courante
+                    if (item.dataset.category) {
+                        currentCategory = item.dataset.category;
+                        updatePageTitles();
+                    } else if (item.dataset.ia) {
+                        currentIA = item.dataset.ia;
+
+                        // Mettre à jour les boutons IA
+                        iaButtons.forEach(btn => {
+                            if (btn.dataset.ia === currentIA) {
+                                btn.classList.add('active');
+                            } else {
+                                btn.classList.remove('active');
+                            }
+                        });
+                    }
+
+                    // Re-rendre les jeux
+                    renderGames();
+
+                    // Fermer le sidebar sur mobile
+                    if (window.innerWidth <= 768) {
+                        sidebar.classList.remove('active');
+                    }
+                });
+            });
+
+            // Gestion des boutons IA
+            iaButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    // Retirer la classe active de tous les boutons
+                    iaButtons.forEach(btn => btn.classList.remove('active'));
+
+                    // Ajouter la classe active au bouton cliqué
+                    button.classList.add('active');
+
+                    // Mettre à jour l'IA courante
+                    currentIA = button.dataset.ia;
+
+                    // Mettre à jour le menu latéral
+                    menuItems.forEach(item => {
+                        if (item.dataset.ia === currentIA) {
+                            item.classList.add('active');
+                        } else if (item.dataset.ia && item.dataset.ia !== currentIA) {
+                            item.classList.remove('active');
+                        }
+                    });
+
+                    // Re-rendre les jeux
+                    renderGames();
+                });
+            });
+
+            // Gestion de la recherche
+            searchInput.addEventListener('input', () => {
+                searchQuery = searchInput.value.trim().toLowerCase();
+                renderGames();
+            });
+
+            // Gestion de la modal
+            closeModal.addEventListener('click', closeGameModal);
+
+            // Fermer la modal en cliquant à l'extérieur
+            gameModal.addEventListener('click', (e) => {
+                if (e.target === gameModal) {
+                    closeGameModal();
+                }
+            });
+
+            // Fermer la modal avec la touche Échap
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && gameModal.style.display === 'flex') {
+                    closeGameModal();
+                }
+            });
+
+            // Gestion du menu toggle sur mobile
+            menuToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('active');
+            });
+        });
+    </script>
+</body>
+
+</html>

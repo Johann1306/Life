@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Arkanoid 1v1 - Local</title>
+    <style>
+        :root {
+            --bg: #0b1020;
+            --panel: #0f1724;
+            --accent: #ffd166;
+            --left: #2ecc71;
+            /* vert */
+            --right: #3498db;
+            /* bleu */
+            --brick: #e74c3c;
+            --text: #e6eef8;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            background: linear-gradient(180deg, #071022 0%, #0b1020 100%);
+            font-family: Inter, Segoe UI, Arial, sans-serif;
+            color: var(--text);
+        }
+
+        .wrap {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 12px;
+            box-sizing: border-box;
+        }
+
+        header {
+            width: 100%;
+            max-width: 1100px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px
+        }
+
+        h1 {
+            font-size: 18px;
+            margin: 0;
+            color: var(--accent)
+        }
+
+        .info {
+            display: flex;
+            gap: 12px;
+            align-items: center
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px
+        }
+
+        canvas {
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
+            border-radius: 8px;
+            box-shadow: 0 6px 20px rgba(2, 6, 23, 0.6);
+            display: block
+        }
+
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 1100px
+        }
+
+        .score {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            font-weight: 600
+        }
+
+        .player {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 6px 10px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.02)
+        }
+
+        .player .label {
+            font-size: 12px;
+            opacity: 0.8
+        }
+
+        .player .val {
+            font-size: 20px
+        }
+
+        .center-ui {
+            display: flex;
+            gap: 8px;
+            align-items: center
+        }
+
+        button {
+            background: var(--panel);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer
+        }
+
+        .overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none
+        }
+
+        .msg {
+            pointer-events: auto;
+            background: rgba(2, 6, 23, 0.9);
+            padding: 18px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            text-align: center;
+            color: var(--text);
+            min-width: 320px
+        }
+
+        .msg h2 {
+            margin: 0 0 8px 0;
+            color: var(--accent)
+        }
+
+        .controls {
+            font-size: 13px;
+            opacity: 0.9;
+            margin-top: 8px;
+            text-align: left
+        }
+
+        footer {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-top: 6px
+        }
+
+        @media (max-width:600px) {
+            header h1 {
+                font-size: 16px
+            }
+
+            .player .val {
+                font-size: 16px
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <header>
+            <h1>Arkanoid 1v1 — Local (Z/S & ↑/↓) — Boost: Espace / Entrée</h1>
+            <div class="info">
+                <div class="panel">But : détruire les briques centrales et empêcher la balle de passer</div>
+            </div>
+        </header>
+
+        <div class="hud">
+            <div class="score">
+                <div class="player" id="leftPanel">
+                    <div class="label">Joueur 1 (Gauche)</div>
+                    <div class="val" id="scoreLeft">0</div>
+                    <div class="label">Vies: <span id="livesLeft">3</span></div>
+                </div>
+            </div>
+
+            <div class="center-ui">
+                <div class="panel">Cible : <strong id="targetScore">10</strong> pts</div>
+                <div class="panel">Vitesse augmente après chaque rebond</div>
+                <button id="restartBtn">Redémarrer</button>
+            </div>
+
+            <div class="score">
+                <div class="player" id="rightPanel">
+                    <div class="label">Joueur 2 (Droite)</div>
+                    <div class="val" id="scoreRight">0</div>
+                    <div class="label">Vies: <span id="livesRight">3</span></div>
+                </div>
+            </div>
+        </div>
+
+        <canvas id="game" width="1000" height="600"></canvas>
+
+        <footer>Développé localement — Amusez-vous bien !</footer>
+    </div>
+
+    <div class="overlay" id="overlay" style="display:none">
+        <div class="msg" id="msgBox">
+            <h2 id="msgTitle">Prêt ?</h2>
+            <div id="msgText" class="controls">
+                <div><strong>J1</strong> : Z (haut), S (bas), Espace = Boost / Bouclier</div>
+                <div><strong>J2</strong> : ↑ (haut), ↓ (bas), Entrée = Boost / Bouclier</div>
+                <div style="margin-top:8px">Appuie sur <strong>Entrée</strong> pour commencer</div>
+            </div>
+            <div style="margin-top:12px">
+                <button id="closeMsg">Commencer</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* Arkanoid 1v1 - tout dans ce fichier
+           Contrôles robustes : gère AZERTY/QWERTY, Espace, Entrée, flèches.
+           Mécaniques : briques centrales, boost/bouclier, accélération de la balle.
+        */
+
+        (() => {
+            const canvas = document.getElementById('game');
+            const ctx = canvas.getContext('2d');
+
+            // Dimensions adaptatives
+            function fitCanvas() {
+                const maxW = Math.min(window.innerWidth - 40, 1100);
+                const maxH = Math.min(window.innerHeight - 160, 700);
+                const ratio = canvas.width / canvas.height;
+                let w = maxW, h = Math.round(w / ratio);
+                if (h > maxH) { h = maxH; w = Math.round(h * ratio); }
+                canvas.style.width = w + 'px';
+                canvas.style.height = h + 'px';
+            }
+            window.addEventListener('resize', fitCanvas);
+            fitCanvas();
+
+            // Game constants
+            const W = canvas.width, H = canvas.height;
+            const half = W / 2;
+            const paddleW = 14;
+            const paddleH = 100;
+            const paddleSpeed = 6;
+            const ballRadius = 8;
+            const initialBallSpeed = 4.2;
+            const speedIncrease = 0.12; // après chaque rebond
+            const targetScore = 10;
+            const maxLives = 3;
+
+            // Game state
+            let left = {
+                x: 10,
+                y: H / 2 - paddleH / 2,
+                w: paddleW,
+                h: paddleH,
+                color: getComputedStyle(document.documentElement).getPropertyValue('--left').trim() || '#2ecc71',
+                up: false, down: false,
+                boostReady: true, shield: false, boostTimer: 0
+            };
+            let right = {
+                x: W - 10 - paddleW,
+                y: H / 2 - paddleH / 2,
+                w: paddleW,
+                h: paddleH,
+                color: getComputedStyle(document.documentElement).getPropertyValue('--right').trim() || '#3498db',
+                up: false, down: false,
+                boostReady: true, shield: false, boostTimer: 0
+            };
+
+            let ball = {
+                x: W / 2,
+                y: H / 2,
+                vx: initialBallSpeed * (Math.random() < 0.5 ? -1 : 1),
+                vy: (Math.random() * 2 - 1) * initialBallSpeed * 0.6,
+                r: ballRadius,
+                speed: initialBallSpeed
+            };
+
+            // Bricks: petite formation centrale
+            const bricks = [];
+            const brickCols = 6;
+            const brickRows = 4;
+            const brickW = 60;
+            const brickH = 20;
+            const brickGap = 6;
+            const bricksTotalWidth = brickCols * brickW + (brickCols - 1) * brickGap;
+            const bricksX = W / 2 - bricksTotalWidth / 2;
+            const bricksY = H / 2 - (brickRows * (brickH + brickGap)) / 2;
+
+            for (let r = 0; r < brickRows; r++) {
+                for (let c = 0; c < brickCols; c++) {
+                    bricks.push({
+                        x: bricksX + c * (brickW + brickGap),
+                        y: bricksY + r * (brickH + brickGap),
+                        w: brickW,
+                        h: brickH,
+                        hp: 1,
+                        color: '#e67e22'
+                    });
+                }
+            }
+
+            // Scores & lives
+            let scoreLeft = 0, scoreRight = 0;
+            let livesLeft = maxLives, livesRight = maxLives;
+            let running = false;
+            let winner = null;
+
+            // UI elements
+            const scoreLeftEl = document.getElementById('scoreLeft');
+            const scoreRightEl = document.getElementById('scoreRight');
+            const livesLeftEl = document.getElementById('livesLeft');
+            const livesRightEl = document.getElementById('livesRight');
+            const targetScoreEl = document.getElementById('targetScore');
+            targetScoreEl.textContent = targetScore;
+
+            // Overlay controls
+            const overlay = document.getElementById('overlay');
+            const closeMsg = document.getElementById('closeMsg');
+            const restartBtn = document.getElementById('restartBtn');
+            document.getElementById('msgBox').addEventListener('click', e => e.stopPropagation());
+            overlay.style.display = 'flex';
+            function hideOverlay() { overlay.style.display = 'none'; running = true; }
+            closeMsg.addEventListener('click', hideOverlay);
+            overlay.addEventListener('keydown', (e) => { if (e.key === 'Enter') hideOverlay(); });
+
+            // Key handling (robuste)
+            const keys = {};
+            window.addEventListener('keydown', (e) => {
+                const k = e.key;
+                keys[k] = true;
+
+                // Prevent page scroll for arrows and space
+                if (['ArrowUp', 'ArrowDown', ' ', ' '].includes(k) || k === 'Enter') e.preventDefault();
+
+                // Mappage AZERTY/ZQSD robust: Z or z -> up, S or s -> down
+                if (k === 'z' || k === 'Z') left.up = true;
+                if (k === 's' || k === 'S') left.down = true;
+                // Also accept q/w for other layouts optionally (Q/A)
+                if (k === 'ArrowUp') right.up = true;
+                if (k === 'ArrowDown') right.down = true;
+
+                // Boost / Shield actions
+                if (k === ' ') { // espace -> left special
+                    triggerSpecial(left);
+                }
+                if (k === 'Enter') { // Enter -> right special OR start if overlay visible
+                    if (!running && overlay.style.display !== 'none') { hideOverlay(); return; }
+                    triggerSpecial(right);
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                const k = e.key;
+                keys[k] = false;
+                if (k === 'z' || k === 'Z') left.up = false;
+                if (k === 's' || k === 'S') left.down = false;
+                if (k === 'ArrowUp') right.up = false;
+                if (k === 'ArrowDown') right.down = false;
+            });
+
+            // Special: simple boost or shield
+            function triggerSpecial(player) {
+                if (!player.boostReady) return;
+                player.boostReady = false;
+                // Alternating effect: if paddle moving -> speed boost, else -> shield
+                if (player.up || player.down) {
+                    // speed boost: increase paddle height temporarily and speed
+                    player.boostTimer = 120; // frames (~2s at 60fps)
+                    player.h = paddleH * 1.25;
+                    player._speed = paddleSpeed * 1.6;
+                } else {
+                    // shield: prevent next life loss within short time
+                    player.shield = true;
+                    player.boostTimer = 180; // shield duration
+                }
+                // cooldown to reuse special
+                setTimeout(() => { player.boostReady = true; }, 4000); // 4s cooldown
+            }
+
+            // Reset paddle sizes after boost
+            function updateBoostTimers() {
+                [left, right].forEach(p => {
+                    if (p.boostTimer > 0) {
+                        p.boostTimer--;
+                        if (p.boostTimer === 0) {
+                            p.h = paddleH;
+                            p._speed = undefined;
+                            p.shield = false;
+                        }
+                    }
+                });
+            }
+
+            // Ball reset after point
+            function resetBall(towardsLeft) {
+                ball.x = W / 2;
+                ball.y = H / 2;
+                ball.speed = initialBallSpeed;
+                const angle = (Math.random() * 0.8 - 0.4); // -0.4..0.4
+                ball.vx = (towardsLeft ? -1 : 1) * ball.speed;
+                ball.vy = angle * ball.speed * 1.2;
+            }
+
+            // Collision helpers
+            function rectCircleCollide(rx, ry, rw, rh, cx, cy, cr) {
+                // find closest point
+                const closestX = Math.max(rx, Math.min(cx, rx + rw));
+                const closestY = Math.max(ry, Math.min(cy, ry + rh));
+                const dx = cx - closestX;
+                const dy = cy - closestY;
+                return (dx * dx + dy * dy) <= cr * cr;
+            }
+
+            // Game loop
+            function update() {
+                if (!running) return;
+                // Move paddles
+                [left, right].forEach(p => {
+                    const sp = p._speed || paddleSpeed;
+                    if (p.up) p.y -= sp;
+                    if (p.down) p.y += sp;
+                    // clamp
+                    if (p.y < 6) p.y = 6;
+                    if (p.y + p.h > H - 6) p.y = H - 6 - p.h;
+                });
+
+                // Move ball
+                ball.x += ball.vx;
+                ball.y += ball.vy;
+
+                // Top/bottom walls
+                if (ball.y - ball.r <= 0) {
+                    ball.y = ball.r;
+                    ball.vy = -ball.vy;
+                    ball.speed += speedIncrease;
+                    normalizeBallVelocity();
+                } else if (ball.y + ball.r >= H) {
+                    ball.y = H - ball.r;
+                    ball.vy = -ball.vy;
+                    ball.speed += speedIncrease;
+                    normalizeBallVelocity();
+                }
+
+                // Left paddle collision
+                if (ball.vx < 0 && rectCircleCollide(left.x, left.y, left.w, left.h, ball.x, ball.y, ball.r)) {
+                    // reflect
+                    ball.x = left.x + left.w + ball.r;
+                    // compute hit factor: -1 top, 0 center, 1 bottom
+                    const relative = (ball.y - (left.y + left.h / 2)) / (left.h / 2);
+                    const bounceAngle = relative * 0.9; // limit angle
+                    ball.vx = Math.abs(ball.speed) * Math.cos(bounceAngle) * 1;
+                    ball.vy = ball.speed * Math.sin(bounceAngle);
+                    ball.speed += speedIncrease;
+                    normalizeBallVelocity();
+                }
+
+                // Right paddle collision
+                if (ball.vx > 0 && rectCircleCollide(right.x, right.y, right.w, right.h, ball.x, ball.y, ball.r)) {
+                    ball.x = right.x - ball.r;
+                    const relative = (ball.y - (right.y + right.h / 2)) / (right.h / 2);
+                    const bounceAngle = relative * 0.9;
+                    ball.vx = -Math.abs(ball.speed) * Math.cos(bounceAngle);
+                    ball.vy = ball.speed * Math.sin(bounceAngle);
+                    ball.speed += speedIncrease;
+                    normalizeBallVelocity();
+                }
+
+                // Bricks collision
+                for (let i = 0; i < bricks.length; i++) {
+                    const b = bricks[i];
+                    if (!b) continue;
+                    if (rectCircleCollide(b.x, b.y, b.w, b.h, ball.x, ball.y, ball.r)) {
+                        // simple collision response: invert vx or vy depending on side
+                        // Determine penetration
+                        const prevX = ball.x - ball.vx;
+                        const prevY = ball.y - ball.vy;
+                        let collidedHoriz = (prevX < b.x || prevX > b.x + b.w);
+                        if (collidedHoriz) {
+                            ball.vx = -ball.vx;
+                        } else {
+                            ball.vy = -ball.vy;
+                        }
+                        // remove brick
+                        bricks.splice(i, 1);
+                        // award point to last hitter (approx: side from which ball came)
+                        if (ball.x < W / 2) {
+                            // ball on left side -> right player likely hit it
+                            scoreRight++;
+                            scoreRightEl.textContent = scoreRight;
+                        } else {
+                            scoreLeft++;
+                            scoreLeftEl.textContent = scoreLeft;
+                        }
+                        // speed up slightly
+                        ball.speed += speedIncrease;
+                        normalizeBallVelocity();
+                        break;
+                    }
+                }
+
+                // Check if ball passed left or right back wall
+                if (ball.x - ball.r <= 0) {
+                    // left missed
+                    if (left.shield) {
+                        // shield consumed
+                        left.shield = false;
+                        // bounce back
+                        ball.vx = Math.abs(ball.vx);
+                        ball.x = ball.r + 6;
+                    } else {
+                        // right gains point
+                        scoreRight++;
+                        livesLeft--;
+                        scoreRightEl.textContent = scoreRight;
+                        livesLeftEl.textContent = livesLeft;
+                        // check win
+                        if (checkWin()) return;
+                        // reset ball towards left (loser serves towards them)
+                        resetBall(false);
+                        running = false;
+                        setTimeout(() => { running = true; }, 700);
+                    }
+                } else if (ball.x + ball.r >= W) {
+                    // right missed
+                    if (right.shield) {
+                        right.shield = false;
+                        ball.vx = -Math.abs(ball.vx);
+                        ball.x = W - ball.r - 6;
+                    } else {
+                        scoreLeft++;
+                        livesRight--;
+                        scoreLeftEl.textContent = scoreLeft;
+                        livesRightEl.textContent = livesRight;
+                        if (checkWin()) return;
+                        resetBall(true);
+                        running = false;
+                        setTimeout(() => { running = true; }, 700);
+                    }
+                }
+
+                updateBoostTimers();
+            }
+
+            function normalizeBallVelocity() {
+                // keep direction but set magnitude to ball.speed
+                const angle = Math.atan2(ball.vy, ball.vx);
+                ball.vx = Math.cos(angle) * ball.speed * (ball.vx < 0 ? -1 : 1);
+                // ensure sign preserved
+                if (ball.vx === 0) ball.vx = ball.speed * (Math.random() < 0.5 ? -1 : 1);
+                ball.vy = Math.sin(angle) * ball.speed;
+                // small clamp to avoid too vertical/horizontal
+                if (Math.abs(ball.vx) < 0.6) ball.vx = (ball.vx < 0 ? -0.6 : 0.6);
+            }
+
+            function checkWin() {
+                if (scoreLeft >= targetScore || livesRight <= 0) {
+                    winner = 'Joueur 1 (Gauche)';
+                } else if (scoreRight >= targetScore || livesLeft <= 0) {
+                    winner = 'Joueur 2 (Droite)';
+                }
+                if (winner) {
+                    running = false;
+                    showMessage(winner + ' gagne !', 'Appuie sur Redémarrer pour rejouer.');
+                    return true;
+                }
+                return false;
+            }
+
+            // Drawing
+            function draw() {
+                // clear
+                ctx.clearRect(0, 0, W, H);
+
+                // background halves
+                ctx.fillStyle = 'rgba(255,255,255,0.02)';
+                ctx.fillRect(0, 0, W, H);
+
+                // center divider
+                ctx.fillStyle = 'rgba(255,255,255,0.03)';
+                ctx.fillRect(half - 1, 0, 2, H);
+
+                // draw bricks
+                bricks.forEach(b => {
+                    ctx.fillStyle = b.color;
+                    roundRect(ctx, b.x, b.y, b.w, b.h, 4, true, false);
+                    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+                    ctx.strokeRect(b.x, b.y, b.w, b.h);
+                });
+
+                // draw paddles
+                drawPaddle(left);
+                drawPaddle(right);
+
+                // draw ball
+                ctx.beginPath();
+                ctx.fillStyle = '#f6f9ff';
+                ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.closePath();
+
+                // draw HUD on canvas (small)
+                ctx.fillStyle = 'rgba(255,255,255,0.06)';
+                ctx.fillRect(W / 2 - 120, 8, 240, 36);
+                ctx.fillStyle = '#0b1020';
+                ctx.font = '14px system-ui,Segoe UI,Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(`Briques restantes: ${bricks.length}`, W / 2, 32);
+
+                // draw shields indicator
+                if (left.shield) {
+                    ctx.strokeStyle = 'rgba(46,204,113,0.9)';
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(left.x - 6, left.y - 6, left.w + 12, left.h + 12);
+                }
+                if (right.shield) {
+                    ctx.strokeStyle = 'rgba(52,152,219,0.9)';
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(right.x - 6, right.y - 6, right.w + 12, right.h + 12);
+                }
+            }
+
+            function drawPaddle(p) {
+                // gradient
+                const g = ctx.createLinearGradient(p.x, p.y, p.x + p.w, p.y + p.h);
+                g.addColorStop(0, p.color);
+                g.addColorStop(1, 'rgba(255,255,255,0.06)');
+                ctx.fillStyle = g;
+                roundRect(ctx, p.x, p.y, p.w, p.h, 6, true, false);
+                // outline
+                ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+                ctx.strokeRect(p.x, p.y, p.w, p.h);
+            }
+
+            function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+                if (typeof r === 'undefined') r = 5;
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.arcTo(x + w, y, x + w, y + h, r);
+                ctx.arcTo(x + w, y + h, x, y + h, r);
+                ctx.arcTo(x, y + h, x, y, r);
+                ctx.arcTo(x, y, x + w, y, r);
+                ctx.closePath();
+                if (fill) ctx.fill();
+                if (stroke) ctx.stroke();
+            }
+
+            // Message overlay
+            function showMessage(title, text) {
+                overlay.style.display = 'flex';
+                document.getElementById('msgTitle').textContent = title;
+                document.getElementById('msgText').innerHTML = `<div>${text}</div>`;
+            }
+
+            // Restart
+            function restart() {
+                // reset state
+                scoreLeft = 0; scoreRight = 0;
+                livesLeft = maxLives; livesRight = maxLives;
+                scoreLeftEl.textContent = scoreLeft;
+                scoreRightEl.textContent = scoreRight;
+                livesLeftEl.textContent = livesLeft;
+                livesRightEl.textContent = livesRight;
+                // reset paddles
+                left.y = H / 2 - paddleH / 2;
+                right.y = H / 2 - paddleH / 2;
+                left.h = paddleH; right.h = paddleH;
+                left.boostReady = true; right.boostReady = true;
+                left.shield = right.shield = false;
+                // reset bricks
+                bricks.length = 0;
+                for (let r = 0; r < brickRows; r++) {
+                    for (let c = 0; c < brickCols; c++) {
+                        bricks.push({
+                            x: bricksX + c * (brickW + brickGap),
+                            y: bricksY + r * (brickH + brickGap),
+                            w: brickW,
+                            h: brickH,
+                            hp: 1,
+                            color: '#e67e22'
+                        });
+                    }
+                }
+                // reset ball
+                resetBall(Math.random() < 0.5);
+                winner = null;
+                running = true;
+                overlay.style.display = 'none';
+            }
+            restartBtn.addEventListener('click', () => {
+                restart();
+            });
+
+            // Start paused until overlay closed
+            running = false;
+
+            // Main loop
+            function loop() {
+                update();
+                draw();
+                requestAnimationFrame(loop);
+            }
+            loop();
+
+            // Start overlay key handling
+            window.addEventListener('keydown', (e) => {
+                if (!running && overlay.style.display !== 'none' && e.key === 'Enter') {
+                    hideOverlay();
+                }
+            });
+
+            // Initial ball normalization
+            normalizeBallVelocity();
+
+            // Friendly tip: allow clicking canvas to pause/resume
+            canvas.addEventListener('click', () => {
+                running = !running;
+                if (!running) {
+                    showMessage('Pause', 'Jeu en pause. Clique Redémarrer pour recommencer.');
+                } else {
+                    overlay.style.display = 'none';
+                }
+            });
+
+            // Expose some debug on console
+            console.log('Arkanoid 1v1 prêt. Contrôles: J1 Z/S + Espace, J2 ↑/↓ + Entrée.');
+
+        })();
+    </script>
+</body>
+
+</html>

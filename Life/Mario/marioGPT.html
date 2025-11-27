@@ -1,0 +1,436 @@
+<!doctype html>
+
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mini Mario - Canvas (Avec Ennemis)</title>
+<style>
+html,body{height:100%;margin:0;background:#7ec0ee;display:flex;align-items:center;justify-content:center}
+#game{width:100%;height:100%;display:block;background:linear-gradient(#87ceeb,#6ec1f7)}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+/* CONFIG & CONSTANTS */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const DPR = Math.max(1, window.devicePixelRatio || 1);
+let W=800,H=450;
+function resize(){
+  const ratio = Math.min(window.innerWidth/800, window.innerHeight/450);
+  W = Math.floor(800*ratio);
+  H = Math.floor(450*ratio);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  canvas.width = Math.floor(W*DPR);
+  canvas.height = Math.floor(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+const CONFIG = {
+GRAVITY: 2200,
+PLAYER_W: 28,
+PLAYER_H: 36,
+MOVE_SPEED: 220,
+AIR_ACCEL: 1200,
+GROUND_ACCEL: 4000,
+MAX_FALL: 1800,
+JUMP_V: 620,
+FRICTION: 0.85,
+TILE: 32,
+LEVEL_WIDTH: 6000,
+FPS: 60,
+ENEMY_SPEED: 80,
+ENEMY_W: 28,
+ENEMY_H: 24,
+KNOCKBACK_X: 250,
+KNOCKBACK_Y: 380
+};
+
+/* CORE ENGINE (game loop, physics, scrolling) */
+let last = performance.now();
+let acc = 0;
+const MS_PER_UPDATE = 1000/60;
+let running = true;
+const camera = {x:0,y:0,w: W, h: H};
+function gameLoop(now){
+if(!running) return;
+let delta = now - last;
+last = now;
+if (delta > 100) delta = 100;
+acc += delta;
+while(acc >= MS_PER_UPDATE){
+update(MS_PER_UPDATE/1000);
+acc -= MS_PER_UPDATE;
+}
+render();
+requestAnimationFrame(gameLoop);
+}
+
+/* INPUT MANAGER */
+const Keys = {left:0,right:0,jump:0};
+const keyMap = {ArrowLeft:'left',ArrowRight:'right',ArrowUp:'jump',Space:'jump',' ': 'jump'};
+window.addEventListener('keydown', e => {
+const k = keyMap[e.code] || keyMap[e.key];
+if(k) { Keys[k]=1; e.preventDefault(); }
+});
+window.addEventListener('keyup', e => {
+const k = keyMap[e.code] || keyMap[e.key];
+if(k) { Keys[k]=0; e.preventDefault(); }
+});
+
+/* ENTITY BASE CLASS */
+class Entity {
+constructor(x,y,w,h){ this.x=x; this.y=y; this.w=w; this.h=h; this.vx=0; this.vy=0; this.onGround=false; this.dead=false; }
+aabbIntersects(b){ return !(this.x + this.w <= b.x || this.x >= b.x + b.w || this.y + this.h <= b.y || this.y >= b.y + b.h); }
+}
+
+/* PLAYER (Mario) */
+class Player extends Entity{
+constructor(x,y){
+super(x,y,CONFIG.PLAYER_W,CONFIG.PLAYER_H);
+this.canDoubleJump = false;
+this.jumpBuffer = 0;
+this.coyote = 0;
+this.invulnerable = 0;
+}
+handleInput(dt){
+const left = Keys.left, right = Keys.right, jump = Keys.jump;
+const accel = this.onGround ? CONFIG.GROUND_ACCEL : CONFIG.AIR_ACCEL;
+let target = 0;
+if(left) target -= CONFIG.MOVE_SPEED;
+if(right) target += CONFIG.MOVE_SPEED;
+const diff = target - this.vx;
+const change = Math.sign(diff) * Math.min(Math.abs(diff), accel*dt);
+this.vx += change;
+if(!left && !right && this.onGround) this.vx *= CONFIG.FRICTION;
+if(jump){
+if(this.coyote > 0 || this.onGround){
+this.vy = -CONFIG.JUMP_V;
+this.onGround = false;
+this.coyote = 0;
+this.jumpBuffer = 7;
+} else if(this.canDoubleJump && this.jumpBuffer===0){
+this.vy = -CONFIG.JUMP_V*0.9;
+this.canDoubleJump = false;
+this.jumpBuffer = 7;
+}
+}
+if(this.jumpBuffer>0) this.jumpBuffer--;
+}
+integrate(dt){
+this.vy += CONFIG.GRAVITY * dt;
+if(this.vy > CONFIG.MAX_FALL) this.vy = CONFIG.MAX_FALL;
+this.x += this.vx * dt;
+this.y += this.vy * dt;
+if(this.invulnerable>0) this.invulnerable = Math.max(0, this.invulnerable - dt);
+}
+}
+
+/* WORLD (sol, plateformes) */
+const World = { platforms: [], width: CONFIG.LEVEL_WIDTH, height: H };
+function addPlatform(x,y,w,h){ World.platforms.push({x:x,y:y,w:w,h:h}); }
+
+/* LEVEL LOADER */
+function loadLevel(id=0){
+World.platforms.length = 0;
+const g = H-48;
+addPlatform(0,g,World.width,48);
+for(let i=400;i<World.width;i+=300){
+addPlatform(i, g - 120 - ((i/300)%3)*20, 120, 20);
+addPlatform(i+160, g - 220 + ((i/300)%2)*30, 100, 20);
+}
+addPlatform(900, g-60, 160, 20);
+addPlatform(1400, g-110, 220, 20);
+addPlatform(2000, g-200, 120, 20);
+addPlatform(2800, g-140, 240, 20);
+addPlatform(3600, g-90, 160, 20);
+addPlatform(4200, g-180, 200, 20);
+addPlatform(4800, g-100, 320, 20);
+// place enemies on platforms
+enemyManager.clear();
+enemyManager.spawn(520, g-120 - ((400/300)%3)*20 - CONFIG.ENEMY_H);
+enemyManager.spawn(980, g-60 - CONFIG.ENEMY_H);
+enemyManager.spawn(1450, g-110 - CONFIG.ENEMY_H);
+enemyManager.spawn(2010, g-200 - CONFIG.ENEMY_H);
+enemyManager.spawn(2810, g-140 - CONFIG.ENEMY_H);
+}
+
+/* PLAYER INSTANCE */
+const player = new Player(100, 100);
+
+/* COLLISION SYSTEM (AABB) */
+function resolveCollisions(entity){
+entity.onGround = false;
+const eps = 0.0001;
+const ps = World.platforms;
+for(let i=0,ln=ps.length;i<ln;i++){
+const p = ps[i];
+if(entity.x + entity.w <= p.x || entity.x >= p.x + p.w || entity.y + entity.h <= p.y || entity.y >= p.y + p.h) continue;
+const ox = (entity.x + entity.w/2) - (p.x + p.w/2);
+const oy = (entity.y + entity.h/2) - (p.y + p.h/2);
+const px = (entity.w + p.w)/2 - Math.abs(ox);
+const py = (entity.h + p.h)/2 - Math.abs(oy);
+if(px < py){
+if(ox > 0){
+entity.x += px + eps;
+} else {
+entity.x -= px + eps;
+}
+entity.vx = 0;
+} else {
+if(oy > 0){
+entity.y += py + eps;
+entity.vy = Math.max(0, entity.vy);
+} else {
+entity.y -= py + eps;
+entity.vy = 0;
+if(!entity.onGround){
+entity.onGround = true;
+entity.canDoubleJump = true;
+entity.coyote = 0.12;
+}
+}
+}
+}
+if(!entity.onGround){
+entity.coyote = Math.max(0, entity.coyote - (1/60));
+}
+}
+
+/* LEVEL MANAGER (placeholder) */
+class LevelManager { constructor(){} load(id){ loadLevel(id); } }
+
+/* Enemy class */
+class Enemy extends Entity{
+constructor(x,y,w=CONFIG.ENEMY_W,h=CONFIG.ENEMY_H){
+super(x,y,w,h);
+this.dir = Math.random() < 0.5 ? -1 : 1;
+this.speed = CONFIG.ENEMY_SPEED;
+this.dead = false;
+this.patrolMin = x - 80;
+this.patrolMax = x + 80;
+this.wait = 0;
+}
+update(dt){
+if(this.dead) return;
+if(this.wait>0){ this.wait = Math.max(0,this.wait - dt); return; }
+this.vx = this.dir * this.speed;
+this.vy += CONFIG.GRAVITY * dt;
+if(this.vy > CONFIG.MAX_FALL) this.vy = CONFIG.MAX_FALL;
+this.x += this.vx * dt;
+this.y += this.vy * dt;
+// patrol bounds
+if(this.x < this.patrolMin){ this.x = this.patrolMin; this.dir = 1; this.wait = 0.08; }
+if(this.x + this.w > this.patrolMax){ this.x = this.patrolMax - this.w; this.dir = -1; this.wait = 0.08; }
+resolveCollisions(this);
+}
+stomp(){
+this.dead = true;
+this.vx = 0;
+this.vy = -200;
+}
+}
+
+/* EnemyManager */
+class EnemyManager {
+constructor(){ this.pool = []; this.active = []; }
+clear(){ this.pool.length = 0; this.active.length = 0; }
+spawn(x,y){
+let e = this.pool.length ? this.pool.pop() : new Enemy(x,y);
+e.x = x; e.y = y; e.w = CONFIG.ENEMY_W; e.h = CONFIG.ENEMY_H; e.vx = 0; e.vy = 0; e.dead = false; e.dir = Math.random() < 0.5 ? -1 : 1;
+e.patrolMin = x - 120; e.patrolMax = x + 120; e.wait = 0;
+this.active.push(e);
+return e;
+}
+update(dt){
+const a = this.active;
+for(let i=0;i<a.length;i++){
+const e = a[i];
+e.update(dt);
+if(e.dead && e.y > H + 300){ this.pool.push(a.splice(i,1)[0]); i--; }
+}
+this.handlePlayerCollisions();
+}
+handlePlayerCollisions(){
+for(let i=0;i<this.active.length;i++){
+const e = this.active[i];
+if(e.dead) continue;
+if(player.aabbIntersects(e)){
+const plyBottom = player.y + player.h;
+const overlapY = plyBottom - e.y;
+if(player.vy > 0 && overlapY < player.h * 0.8){
+// stomp
+e.stomp();
+player.vy = -CONFIG.JUMP_V*0.6;
+} else {
+if(player.invulnerable > 0) continue;
+// hurt player: knockback
+const dir = (player.x + player.w/2) < (e.x + e.w/2) ? -1 : 1;
+player.vx = -dir * CONFIG.KNOCKBACK_X;
+player.vy = -CONFIG.KNOCKBACK_Y;
+player.invulnerable = 1.0;
+// simple respawn if wanted: reset position after heavy falling handled elsewhere
+}
+}
+}
+}
+render(ctx,cam){
+const a = this.active;
+for(let i=0;i<a.length;i++){
+const e = a[i];
+const sx = e.x - cam.x;
+if(sx + e.w < -100 || sx > W + 100) continue;
+ctx.save();
+ctx.translate(sx, e.y - cam.y);
+if(e.dead){
+ctx.globalAlpha = 0.6;
+ctx.fillStyle = '#444';
+ctx.fillRect(0,0,e.w,e.h);
+ctx.globalAlpha = 1;
+} else {
+// body
+ctx.fillStyle = '#2a8f2a';
+roundRect(ctx,0,0,e.w,e.h,4,true,false);
+// eyes
+ctx.fillStyle = '#fff'; ctx.fillRect(6,6,6,4); ctx.fillRect(e.w-12,6,6,4);
+ctx.fillStyle = '#000'; ctx.fillRect(7,7,2,2); ctx.fillRect(e.w-11,7,2,2);
+}
+ctx.restore();
+}
+}
+}
+
+/* ItemManager (placeholder) */
+class ItemManager { constructor(){} update(dt){} render(ctx,cam){} }
+
+/* AudioSystem (placeholder) */
+class AudioSystem { constructor(){} play(name){} }
+
+/* SpriteSystem (placeholder) */
+class SpriteSystem { constructor(){} get(name){} }
+
+/* SaveSystem (placeholder) */
+class SaveSystem { constructor(){} save(){} load(){} }
+
+/* RENDERER */
+function clear(){
+const skyGradient = ctx.createLinearGradient(0,0,0,H);
+skyGradient.addColorStop(0,'#87ceeb');
+skyGradient.addColorStop(1,'#6ec1f7');
+ctx.fillStyle = skyGradient;
+ctx.fillRect(0,0,W,H);
+}
+function drawGround(){
+const g = H-48;
+ctx.fillStyle = '#6b8e23';
+ctx.fillRect(-camera.x, g, World.width, 48);
+}
+function drawPlatforms(){
+const ps = World.platforms;
+ctx.fillStyle = '#8b5a2b';
+for(let i=0,ln=ps.length;i<ln;i++){
+const p = ps[i];
+const sx = p.x - camera.x;
+if(sx + p.w < -100 || sx > W + 100) continue;
+ctx.fillRect(sx, p.y - camera.y, p.w, p.h);
+ctx.fillStyle = '#d2a679';
+ctx.fillRect(sx+4, p.y - camera.y+4, p.w-8, p.h-8);
+ctx.fillStyle = '#8b5a2b';
+}
+}
+function drawPlayer(){
+const px = player.x - camera.x;
+const py = player.y - camera.y;
+ctx.save();
+ctx.translate(px,py);
+if(player.invulnerable > 0){
+ctx.globalAlpha = 0.6 + 0.4*Math.sin(performance.now()*0.02);
+}
+ctx.fillStyle = '#ff3333';
+roundRect(ctx,0,0,player.w,player.h,4,true,false);
+ctx.fillStyle = '#f0c879';
+ctx.fillRect(4,6,player.w-8,12);
+ctx.fillStyle = '#222';
+ctx.fillRect(6,player.h-10,6,4);
+ctx.fillRect(player.w-12,player.h-10,6,4);
+ctx.restore();
+ctx.globalAlpha = 1;
+}
+function roundRect(ctx,x,y,w,h,r,fill,stroke){ if(r===undefined) r=4; ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); if(fill) ctx.fill(); if(stroke) ctx.stroke(); }
+
+/* FUTURE EXTENSIONS HOOKS */
+/* Instances */
+const levelManager = new LevelManager();
+const enemyManager = new EnemyManager();
+const itemManager = new ItemManager();
+const audioSystem = new AudioSystem();
+const spriteSystem = new SpriteSystem();
+const saveSystem = new SaveSystem();
+
+loadLevel();
+
+/* UPDATE */
+function update(dt){
+player.handleInput(dt);
+player.integrate(dt);
+resolveCollisions(player);
+// keep player within level bounds
+if(player.x < 0) { player.x = 0; player.vx = 0; }
+if(player.x + player.w > World.width) { player.x = World.width - player.w; player.vx = 0; }
+// camera follows player
+const camTargetX = player.x - W*0.4;
+camera.x = clamp(camTargetX, 0, World.width - W);
+// update managers
+enemyManager.update(dt);
+itemManager.update(dt);
+// small ground clamp and respawn if fallen
+if(player.y > H + 200){ player.x = 100; player.y = 100; player.vx=player.vy=0; player.invulnerable = 0.5; }
+}
+
+/* RENDER */
+function render(){
+clear();
+drawParallax();
+drawGround();
+drawPlatforms();
+enemyManager.render(ctx,camera);
+itemManager.render(ctx,camera);
+drawPlayer();
+drawHUD();
+}
+function drawParallax(){
+const px = Math.floor(camera.x * 0.2);
+ctx.save();
+ctx.translate(-px,0);
+for(let i=-1;i<6;i++){
+const bx = i*512;
+ctx.fillStyle = '#b3e5ff';
+ctx.fillRect(bx, 60, 500, 60);
+}
+ctx.restore();
+}
+function drawHUD(){
+ctx.fillStyle = 'rgba(0,0,0,0.35)';
+ctx.fillRect(10,10,160,44);
+ctx.fillStyle = '#fff';
+ctx.font = '14px sans-serif';
+ctx.fillText('x:' + Math.floor(player.x) + ' y:' + Math.floor(player.y), 18, 28);
+ctx.fillText('Enemies:' + enemyManager.active.length, 18, 44);
+}
+
+/* UTIL */
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+
+/* START */
+requestAnimationFrame(gameLoop);
+
+/* Expose hooks to console for debugging */
+window.__GAME = {player,World,camera,loadLevel,enemyManager}; </script>
+
+</body>
+</html>

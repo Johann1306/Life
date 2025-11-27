@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PixelDiggers - Jeu de Construction en Pixel Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #gameCanvas {
+            display: block;
+            background-color: #000;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        
+        #ui-container {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            width: calc(100% - 20px);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 5px;
+            border-radius: 4px;
+            max-height: 80px;
+            overflow: hidden;
+        }
+        
+        .ui-element {
+            display: inline-block;
+            margin: 2px;
+            padding: 2px 4px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .health-bar {
+            width: 100px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            margin: 0 2px;
+        }
+        
+        .health-fill {
+            height: 100%;
+            width: 0%;
+            background: #4CAF50;
+            border-radius: 2px;
+        }
+        
+        .hotbar {
+            display: flex;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        
+        .hotbar-slot {
+            width: 24px;
+            height: 24px;
+            background: #333;
+            border-radius: 2px;
+            cursor: pointer;
+        }
+        
+        .hotbar-slot:hover {
+            background: #555;
+        }
+        
+        .instructions {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            font-size: 12px;
+            color: #aaa;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 2px 5px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="ui-container">
+        <div class="health-bar">
+            <div class="health-fill" id="health-fill"></div>
+        </div>
+        <div class="hotbar">
+            <div class="hotbar-slot" id="slot1"></div>
+            <div class="hotbar-slot" id="slot2"></div>
+            <div class="hotbar-slot" id="slot3"></div>
+            <div class="hotbar-slot" id="slot4"></div>
+            <div class="hotbar-slot" id="slot5"></div>
+            <div class="hotbar-slot" id="slot6"></div>
+        </div>
+    </div>
+    <div class="instructions">Contrôles : PC (WASD + Barre espace) | Mobile (Joystick + Bouton action)</div>
+
+    <script>
+        // === Configuration Initiale ===
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+        
+        // === Paramètres de Jeu ===
+        const TILE_SIZE = 16;
+        const WORLD_WIDTH = 2000;
+        const WORLD_HEIGHT = 800;
+        const PLAYER_SPEED = 3;
+        const GRAVITY = 0.5;
+        
+        // === Gestion des Assets ===
+        // (Placeholder pour les assets générés par l'IA)
+        const tileset = {
+            dirt: { x: 0, y: 0, width: 16, height: 16 },
+            grass: { x: 16, y: 0, width: 16, height: 16 },
+            wood: { x: 32, y: 0, width: 16, height: 16 },
+            stone: { x: 48, y: 0, width: 16, height: 16 }
+        };
+        
+        // === Structure du Jeu ===
+        class Game {
+            constructor() {
+                this.player = {
+                    x: width / 2,
+                    y: height / 2,
+                    width: 24,
+                    height: 24,
+                    velocityX: 0,
+                    velocityY: 0,
+                    health: 100
+                };
+                this.world = this.generateWorld();
+                this.gameLoop = this.gameLoop.bind(this);
+                this.setupEventListeners();
+            }
+            
+            generateWorld() {
+                // Génération procédurale de monde (Moyenne)
+                const world = [];
+                for (let y = 0; y < WORLD_HEIGHT; y++) {
+                    for (let x = 0; x < WORLD_WIDTH; x++) {
+                        // Biome aléatoire (Surface, Souterrain, Spécial)
+                        const biome = Math.random() > 0.5 ? 'surface' : 'cave';
+                        world.push({
+                            x,
+                            y,
+                            type: biome === 'surface' ? 'grass' : 'stone',
+                            // ... autres propriétés
+                        });
+                    }
+                }
+                return world;
+            }
+            
+            setupEventListeners() {
+                // Contrôles PC
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'z') this.player.velocityY = -PLAYER_SPEED;
+                    if (e.key === 's') this.player.velocityY = PLAYER_SPEED;
+                    if (e.key === 'q') this.player.velocityX = -PLAYER_SPEED;
+                    if (e.key === 'd') this.player.velocityX = PLAYER_SPEED;
+                    if (e.key === ' ' && this.player.onGround) this.player.jump();
+                });
+                
+                // Contrôles mobile (placeholder)
+                // document.addEventListener('touchstart', (e) => { /* ... */ });
+            }
+            
+            gameLoop() {
+                // Mise à jour du jeu
+                this.update();
+                this.render();
+                requestAnimationFrame(this.gameLoop);
+            }
+            
+            update() {
+                // Logique de mouvement
+                this.player.x += this.player.velocityX;
+                this.player.y += this.player.velocityY;
+                this.player.velocityY += GRAVITY;
+                
+                // Collision avec le sol
+                if (this.player.y > height - this.player.height) {
+                    this.player.y = height - this.player.height;
+                    this.player.velocityY = 0;
+                }
+                
+                // Gestion des tuiles
+                // ...
+            }
+            
+            render() {
+                // Rendu du monde
+                ctx.clearRect(0, 0, width, height);
+                
+                // Dessiner le joueur
+                ctx.fillStyle = '#4CAF50';
+                ctx.fillRect(this.player.x, this.player.y, this.player.width, this.player.height);
+                
+                // Dessiner le monde
+                // ...
+            }
+        }
+        
+        // === Initialisation ===
+        const game = new Game();
+        game.gameLoop();
+    </script>
+</body>
+</html>

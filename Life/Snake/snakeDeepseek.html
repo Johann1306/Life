@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Multijoueur - Cyberpunk</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Courier New', monospace;
+        }
+
+        body {
+            background-color: #0a0a12;
+            color: #e0e0ff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+            padding: 20px;
+        }
+
+        .game-container {
+            position: relative;
+            margin: 20px 0;
+        }
+
+        #gameCanvas {
+            background-color: #101020;
+            border: 2px solid #2a2a4a;
+            box-shadow: 0 0 20px rgba(64, 128, 255, 0.3);
+            border-radius: 4px;
+        }
+
+        .score-container {
+            display: flex;
+            justify-content: space-between;
+            width: 600px;
+            margin-bottom: 15px;
+        }
+
+        .score {
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 0 0 5px currentColor;
+            box-shadow: 0 0 10px rgba(64, 128, 255, 0.2);
+        }
+
+        .player1 {
+            color: #00ff88;
+            border: 1px solid #00ff88;
+        }
+
+        .player2 {
+            color: #0088ff;
+            border: 1px solid #0088ff;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(10, 10, 30, 0.9);
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid #ff0055;
+            box-shadow: 0 0 30px rgba(255, 0, 85, 0.5);
+            z-index: 10;
+            display: none;
+        }
+
+        .game-over h2 {
+            color: #ff0055;
+            margin-bottom: 20px;
+            font-size: 32px;
+            text-shadow: 0 0 10px #ff0055;
+        }
+
+        .game-over p {
+            margin: 15px 0;
+            font-size: 18px;
+        }
+
+        .restart {
+            background-color: #ff0055;
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            font-size: 18px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 15px;
+            box-shadow: 0 0 10px rgba(255, 0, 85, 0.7);
+            transition: all 0.3s;
+        }
+
+        .restart:hover {
+            background-color: #ff3377;
+            box-shadow: 0 0 15px rgba(255, 0, 85, 0.9);
+        }
+
+        .controls {
+            margin-top: 20px;
+            text-align: center;
+            color: #8888cc;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .controls p {
+            margin: 5px 0;
+        }
+
+        .grid-lines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            opacity: 0.1;
+        }
+    </style>
+</head>
+
+<body>
+    <h1 style="color: #ff00ff; text-shadow: 0 0 10px #ff00ff; margin-bottom: 10px;">SNAKE MULTI</h1>
+    <p style="color: #8888cc; margin-bottom: 20px;">Deux joueurs, un seul survivant</p>
+
+    <div class="score-container">
+        <div class="score player1">JOUEUR 1: <span id="score1">0</span></div>
+        <div class="score player2">JOUEUR 2: <span id="score2">0</span></div>
+    </div>
+
+    <div class="game-container">
+        <canvas id="gameCanvas" width="600" height="400"></canvas>
+        <canvas id="gridLines" class="grid-lines" width="600" height="400"></canvas>
+
+        <div class="game-over" id="gameOver">
+            <h2>GAME OVER</h2>
+            <p id="winnerText"></p>
+            <p>Appuyez sur ESPACE pour rejouer</p>
+            <button class="restart" onclick="restartGame()">REJOUER</button>
+        </div>
+    </div>
+
+    <div class="controls">
+        <p><span style="color: #00ff88;">JOUEUR 1 (VERT)</span> : Z (haut), Q (gauche), S (bas), D (droite)</p>
+        <p><span style="color: #0088ff;">JOUEUR 2 (BLEU)</span> : FLÈCHES directionnelles</p>
+    </div>
+
+    <script>
+        // Configuration du jeu
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gridCanvas = document.getElementById('gridLines');
+        const gridCtx = gridCanvas.getContext('2d');
+
+        const gridSize = 20;
+        const gridWidth = canvas.width / gridSize;
+        const gridHeight = canvas.height / gridSize;
+
+        // Variables du jeu
+        let gameRunning = true;
+        let gameLoop;
+        let apple = { x: 0, y: 0 };
+
+        // Scores
+        let score1 = 0;
+        let score2 = 0;
+
+        // Serpent du joueur 1 (vert)
+        let snake1 = {
+            body: [
+                { x: 5, y: 10 },
+                { x: 4, y: 10 },
+                { x: 3, y: 10 }
+            ],
+            direction: 'right',
+            nextDirection: 'right',
+            color: '#00ff88',
+            glow: '#00ff8866'
+        };
+
+        // Serpent du joueur 2 (bleu)
+        let snake2 = {
+            body: [
+                { x: 15, y: 10 },
+                { x: 16, y: 10 },
+                { x: 17, y: 10 }
+            ],
+            direction: 'left',
+            nextDirection: 'left',
+            color: '#0088ff',
+            glow: '#0088ff66'
+        };
+
+        // Dessiner la grille en arrière-plan
+        function drawGrid() {
+            gridCtx.strokeStyle = '#2a2a4a';
+            gridCtx.lineWidth = 0.5;
+
+            // Lignes verticales
+            for (let x = 0; x <= canvas.width; x += gridSize) {
+                gridCtx.beginPath();
+                gridCtx.moveTo(x, 0);
+                gridCtx.lineTo(x, canvas.height);
+                gridCtx.stroke();
+            }
+
+            // Lignes horizontales
+            for (let y = 0; y <= canvas.height; y += gridSize) {
+                gridCtx.beginPath();
+                gridCtx.moveTo(0, y);
+                gridCtx.lineTo(canvas.width, y);
+                gridCtx.stroke();
+            }
+        }
+
+        // Générer une nouvelle pomme
+        function generateApple() {
+            let validPosition = false;
+
+            while (!validPosition) {
+                apple.x = Math.floor(Math.random() * gridWidth);
+                apple.y = Math.floor(Math.random() * gridHeight);
+
+                // Vérifier que la pomme n'est pas sur un serpent
+                validPosition = true;
+                for (let segment of snake1.body) {
+                    if (segment.x === apple.x && segment.y === apple.y) {
+                        validPosition = false;
+                        break;
+                    }
+                }
+
+                if (validPosition) {
+                    for (let segment of snake2.body) {
+                        if (segment.x === apple.x && segment.y === apple.y) {
+                            validPosition = false;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Dessiner la pomme
+        function drawApple() {
+            ctx.fillStyle = '#ff0055';
+            ctx.shadowColor = '#ff0055';
+            ctx.shadowBlur = 15;
+
+            ctx.beginPath();
+            ctx.arc(
+                apple.x * gridSize + gridSize / 2,
+                apple.y * gridSize + gridSize / 2,
+                gridSize / 2 - 2,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+
+            ctx.shadowBlur = 0;
+        }
+
+        // Dessiner un serpent
+        function drawSnake(snake) {
+            // Dessiner le corps avec effet de glow
+            ctx.fillStyle = snake.color;
+            ctx.shadowColor = snake.glow;
+            ctx.shadowBlur = 10;
+
+            for (let i = 0; i < snake.body.length; i++) {
+                const segment = snake.body[i];
+
+                // Dessiner chaque segment
+                ctx.fillRect(
+                    segment.x * gridSize,
+                    segment.y * gridSize,
+                    gridSize,
+                    gridSize
+                );
+
+                // Ajouter un effet de dégradé pour la tête
+                if (i === 0) {
+                    ctx.fillStyle = snake.color;
+                    ctx.shadowColor = snake.glow;
+                    ctx.shadowBlur = 15;
+                }
+            }
+
+            ctx.shadowBlur = 0;
+        }
+
+        // Mettre à jour la position d'un serpent
+        function updateSnake(snake) {
+            // Mettre à jour la direction
+            snake.direction = snake.nextDirection;
+
+            // Obtenir la tête actuelle
+            const head = { ...snake.body[0] };
+
+            // Déplacer la tête selon la direction
+            switch (snake.direction) {
+                case 'up':
+                    head.y -= 1;
+                    break;
+                case 'down':
+                    head.y += 1;
+                    break;
+                case 'left':
+                    head.x -= 1;
+                    break;
+                case 'right':
+                    head.x += 1;
+                    break;
+            }
+
+            // Vérifier les collisions avec les murs
+            if (head.x < 0 || head.x >= gridWidth || head.y < 0 || head.y >= gridHeight) {
+                endGame(snake === snake1 ? 'Joueur 2' : 'Joueur 1');
+                return;
+            }
+
+            // Vérifier les collisions avec son propre corps
+            for (let i = 0; i < snake.body.length; i++) {
+                if (head.x === snake.body[i].x && head.y === snake.body[i].y) {
+                    endGame(snake === snake1 ? 'Joueur 2' : 'Joueur 1');
+                    return;
+                }
+            }
+
+            // Vérifier les collisions avec l'autre serpent
+            const otherSnake = snake === snake1 ? snake2 : snake1;
+            for (let i = 0; i < otherSnake.body.length; i++) {
+                if (head.x === otherSnake.body[i].x && head.y === otherSnake.body[i].y) {
+                    endGame(snake === snake1 ? 'Joueur 2' : 'Joueur 1');
+                    return;
+                }
+            }
+
+            // Ajouter la nouvelle tête
+            snake.body.unshift(head);
+
+            // Vérifier si le serpent a mangé la pomme
+            if (head.x === apple.x && head.y === apple.y) {
+                // Augmenter le score
+                if (snake === snake1) {
+                    score1++;
+                    document.getElementById('score1').textContent = score1;
+                } else {
+                    score2++;
+                    document.getElementById('score2').textContent = score2;
+                }
+
+                // Générer une nouvelle pomme
+                generateApple();
+            } else {
+                // Retirer la queue si pas de pomme mangée
+                snake.body.pop();
+            }
+        }
+
+        // Gérer les entrées clavier
+        function handleKeyDown(e) {
+            // Touches pour redémarrer le jeu
+            if (!gameRunning && e.code === 'Space') {
+                restartGame();
+                return;
+            }
+
+            // Empêcher le défilement de la page avec les flèches
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+                e.preventDefault();
+            }
+
+            // Contrôles du joueur 1 (ZQSD)
+            if (e.code === 'KeyZ' && snake1.direction !== 'down') {
+                snake1.nextDirection = 'up';
+            } else if (e.code === 'KeyS' && snake1.direction !== 'up') {
+                snake1.nextDirection = 'down';
+            } else if (e.code === 'KeyQ' && snake1.direction !== 'right') {
+                snake1.nextDirection = 'left';
+            } else if (e.code === 'KeyD' && snake1.direction !== 'left') {
+                snake1.nextDirection = 'right';
+            }
+
+            // Contrôles du joueur 2 (Flèches)
+            if (e.code === 'ArrowUp' && snake2.direction !== 'down') {
+                snake2.nextDirection = 'up';
+            } else if (e.code === 'ArrowDown' && snake2.direction !== 'up') {
+                snake2.nextDirection = 'down';
+            } else if (e.code === 'ArrowLeft' && snake2.direction !== 'right') {
+                snake2.nextDirection = 'left';
+            } else if (e.code === 'ArrowRight' && snake2.direction !== 'left') {
+                snake2.nextDirection = 'right';
+            }
+        }
+
+        // Terminer le jeu
+        function endGame(winner) {
+            gameRunning = false;
+            document.getElementById('winnerText').textContent = `${winner} GAGNE !`;
+            document.getElementById('gameOver').style.display = 'block';
+            cancelAnimationFrame(gameLoop);
+        }
+
+        // Redémarrer le jeu
+        function restartGame() {
+            // Réinitialiser les serpents
+            snake1.body = [
+                { x: 5, y: 10 },
+                { x: 4, y: 10 },
+                { x: 3, y: 10 }
+            ];
+            snake1.direction = 'right';
+            snake1.nextDirection = 'right';
+
+            snake2.body = [
+                { x: 15, y: 10 },
+                { x: 16, y: 10 },
+                { x: 17, y: 10 }
+            ];
+            snake2.direction = 'left';
+            snake2.nextDirection = 'left';
+
+            // Réinitialiser les scores
+            score1 = 0;
+            score2 = 0;
+            document.getElementById('score1').textContent = score1;
+            document.getElementById('score2').textContent = score2;
+
+            // Générer une nouvelle pomme
+            generateApple();
+
+            // Cacher l'écran de fin
+            document.getElementById('gameOver').style.display = 'none';
+
+            // Redémarrer le jeu
+            gameRunning = true;
+            gameLoop = requestAnimationFrame(update);
+        }
+
+        // Boucle de jeu principale
+        function update() {
+            if (!gameRunning) return;
+
+            // Effacer le canvas
+            ctx.fillStyle = '#101020';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Mettre à jour et dessiner les serpents
+            updateSnake(snake1);
+            updateSnake(snake2);
+
+            // Dessiner les éléments si le jeu est toujours en cours
+            if (gameRunning) {
+                drawApple();
+                drawSnake(snake1);
+                drawSnake(snake2);
+            }
+
+            // Continuer la boucle de jeu
+            gameLoop = requestAnimationFrame(update);
+        }
+
+        // Initialisation du jeu
+        function init() {
+            drawGrid();
+            generateApple();
+            document.addEventListener('keydown', handleKeyDown);
+            gameLoop = requestAnimationFrame(update);
+        }
+
+        // Démarrer le jeu
+        init();
+    </script>
+</body>
+
+</html>

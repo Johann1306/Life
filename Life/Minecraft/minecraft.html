@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Simplifié (Animation et Inventaire)</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #7cd6ff; }
+        canvas { display: block; }
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: monospace;
+            font-size: 1.2em;
+            text-shadow: 2px 2px 4px #000000;
+        }
+        #block-selector {
+            position: absolute;
+            bottom: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: monospace;
+            font-size: 1.2em;
+        }
+        .block-slot {
+            display: inline-block;
+            padding: 5px 15px;
+            margin: 0 5px;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+        .selected {
+            border: 4px solid yellow;
+            background-color: rgba(0, 0, 0, 0.7);
+        }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        Vie: <span id="player-hp">100</span>
+    </div>
+    <div id="block-selector">
+        <span id="slot-1" class="block-slot selected">1: Terre</span>
+        <span id="slot-2" class="block-slot">2: Pierre</span>
+        <span id="slot-3" class="block-slot">3: Bois</span>
+        <span id="slot-4" class="block-slot">4: Herbe (Surface)</span>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // --- 1. CONFIGURATION DU MONDE & PHYSIQUE ---
+        const WORLD_SIZE = 64; 
+        const BLOCK_SIZE = 1;
+        const SPEED = 5; 
+        const ENEMY_SPEED = 1.5; 
+        const JUMP_VELOCITY = 10;
+        const GRAVITY = -20; 
+
+        // Propriétés du joueur
+        const PLAYER_WIDTH = 0.6; 
+        const PLAYER_HEIGHT = 1.8; 
+        const PLAYER_EYE_HEIGHT = 1.6; 
+        const SKIN_PAD = 0.001; 
+        
+        const MOUSE_SENSITIVITY = 0.002;
+        
+        // IDs de blocs
+        const AIR = 0;
+        const GRASS = 1;
+        const DIRT = 2;
+        const STONE = 3;
+        const WOOD = 4;
+        const LEAVES = 5;
+        const ZOMBIE = 6; 
+
+        // --- STATS DU JOUEUR ---
+        let playerHP = 100;
+        const MAX_PLAYER_HP = 100;
+        let lastDamageTime = 0; 
+        const DAMAGE_COOLDOWN = 0.5; 
+
+        // --- INVENTAIRE (Sélection de blocs) ---
+        // Les IDs de blocs disponibles pour la construction
+        const buildableBlocks = [DIRT, STONE, WOOD, GRASS];
+        let selectedBlockIndex = 0; // Index dans le tableau buildableBlocks
+        let selectedBlockID = buildableBlocks[selectedBlockIndex];
+
+        // --- STATS DES ARMES ---
+        const PICKAXE_DAMAGE = 20; 
+        const PICKAXE_RANGE = 4;   
+        let lastAttackTime = 0;
+        const ATTACK_COOLDOWN = 0.5; 
+        // Variables d'animation de la pioche
+        let isAttacking = false;
+        const PICKAXE_SWING_SPEED = 10;
+        const PICKAXE_SWING_MAX_ROT = Math.PI / 4; // 45 degrés
+
+        // --- FONCTION DE GÉNÉRATION DE TEXTURE (CANVAS) ---
+        function generateTexture(baseColor, detailColor, type) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 16;
+            canvas.height = 16;
+            const context = canvas.getContext('2d');
+            context.imageSmoothingEnabled = false;
+
+            context.fillStyle = baseColor;
+            context.fillRect(0, 0, 16, 16);
+
+            for (let i = 0; i < (type === 'stone' ? 80 : 30); i++) {
+                let x = Math.floor(Math.random() * 16);
+                let y = Math.floor(Math.random() * 16);
+                
+                if (type === 'stone') {
+                    context.fillStyle = `rgba(0,0,0,${0.1 + Math.random() * 0.3})`;
+                    context.fillRect(x, y, 1, 1);
+                } else if (type === 'dirt') {
+                    context.fillStyle = detailColor;
+                    context.fillRect(x, y, Math.floor(Math.random() * 2) + 1, Math.floor(Math.random() * 2) + 1);
+                } else if (type === 'wood') {
+                    context.fillStyle = detailColor;
+                    context.fillRect(0, i * 2, 16, 1);
+                } else if (type === 'leaves') {
+                    context.fillStyle = detailColor;
+                    context.fillRect(x, y, 2, 2);
+                } else if (type === 'grass') {
+                    context.fillStyle = detailColor;
+                    context.fillRect(x, y, 1, 1);
+                }
+            }
+            
+            const textures = {};
+
+            if (type === 'grass') {
+                textures.top = new THREE.CanvasTexture(canvas);
+                
+                const sideCanvas = document.createElement('canvas');
+                sideCanvas.width = 16;
+                sideCanvas.height = 16;
+                const sideContext = sideCanvas.getContext('2d');
+                sideContext.imageSmoothingEnabled = false;
+
+                sideContext.fillStyle = '#9B6D4C';
+                sideContext.fillRect(0, 8, 16, 8);
+
+                sideContext.fillStyle = baseColor;
+                sideContext.fillRect(0, 0, 16, 8);
+                
+                textures.side = new THREE.CanvasTexture(sideCanvas);
+                
+                textures.bottom = generateTexture('#9B6D4C', '#6F4E37', 'dirt'); 
+
+                return textures; 
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.magFilter = THREE.NearestFilter; 
+            texture.minFilter = THREE.LinearMipMapLinearFilter;
+            return texture;
+        }
+
+        // --- MATÉRIAUX DES BLOCS ET ENTITÉS ---
+        const T_GRASS = generateTexture('#73A849', '#578335', 'grass');
+        const T_DIRT = generateTexture('#9B6D4C', '#6F4E37', 'dirt');    
+        const T_STONE = generateTexture('#A8AAAC', '#7D8083', 'stone'); 
+        const T_WOOD = generateTexture('#6F4E37', '#4C3729', 'wood');   
+        const T_LEAVES = generateTexture('rgba(78, 138, 74, 0.9)', 'rgba(50, 90, 48, 0.9)', 'leaves');
+
+        const grassMaterials = [
+            new THREE.MeshLambertMaterial({ map: T_GRASS.side }),
+            new THREE.MeshLambertMaterial({ map: T_GRASS.side }),
+            new THREE.MeshLambertMaterial({ map: T_GRASS.top }),
+            new THREE.MeshLambertMaterial({ map: T_GRASS.bottom }),
+            new THREE.MeshLambertMaterial({ map: T_GRASS.side }),
+            new THREE.MeshLambertMaterial({ map: T_GRASS.side }),
+        ];
+        
+        const zombieMaterial = new THREE.MeshLambertMaterial({ color: 0x559955 }); 
+
+        const blockMaterials = [
+            null, // 0: AIR
+            grassMaterials, // 1: GRASS
+            new THREE.MeshLambertMaterial({ map: T_DIRT }),   // 2: DIRT
+            new THREE.MeshLambertMaterial({ map: T_STONE }),  // 3: STONE
+            new THREE.MeshLambertMaterial({ map: T_WOOD }),   // 4: WOOD
+            new THREE.MeshLambertMaterial({ map: T_LEAVES, transparent: true, alphaTest: 0.1 }), // 5: LEAVES 
+            zombieMaterial // 6: ZOMBIE
+        ];
+
+
+        // --- 2. INITIALISATION SCÈNE THREE.JS ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Lumière
+        const ambientLight = new THREE.AmbientLight(0x909090); 
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        directionalLight.position.set(1, 1, 1).normalize();
+        scene.add(directionalLight);
+
+        // Variables de mouvement et physique
+        const move = { forward: false, backward: false, left: false, right: false, jump: false };
+        let pitch = 0;
+        let yaw = 0;
+        let velocity = new THREE.Vector3(); 
+        let isOnGround = false;
+        
+        // --- GESTION DES ENTITÉS ENNEMIES ---
+        const enemies = [];
+        const enemyMeshGroup = new THREE.Group();
+        scene.add(enemyMeshGroup);
+        
+        const ENEMY_HEIGHT = 1.8;
+        const ENEMY_WIDTH = 0.8;
+        const ENEMY_DAMAGE = 10; 
+        const ENEMY_MAX_HP = 60;
+
+        // --- LA PIOCHE (arme du joueur) ---
+        const pickaxeGroup = new THREE.Group(); // Conteneur pour l'animation
+        const pickaxeGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.5); // Manche
+        const pickaxeMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 }); // Bois
+        const pickaxeMesh = new THREE.Mesh(pickaxeGeometry, pickaxeMaterial);
+        
+        const headGeometry = new THREE.BoxGeometry(0.2, 0.2, 0.2); // Tête de la pioche
+        const headMaterial = new THREE.MeshLambertMaterial({ color: 0x808080 }); // Pierre
+        const headMesh = new THREE.Mesh(headGeometry, headMaterial);
+        headMesh.position.set(0, 0.1, 0.2); 
+        pickaxeMesh.add(headMesh);
+        
+        pickaxeGroup.add(pickaxeMesh);
+        
+        // Position et rotation de repos du groupe de la pioche
+        pickaxeGroup.position.set(0.4, -0.3, -0.5); 
+        pickaxeGroup.rotation.set(0, 0, 0); 
+
+        camera.add(pickaxeGroup); 
+        scene.add(camera); 
+
+
+        // --- 3. STRUCTURE DU MONDE & ACCESSEUR ---
+        const world = [];
+        for (let x = 0; x < WORLD_SIZE; x++) {
+            world[x] = [];
+            for (let y = 0; y < WORLD_SIZE; y++) {
+                world[x][y] = [];
+                for (let z = 0; z < WORLD_SIZE; z++) {
+                    world[x][y][z] = AIR;
+                }
+            }
+        }
+
+        const isBlockSolid = (blockId) => blockId !== AIR && blockId !== LEAVES;
+
+        const getBlock = (x, y, z) => {
+            x = Math.floor(x);
+            y = Math.floor(y);
+            z = Math.floor(z);
+            if (x >= 0 && x < WORLD_SIZE && y >= 0 && y < WORLD_SIZE && z >= 0 && z < WORLD_SIZE) {
+                return world[x][y][z];
+            }
+            return AIR;
+        };
+        
+        // --- 4. GÉNÉRATION DE TERRAIN ET ENNEMIS ---
+        function generateTree(x, z, baseHeight) {
+            const treeHeight = 3 + Math.floor(Math.random() * 2); 
+            const trunkY = baseHeight;
+
+            for (let y = 0; y < treeHeight; y++) {
+                if (trunkY + y < WORLD_SIZE) {
+                    world[x][trunkY + y][z] = WOOD;
+                }
+            }
+
+            const canopyY = trunkY + treeHeight - 1; 
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dz = -1; dz <= 1; dz++) {
+                        const leafX = x + dx;
+                        const leafY = canopyY + dy;
+                        const leafZ = z + dz;
+
+                        if (leafX >= 0 && leafX < WORLD_SIZE && leafY >= trunkY && leafY < WORLD_SIZE && leafZ >= 0 && leafZ < WORLD_SIZE) {
+                            if (world[leafX][leafY][leafZ] !== WOOD) {
+                                world[leafX][leafY][leafZ] = LEAVES;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+function generateWorld() {
+            const BASE_Y = Math.floor(WORLD_SIZE / 4); 
+            const MOUNTAIN_AMPLITUDE = 25; 
+            const MOUNTAIN_SCALE = 15;   
+            const PLAIN_VARIATION = 0.5; 
+            
+            let spawnHeight = BASE_Y; 
+            
+            for (let x = 0; x < WORLD_SIZE; x++) {
+                for (let z = 0; z < WORLD_SIZE; z++) {
+                    
+                    const mountainWave = Math.cos(x / MOUNTAIN_SCALE) * Math.cos(z / MOUNTAIN_SCALE) * MOUNTAIN_AMPLITUDE;
+                    let heightOffset = Math.max(0, mountainWave) + PLAIN_VARIATION;
+                    const height = BASE_Y + Math.floor(heightOffset);
+                    
+                    if (x === Math.floor(WORLD_SIZE / 2) && z === Math.floor(WORLD_SIZE / 2)) {
+                        spawnHeight = height;
+                    }
+
+                    for (let y = 0; y < WORLD_SIZE; y++) {
+                        if (y < height - 5) { 
+                            world[x][y][z] = STONE;
+                        } else if (y < height - 1) { 
+                             world[x][y][z] = DIRT;
+                        } else if (y === height - 1) {
+                            if (height >= BASE_Y + MOUNTAIN_AMPLITUDE / 2) {
+                                world[x][y][z] = STONE;
+                            } else {
+                                world[x][y][z] = GRASS;
+                            }
+                        } else {
+                            world[x][y][z] = AIR;
+                        }
+                    }
+
+                    if (getBlock(x, height - 1, z) === GRASS && height < BASE_Y + 5 && Math.random() < 0.03) {
+                        generateTree(x, z, height);
+                    }
+                    
+                    // NOUVEAU : Correction des limites pour la génération des ennemis
+                    const MIN_SAFE_DISTANCE = 2; // Distance minimale par rapport au bord du monde
+                    const MAX_COORD = WORLD_SIZE - MIN_SAFE_DISTANCE;
+                    
+                    // GÉNÉRATION D'ENNEMIS AVEC POINTS DE VIE
+                    if (getBlock(x, height - 1, z) === GRASS && height < BASE_Y + 3 && Math.random() < 0.005) {
+                        // VÉRIFICATION CRITIQUE : s'assurer que l'ennemi n'est pas trop près des bords
+                        if (x > MIN_SAFE_DISTANCE && x < MAX_COORD && z > MIN_SAFE_DISTANCE && z < MAX_COORD) {
+                            enemies.push({ 
+                                mesh: new THREE.Mesh(new THREE.BoxGeometry(ENEMY_WIDTH, ENEMY_HEIGHT, ENEMY_WIDTH), zombieMaterial),
+                                position: new THREE.Vector3(x + 0.5, height + ENEMY_HEIGHT / 2, z + 0.5),
+                                velocity: new THREE.Vector3(0, 0, 0),
+                                isOnGround: false,
+                                hp: ENEMY_MAX_HP, 
+                                lastDamageToPlayerTime: 0, 
+                            });
+                        }
+                    }
+                }
+            }
+            
+            const spawnY = spawnHeight + 1 + 2; 
+            camera.position.set(WORLD_SIZE / 2 + 0.5, spawnY + PLAYER_EYE_HEIGHT, WORLD_SIZE / 2 + 0.5);
+            camera.rotation.order = 'YXZ'; 
+        }
+
+        // --- NOUVEAU : FONCTION POUR METTRE À JOUR LE HUD ---
+        function updateHUD() {
+            document.getElementById('player-hp').innerText = playerHP;
+
+            // Mise à jour de l'affichage de la sélection de blocs
+            document.querySelectorAll('.block-slot').forEach((slot, index) => {
+                slot.classList.remove('selected');
+                if (index === selectedBlockIndex) {
+                    slot.classList.add('selected');
+                }
+            });
+        }
+        
+        // --- 5. RENDU ET MISE À JOUR ---
+        let worldMeshGroup;
+        function updateChunkMesh() {
+             if (worldMeshGroup) {
+                scene.remove(worldMeshGroup);
+            }
+            worldMeshGroup = new THREE.Group();
+            const geometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            
+            for (let x = 0; x < WORLD_SIZE; x++) {
+                for (let y = 0; y < WORLD_SIZE; y++) {
+                    for (let z = 0; z < WORLD_SIZE; z++) {
+                        const blockId = world[x][y][z];
+                        if (blockId !== AIR && blockId !== ZOMBIE) {
+                            let material = (Array.isArray(blockMaterials[blockId])) ? blockMaterials[blockId] : blockMaterials[blockId];
+                            
+                            const blockMesh = new THREE.Mesh(geometry, material);
+                            blockMesh.position.set(x + 0.5, y + 0.5, z + 0.5);
+                            blockMesh.userData = { x, y, z, id: blockId }; 
+                            worldMeshGroup.add(blockMesh);
+                        }
+                    }
+                }
+            }
+            scene.add(worldMeshGroup);
+        }
+
+        generateWorld();
+        updateChunkMesh(); 
+        updateHUD(); 
+        
+        function updateEnemyMeshes() {
+            enemyMeshGroup.clear();
+            enemies.forEach(enemy => {
+                enemy.mesh.position.copy(enemy.position);
+                enemyMeshGroup.add(enemy.mesh);
+            });
+        }
+        
+        // --- 6. CONTRÔLES UTILISATEUR AZERTY & INVENTAIRE ---
+        document.addEventListener('keydown', (event) => {
+            switch (event.key.toLowerCase()) {
+                case 'z': move.forward = true; break; 
+                case 's': move.backward = true; break;
+                case 'q': move.left = true; break;    
+                case 'd': move.right = true; break;
+                case ' ': 
+                    if (isOnGround) {
+                        velocity.y = JUMP_VELOCITY;
+                        isOnGround = false;
+                    }
+                    break;
+                case '1': selectBlock(0); break;
+                case '2': selectBlock(1); break;
+                case '3': selectBlock(2); break;
+                case '4': selectBlock(3); break;
+            }
+        });
+
+        document.addEventListener('keyup', (event) => {
+            switch (event.key.toLowerCase()) {
+                case 'z': move.forward = false; break;
+                case 's': move.backward = false; break;
+                case 'q': move.left = false; break;
+                case 'd': move.right = false; break;
+            }
+        });
+        
+        function selectBlock(index) {
+            if (index >= 0 && index < buildableBlocks.length) {
+                selectedBlockIndex = index;
+                selectedBlockID = buildableBlocks[index];
+                updateHUD();
+            }
+        }
+
+        renderer.domElement.addEventListener('click', () => {
+            renderer.domElement.requestPointerLock();
+        });
+
+        document.addEventListener('mousemove', (event) => {
+            if (document.pointerLockElement === renderer.domElement) {
+                yaw -= event.movementX * MOUSE_SENSITIVITY;
+                pitch -= event.movementY * MOUSE_SENSITIVITY;
+                pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+            }
+        });
+
+        // --- 7. INTERACTION (RAYCASTING) : AJOUT DE LA LOGIQUE DE DÉGÂTS ---
+        const raycaster = new THREE.Raycaster();
+        const pointer = new THREE.Vector2(0, 0);
+
+        document.addEventListener('mousedown', (event) => {
+            if (document.pointerLockElement !== renderer.domElement) return;
+
+            if (event.button === 0) { // Clic gauche (Attaquer / Casser)
+                if (performance.now() / 1000 - lastAttackTime < ATTACK_COOLDOWN) {
+                    return; 
+                }
+                lastAttackTime = performance.now() / 1000;
+                isAttacking = true; // Déclenche l'animation
+                
+                // 1. Testons si on attaque un ennemi
+                raycaster.setFromCamera(pointer, camera); 
+                const intersectsEnemies = raycaster.intersectObjects(enemyMeshGroup.children, true);
+
+                if (intersectsEnemies.length > 0 && intersectsEnemies[0].distance < PICKAXE_RANGE) {
+                    const intersectedEnemyMesh = intersectsEnemies[0].object;
+                    const hitEnemy = enemies.find(e => e.mesh === intersectedEnemyMesh);
+                    
+                    if (hitEnemy) {
+                        hitEnemy.hp -= PICKAXE_DAMAGE;
+                        console.log(`Zombie touché ! Vie restante : ${hitEnemy.hp}`);
+
+                        if (hitEnemy.hp <= 0) {
+                            console.log("Zombie vaincu !");
+                            enemyMeshGroup.remove(hitEnemy.mesh);
+                            enemies.splice(enemies.indexOf(hitEnemy), 1);
+                        }
+                        return; 
+                    }
+                }
+                // 2. Si pas d'ennemi touché ou hors de portée, tenter de casser un bloc
+                interact(true); 
+            } 
+            else if (event.button === 2) { // Clic droit (Placer)
+                // Utiliser le bloc sélectionné
+                interact(false, selectedBlockID); 
+            }
+        });
+        
+        renderer.domElement.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
+        });
+
+        function interact(isDestroy, newBlockId = AIR) {
+            raycaster.setFromCamera(pointer, camera);
+            const intersects = raycaster.intersectObjects(worldMeshGroup.children);
+            
+            // Limiter la portée d'interaction, même pour les blocs
+            if (intersects.length > 0 && intersects[0].distance < PICKAXE_RANGE) {
+                const intersect = intersects[0];
+                const mesh = intersect.object;
+                const { x, y, z } = mesh.userData;
+                const playerPos = camera.position;
+
+                if (isDestroy) {
+                    world[x][y][z] = AIR;
+                } else {
+                    const faceNormal = intersect.face.normal;
+                    const newX = x + faceNormal.x;
+                    const newY = y + faceNormal.y;
+                    const newZ = z + faceNormal.z;
+
+                    if (newX >= 0 && newX < WORLD_SIZE && newY >= 0 && newY < WORLD_SIZE && newZ >= 0 && newZ < WORLD_SIZE) {
+                        if (getBlock(newX, newY, newZ) === AIR) {
+                            // ... (logique de collision pour l'empêcher de se placer dans le joueur)
+                            const playerAABB = getPlayerAABB(playerPos);
+                            const blockAABB = {
+                                min: new THREE.Vector3(newX, newY, newZ),
+                                max: new THREE.Vector3(newX + BLOCK_SIZE, newY + BLOCK_SIZE, newZ + BLOCK_SIZE)
+                            };
+                            const collision = (
+                                blockAABB.min.x < playerAABB.max.x && blockAABB.max.x > playerAABB.min.x &&
+                                blockAABB.min.y < playerAABB.max.y && blockAABB.max.y > playerAABB.min.y &&
+                                blockAABB.min.z < playerAABB.max.z && blockAABB.max.z > playerAABB.min.z
+                            );
+
+                            if (!collision) {
+                                world[newX][newY][newZ] = newBlockId;
+                            }
+                        }
+                    }
+                }
+                updateChunkMesh(); 
+            }
+        }
+        
+        // --- LOGIQUE DE COLLISION AABB/VOXEL (inchangée) ---
+
+        function getPlayerAABB(pos) {
+            return {
+                min: new THREE.Vector3(pos.x - PLAYER_WIDTH / 2, pos.y - PLAYER_EYE_HEIGHT, pos.z - PLAYER_WIDTH / 2),
+                max: new THREE.Vector3(pos.x + PLAYER_WIDTH / 2, pos.y - PLAYER_EYE_HEIGHT + PLAYER_HEIGHT, pos.z + PLAYER_WIDTH / 2)
+            };
+        }
+
+        function isColliding(aabb) {
+            const minX = Math.floor(aabb.min.x);
+            const maxX = Math.floor(aabb.max.x);
+            const minY = Math.floor(aabb.min.y);
+            const maxY = Math.floor(aabb.max.y);
+            const minZ = Math.floor(aabb.min.z);
+            const maxZ = Math.floor(aabb.max.z);
+
+            for (let x = minX; x <= maxX; x++) {
+                for (let y = minY; y <= maxY; y++) {
+                    for (let z = minZ; z <= maxZ; z++) {
+                        if (isBlockSolid(getBlock(x, y, z))) {
+                            const blockMin = new THREE.Vector3(x, y, z);
+                            const blockMax = new THREE.Vector3(x + BLOCK_SIZE, y + BLOCK_SIZE, z + BLOCK_SIZE);
+
+                            const collision = (
+                                aabb.min.x < blockMax.x && aabb.max.x > blockMin.x &&
+                                aabb.min.y < blockMax.y && aabb.max.y > blockMin.y &&
+                                aabb.min.z < blockMax.z && aabb.max.z > blockMin.z
+                            );
+                            
+                            if (collision) {
+                                return { x, y, z }; 
+                            }
+                        }
+                    }
+                }
+            }
+            return null; 
+        }
+
+        // --- LOGIQUE DE MOUVEMENT ENNEMI ET DÉGÂTS AU JOUEUR (inchangée) ---
+        
+        function getEnemyAABB(pos) {
+            return {
+                min: new THREE.Vector3(pos.x - ENEMY_WIDTH / 2, pos.y - ENEMY_HEIGHT / 2, pos.z - ENEMY_WIDTH / 2),
+                max: new THREE.Vector3(pos.x + ENEMY_WIDTH / 2, pos.y + ENEMY_HEIGHT / 2, pos.z + ENEMY_HEIGHT / 2)
+            };
+        }
+        
+        function damagePlayer(amount, currentTime) {
+            if (currentTime - lastDamageTime >= DAMAGE_COOLDOWN) {
+                playerHP -= amount;
+                if (playerHP < 0) playerHP = 0;
+                updateHUD();
+                lastDamageTime = currentTime;
+                console.log(`Joueur a pris ${amount} dégâts ! Vie : ${playerHP}`);
+
+                if (playerHP === 0) {
+                    console.log("GAME OVER !");
+                    alert("Game Over !");
+                    location.reload(); 
+                }
+            }
+        }
+
+        function updateEnemies(deltaTime) {
+            const playerAABB = getPlayerAABB(camera.position); 
+            const currentTime = performance.now() / 1000; 
+
+            enemies.forEach(enemy => {
+                const direction = new THREE.Vector3().subVectors(camera.position, enemy.position);
+                direction.y = 0; 
+                
+                if (direction.lengthSq() > 0.01) {
+                    direction.normalize().multiplyScalar(ENEMY_SPEED);
+                }
+                
+                enemy.velocity.x = direction.x;
+                enemy.velocity.z = direction.z;
+                enemy.velocity.y += GRAVITY * deltaTime;
+
+                const step = enemy.velocity.clone().multiplyScalar(deltaTime);
+                let newPos = enemy.position.clone();
+                
+                enemy.isOnGround = false;
+
+                // Collision en X, Y, Z (logique simplifiée)
+                newPos.x += step.x;
+                let collisionX = isColliding(getEnemyAABB(newPos));
+                if (collisionX) {
+                    if (step.x > 0) newPos.x = collisionX.x - ENEMY_WIDTH / 2 - SKIN_PAD; else newPos.x = collisionX.x + BLOCK_SIZE + ENEMY_WIDTH / 2 + SKIN_PAD;
+                    enemy.velocity.x = 0;
+                }
+
+                newPos.y += step.y;
+                let collisionY = isColliding(getEnemyAABB(newPos));
+
+                if (collisionY) {
+                    if (step.y < 0) {
+                        enemy.isOnGround = true;
+                        enemy.velocity.y = 0;
+                        newPos.y = collisionY.y + BLOCK_SIZE + ENEMY_HEIGHT / 2 + SKIN_PAD; 
+                        
+                        const blockAheadX = Math.floor(newPos.x + direction.x * 0.5);
+                        const blockAheadZ = Math.floor(newPos.z + direction.z * 0.5);
+                        
+                        if (isBlockSolid(getBlock(blockAheadX, collisionY.y + 1, blockAheadZ)) && 
+                            !isBlockSolid(getBlock(blockAheadX, collisionY.y + 2, blockAheadZ)) && 
+                            !isBlockSolid(getBlock(blockAheadX, collisionY.y + 3, blockAheadZ))) {
+                            
+                            newPos.y += 1; 
+                        }
+                        
+                    } else {
+                        enemy.velocity.y = 0;
+                        newPos.y = collisionY.y - ENEMY_HEIGHT / 2 - SKIN_PAD; 
+                    }
+                }
+
+                newPos.z += step.z;
+                let collisionZ = isColliding(getEnemyAABB(newPos));
+                
+                if (collisionZ) {
+                    if (step.z > 0) newPos.z = collisionZ.z - ENEMY_WIDTH / 2 - SKIN_PAD; else newPos.z = collisionZ.z + BLOCK_SIZE + ENEMY_WIDTH / 2 + SKIN_PAD;
+                    enemy.velocity.z = 0;
+                }
+                
+                enemy.position.copy(newPos);
+
+                // Dégâts au joueur par contact
+                const enemyAABB = getEnemyAABB(enemy.position);
+                const collisionWithPlayer = (
+                    enemyAABB.min.x < playerAABB.max.x && enemyAABB.max.x > playerAABB.min.x &&
+                    enemyAABB.min.y < playerAABB.max.y && enemyAABB.max.y > playerAABB.min.y &&
+                    enemyAABB.min.z < playerAABB.max.z && enemyAABB.max.z > playerAABB.min.z
+                );
+
+                if (collisionWithPlayer) {
+                    damagePlayer(ENEMY_DAMAGE, currentTime);
+                }
+            });
+        }
+
+        // --- NOUVEAU : ANIMATION DE LA PIOCHE ---
+        function updatePickaxeAnimation(deltaTime) {
+            const restRotation = new THREE.Vector3(0, 0, 0); // Repos
+            
+            if (isAttacking) {
+                // Phase d'attaque : rotation vers l'avant (x négatif est vers le haut/devant)
+                pickaxeGroup.rotation.x -= PICKAXE_SWING_SPEED * deltaTime;
+
+                if (pickaxeGroup.rotation.x < -PICKAXE_SWING_MAX_ROT) {
+                    // Fin de l'attaque, on passe en phase de retour
+                    isAttacking = false;
+                }
+            } else {
+                // Phase de retour : rotation vers l'arrière
+                if (pickaxeGroup.rotation.x < restRotation.x) {
+                    pickaxeGroup.rotation.x += PICKAXE_SWING_SPEED * deltaTime * 0.5; // Retour plus lent
+
+                    if (pickaxeGroup.rotation.x > restRotation.x) {
+                        pickaxeGroup.rotation.x = restRotation.x;
+                    }
+                }
+            }
+        }
+
+
+        // --- BOUCLE D'ANIMATION ---
+        let lastTime = 0;
+        function animate(time) {
+            requestAnimationFrame(animate);
+
+            const deltaTime = (time - lastTime) / 1000;
+            lastTime = time;
+            
+            // 1. Mise à jour de la Pioche
+            updatePickaxeAnimation(deltaTime);
+
+            // 2. Mise à jour de la Rotation du Joueur
+            camera.rotation.y = yaw;
+            camera.rotation.x = pitch;
+            
+            // 3. Mise à jour du Mouvement du Joueur
+            const forwardVector = new THREE.Vector3();
+            camera.getWorldDirection(forwardVector);
+            forwardVector.y = 0; 
+            forwardVector.normalize();
+            
+            const rightVector = new THREE.Vector3().crossVectors(forwardVector, camera.up);
+
+            let targetVelocity = new THREE.Vector3();
+            if (move.forward) targetVelocity.add(forwardVector);
+            if (move.backward) targetVelocity.sub(forwardVector);
+            if (move.right) targetVelocity.add(rightVector);
+            if (move.left) targetVelocity.sub(rightVector);
+
+            if (targetVelocity.lengthSq() > 0) {
+                targetVelocity.normalize().multiplyScalar(SPEED);
+            }
+
+            velocity.x = targetVelocity.x;
+            velocity.z = targetVelocity.z;
+            velocity.y += GRAVITY * deltaTime;
+            
+            // Logique de collision du joueur
+            const step = velocity.clone().multiplyScalar(deltaTime);
+            let newPos = camera.position.clone();
+            
+            isOnGround = false;
+            
+            newPos.x += step.x;
+            let collisionX = isColliding(getPlayerAABB(newPos));
+            if (collisionX) {
+                 if (step.x > 0) newPos.x = collisionX.x - PLAYER_WIDTH / 2 - SKIN_PAD; else newPos.x = collisionX.x + BLOCK_SIZE + PLAYER_WIDTH / 2 + SKIN_PAD;
+                 velocity.x = 0;
+            }
+
+            newPos.y += step.y;
+            let collisionY = isColliding(getPlayerAABB(newPos));
+            if (collisionY) {
+                if (step.y < 0) {
+                    isOnGround = true;
+                    velocity.y = 0;
+                    newPos.y = collisionY.y + BLOCK_SIZE + PLAYER_EYE_HEIGHT + SKIN_PAD; 
+                } else {
+                    velocity.y = 0;
+                    newPos.y = collisionY.y - PLAYER_HEIGHT + PLAYER_EYE_HEIGHT - SKIN_PAD; 
+                }
+            } else { isOnGround = false; }
+
+            newPos.z += step.z;
+            let collisionZ = isColliding(getPlayerAABB(newPos));
+            if (collisionZ) {
+                if (step.z > 0) newPos.z = collisionZ.z - PLAYER_WIDTH / 2 - SKIN_PAD; else newPos.z = collisionZ.z + BLOCK_SIZE + PLAYER_WIDTH / 2 + SKIN_PAD;
+                velocity.z = 0;
+            }
+            
+            camera.position.copy(newPos);
+            if (camera.position.y < -100) { camera.position.set(WORLD_SIZE / 2 + 0.5, WORLD_SIZE / 2 + PLAYER_EYE_HEIGHT + 2, WORLD_SIZE / 2 + 0.5); velocity.set(0, 0, 0); }
+
+
+            // 4. Mise à jour des ennemis
+            updateEnemies(deltaTime);
+            updateEnemyMeshes(); 
+
+            // 5. Rendu
+            renderer.render(scene, camera);
+        }
+
+        animate(0);
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Jeu de Combat 2 Joueurs</title>
+    <style>
+        body {
+            margin: 0;
+            background: #222;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        canvas {
+            background: #333;
+            border: 3px solid #fff;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="game" width="900" height="500"></canvas>
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        // --- Constantes du jeu ---
+        const GRAVITY = 0.6;
+        const GROUND = canvas.height - 50;
+        const PLAYER_WIDTH = 40;
+        const PLAYER_HEIGHT = 60;
+        const SPEED = 5;
+        const JUMP_FORCE = -12;
+        const DAMAGE = 10;
+        const KNOCKBACK = 8;
+
+        let gameOver = false;
+
+        // --- Joueurs ---
+        function createPlayer(x, color) {
+            return {
+                x,
+                y: GROUND - PLAYER_HEIGHT,
+                vx: 0,
+                vy: 0,
+                color,
+                hp: 100,
+                attacking: false,
+            };
+        }
+
+        const p1 = createPlayer(200, 'red');
+        const p2 = createPlayer(650, 'cyan');
+
+        // --- Touches ---
+        const keys = {};
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (gameOver && e.key.toLowerCase() === 'r') restart();
+        });
+        document.addEventListener('keyup', (e) => keys[e.key] = false);
+
+        // --- Combat ---
+        function checkAttack(attacker, defender, direction) {
+            if (!attacker.attacking) return;
+
+            const range = 50;
+            const withinRange = direction > 0
+                ? defender.x > attacker.x && defender.x < attacker.x + range
+                : defender.x < attacker.x && defender.x > attacker.x - range;
+
+            if (withinRange && Math.abs(attacker.y - defender.y) < 60) {
+                defender.hp = Math.max(0, defender.hp - DAMAGE);
+                defender.vx = direction * KNOCKBACK;
+            }
+        }
+
+        // --- Mouvement ---
+        function movePlayer(p, leftKey, rightKey, jumpKey, attackKey) {
+            if (keys[leftKey]) p.vx = -SPEED;
+            else if (keys[rightKey]) p.vx = SPEED;
+            else p.vx = 0;
+
+            if (keys[jumpKey] && p.y >= GROUND - PLAYER_HEIGHT) p.vy = JUMP_FORCE;
+
+            if (keys[attackKey]) p.attacking = true;
+            else p.attacking = false;
+        }
+
+        // --- Mise à jour ---
+        function update() {
+            if (p1.hp <= 0 || p2.hp <= 0) {
+                gameOver = true;
+                draw();
+                return;
+            }
+
+            movePlayer(p1, 'q', 'd', 'z', ' ');
+            movePlayer(p2, 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'Enter');
+
+            // Attaques
+            checkAttack(p1, p2, 1);
+            checkAttack(p2, p1, -1);
+
+            // Physique
+            [p1, p2].forEach((p) => {
+                p.x += p.vx;
+                p.vy += GRAVITY;
+                p.y += p.vy;
+
+                if (p.y > GROUND - PLAYER_HEIGHT) {
+                    p.y = GROUND - PLAYER_HEIGHT;
+                    p.vy = 0;
+                }
+
+                if (p.x < 0) p.x = 0;
+                if (p.x + PLAYER_WIDTH > canvas.width) p.x = canvas.width - PLAYER_WIDTH;
+            });
+
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        // --- Affichage ---
+        function drawHP(player, x, color) {
+            ctx.fillStyle = '#555';
+            ctx.fillRect(x, 20, 200, 20);
+            ctx.fillStyle = color;
+            ctx.fillRect(x, 20, (player.hp / 100) * 200, 20);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Sol
+            ctx.fillStyle = '#444';
+            ctx.fillRect(0, GROUND, canvas.width, 50);
+
+            // Joueurs
+            ctx.fillStyle = p1.color;
+            ctx.fillRect(p1.x, p1.y, PLAYER_WIDTH, PLAYER_HEIGHT);
+
+            ctx.fillStyle = p2.color;
+            ctx.fillRect(p2.x, p2.y, PLAYER_WIDTH, PLAYER_HEIGHT);
+
+            drawHP(p1, 50, 'red');
+            drawHP(p2, canvas.width - 250, 'cyan');
+
+            if (gameOver) {
+                ctx.fillStyle = 'white';
+                ctx.font = '40px Arial';
+                const winner = p1.hp > 0 ? 'Joueur 1 (Rouge)' : 'Joueur 2 (Bleu)';
+                ctx.fillText(winner + ' a gagné !', canvas.width / 2 - 200, canvas.height / 2);
+                ctx.font = '25px Arial';
+                ctx.fillText('Appuie sur R pour recommencer', canvas.width / 2 - 200, canvas.height / 2 + 50);
+            }
+        }
+
+        function restart() {
+            p1.hp = 100; p2.hp = 100;
+            p1.x = 200; p2.x = 650;
+            gameOver = false;
+            update();
+        }
+
+        update();
+    </script>
+</body>
+
+</html>

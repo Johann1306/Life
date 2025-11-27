@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vertical Space Shooter Co-op</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: black;
+            overflow: hidden;
+        }
+
+        canvas {
+            border: 1px solid #fff;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        // Variables globales
+        let canvas, ctx;
+        let joueurs = [];
+        let ennemis = [];
+        let tirs = [];
+        let particules = [];
+        let powerUps = [];
+        let score = 0;
+        let vague = 1;
+        let gameOver = false;
+
+        // Initialisation du jeu
+        function init() {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+
+            // Définir la taille du canvas
+            canvas.width = 800;
+            canvas.height = 600;
+
+            // Créer les joueurs
+            joueurs.push(new Joueur(1, 'red', 'orange', 'ZQSD', ' '));
+            joueurs.push(new Joueur(2, 'blue', 'cyan', 'ArrowUp,ArrowDown,ArrowLeft,ArrowRight', 'Enter'));
+
+            // Configurer les gestionnaires d'événements pour les entrées clavier
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+
+            // Démarrer la boucle de jeu
+            gameLoop();
+        }
+
+        // Classe Joueur
+        class Joueur {
+            constructor(numero, couleurPrincipale, couleurSecondaire, touches, toucheTir) {
+                this.numero = numero;
+                this.couleurPrincipale = couleurPrincipale;
+                this.couleurSecondaire = couleurSecondaire;
+                this.touches = touches.split(',');
+                this.toucheTir = toucheTir;
+                this.x = canvas.width / 2 + (numero === 1 ? -100 : 100);
+                this.y = canvas.height - 50;
+                this.vie = 3;
+                this.tirTriple = false;
+                this.bouclier = false;
+                this.toucheEnfoncee = {};
+            }
+
+            // Méthode pour dessiner le joueur
+            dessiner() {
+                ctx.save();
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.couleurPrincipale;
+                ctx.fillStyle = this.couleurPrincipale;
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y - 20);
+                ctx.lineTo(this.x + 15, this.y + 20);
+                ctx.lineTo(this.x - 15, this.y + 20);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // Méthode pour mettre à jour le joueur
+            mettreAJour() {
+                // Déplacer le joueur en fonction des touches enfoncées
+                if (this.toucheEnfoncee[this.touches[0]]) this.y -= 5; // Haut
+                if (this.toucheEnfoncee[this.touches[1]]) this.y += 5; // Bas
+                if (this.toucheEnfoncee[this.touches[2]]) this.x -= 5; // Gauche
+                if (this.toucheEnfoncee[this.touches[3]]) this.x += 5; // Droite
+
+                // Tirer si la touche de tir est enfoncée
+                if (this.toucheEnfoncee[this.toucheTir]) {
+                    this.tirer();
+                }
+
+                // Garder le joueur dans les limites du canvas
+                this.x = Math.max(0, Math.min(canvas.width, this.x));
+                this.y = Math.max(0, Math.min(canvas.height, this.y));
+            }
+
+            // Méthode pour tirer
+            tirer() {
+                if (this.tirTriple) {
+                    tirs.push(new Tir(this.x - 10, this.y - 20, 'up', this.couleurPrincipale));
+                    tirs.push(new Tir(this.x, this.y - 20, 'up', this.couleurPrincipale));
+                    tirs.push(new Tir(this.x + 10, this.y - 20, 'up', this.couleurPrincipale));
+                } else {
+                    tirs.push(new Tir(this.x, this.y - 20, 'up', this.couleurPrincipale));
+                }
+            }
+        }
+
+        // Classe Tir
+        class Tir {
+            constructor(x, y, direction, couleur) {
+                this.x = x;
+                this.y = y;
+                this.direction = direction;
+                this.couleur = couleur;
+                this.vitesse = 10;
+            }
+
+            // Méthode pour dessiner le tir
+            dessiner() {
+                ctx.save();
+                ctx.shadowBlur = 5;
+                ctx.shadowColor = this.couleur;
+                ctx.fillStyle = this.couleur;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // Méthode pour mettre à jour le tir
+            mettreAJour() {
+                if (this.direction === 'up') {
+                    this.y -= this.vitesse;
+                } else {
+                    this.y += this.vitesse;
+                }
+            }
+        }
+
+        // Classe Ennemi
+        class Ennemi {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vie = 1;
+                this.vitesse = 2;
+            }
+
+            // Méthode pour dessiner l'ennemi
+            dessiner() {
+                ctx.save();
+                ctx.shadowBlur = 5;
+                ctx.shadowColor = 'purple';
+                ctx.fillStyle = 'purple';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 10, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // Méthode pour mettre à jour l'ennemi
+            mettreAJour() {
+                this.y += this.vitesse;
+            }
+        }
+
+        // Classe Particule
+        class Particule {
+            constructor(x, y, couleur) {
+                this.x = x;
+                this.y = y;
+                this.couleur = couleur;
+                this.vitesseX = Math.random() * 6 - 3;
+                this.vitesseY = Math.random() * 6 - 3;
+                this.taille = Math.random() * 5 + 1;
+                this.opacite = 1;
+            }
+
+            // Méthode pour dessiner la particule
+            dessiner() {
+                ctx.save();
+                ctx.globalAlpha = this.opacite;
+                ctx.fillStyle = this.couleur;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.taille, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // Méthode pour mettre à jour la particule
+            mettreAJour() {
+                this.x += this.vitesseX;
+                this.y += this.vitesseY;
+                this.opacite -= 0.01;
+            }
+        }
+
+        // Classe PowerUp
+        class PowerUp {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.taille = 10;
+            }
+
+            // Méthode pour dessiner le power-up
+            dessiner() {
+                ctx.save();
+                ctx.fillStyle = this.type === 'tirTriple' ? 'green' : 'yellow';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.taille, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // Méthode pour mettre à jour le power-up
+            mettreAJour() {
+                this.y += 2;
+            }
+        }
+
+        // Gestionnaire d'événements pour les touches enfoncées
+        function onKeyDown(e) {
+            joueurs.forEach(joueur => {
+                if (joueur.touches.includes(e.key)) {
+                    joueur.toucheEnfoncee[e.key] = true;
+                }
+                if (e.key === joueur.toucheTir) {
+                    joueur.toucheEnfoncee[e.key] = true;
+                }
+            });
+
+            if (e.key === 'r' && gameOver) {
+                reinitialiserJeu();
+            }
+        }
+
+        // Gestionnaire d'événements pour les touches relâchées
+        function onKeyUp(e) {
+            joueurs.forEach(joueur => {
+                if (joueur.touches.includes(e.key)) {
+                    joueur.toucheEnfoncee[e.key] = false;
+                }
+                if (e.key === joueur.toucheTir) {
+                    joueur.toucheEnfoncee[e.key] = false;
+                }
+            });
+        }
+
+        // Fonction pour générer des étoiles
+        function genererEtoiles() {
+            ctx.save();
+            ctx.fillStyle = 'white';
+            for (let i = 0; i < 100; i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const taille = Math.random() * 2;
+                ctx.fillRect(x, y, taille, taille);
+            }
+            ctx.restore();
+        }
+
+        // Fonction pour générer une vague d'ennemis
+        function genererVague() {
+            const nombreEnnemis = 5 + vague * 2;
+            for (let i = 0; i < nombreEnnemis; i++) {
+                const x = Math.random() * (canvas.width - 20) + 10;
+                const y = -20;
+                ennemis.push(new Ennemi(x, y));
+            }
+
+            // Générer un power-up aléatoirement
+            if (Math.random() > 0.7) {
+                const x = Math.random() * (canvas.width - 20) + 10;
+                const y = -20;
+                const types = ['tirTriple', 'bouclier'];
+                const type = types[Math.floor(Math.random() * types.length)];
+                powerUps.push(new PowerUp(x, y, type));
+            }
+        }
+
+        // Fonction pour vérifier les collisions
+        function verifierCollisions() {
+            // Collisions entre les tirs des joueurs et les ennemis
+            for (let i = tirs.length - 1; i >= 0; i--) {
+                const tir = tirs[i];
+                for (let j = ennemis.length - 1; j >= 0; j--) {
+                    const ennemi = ennemis[j];
+                    const distance = Math.sqrt(Math.pow(tir.x - ennemi.x, 2) + Math.pow(tir.y - ennemi.y, 2));
+                    if (distance < 15) {
+                        ennemis.splice(j, 1);
+                        tirs.splice(i, 1);
+                        score += 10;
+                        // Générer des particules
+                        for (let k = 0; k < 20; k++) {
+                            particules.push(new Particule(ennemi.x, ennemi.y, 'purple'));
+                        }
+                        break;
+                    }
+                }
+            }
+
+            // Collisions entre les joueurs et les ennemis
+            for (let i = joueurs.length - 1; i >= 0; i--) {
+                const joueur = joueurs[i];
+                for (let j = ennemis.length - 1; j >= 0; j--) {
+                    const ennemi = ennemis[j];
+                    const distance = Math.sqrt(Math.pow(joueur.x - ennemi.x, 2) + Math.pow(joueur.y - ennemi.y, 2));
+                    if (distance < 25) {
+                        ennemis.splice(j, 1);
+                        joueur.vie--;
+                        if (joueur.vie <= 0) {
+                            joueurs.splice(i, 1);
+                        }
+                        break;
+                    }
+                }
+            }
+
+            // Collisions entre les joueurs et les power-ups
+            for (let i = joueurs.length - 1; i >= 0; i--) {
+                const joueur = joueurs[i];
+                for (let j = powerUps.length - 1; j >= 0; j--) {
+                    const powerUp = powerUps[j];
+                    const distance = Math.sqrt(Math.pow(joueur.x - powerUp.x, 2) + Math.pow(joueur.y - powerUp.y, 2));
+                    if (distance < 20) {
+                        powerUps.splice(j, 1);
+                        if (powerUp.type === 'tirTriple') {
+                            joueur.tirTriple = true;
+                            setTimeout(() => {
+                                joueur.tirTriple = false;
+                            }, 10000);
+                        } else if (powerUp.type === 'bouclier') {
+                            joueur.bouclier = true;
+                            setTimeout(() => {
+                                joueur.bouclier = false;
+                            }, 10000);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Fonction pour reinitialiser le jeu
+        function reinitialiserJeu() {
+            joueurs = [];
+            ennemis = [];
+            tirs = [];
+            particules = [];
+            powerUps = [];
+            score = 0;
+            vague = 1;
+            gameOver = false;
+            joueurs.push(new Joueur(1, 'red', 'orange', 'ZQSD', ' '));
+            joueurs.push(new Joueur(2, 'blue', 'cyan', 'ArrowUp,ArrowDown,ArrowLeft,ArrowRight', 'Enter'));
+        }
+
+        // Boucle de jeu principale
+        function gameLoop() {
+            if (gameOver) {
+                ctx.fillStyle = 'white';
+                ctx.font = '48px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2);
+                ctx.font = '24px Arial';
+                ctx.fillText(`Score: ${score}`, canvas.width / 2, canvas.height / 2 + 50);
+                ctx.fillText('Appuyez sur R pour recommencer', canvas.width / 2, canvas.height / 2 + 100);
+                return;
+            }
+
+            // Effacer le canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dessiner les étoiles
+            genererEtoiles();
+
+            // Mettre à jour et dessiner les joueurs
+            joueurs.forEach(joueur => {
+                joueur.mettreAJour();
+                joueur.dessiner();
+            });
+
+            // Mettre à jour et dessiner les tirs
+            for (let i = tirs.length - 1; i >= 0; i--) {
+                tirs[i].mettreAJour();
+                tirs[i].dessiner();
+                if (tirs[i].y < 0 || tirs[i].y > canvas.height) {
+                    tirs.splice(i, 1);
+                }
+            }
+
+            // Mettre à jour et dessiner les ennemis
+            for (let i = ennemis.length - 1; i >= 0; i--) {
+                ennemis[i].mettreAJour();
+                ennemis[i].dessiner();
+                if (ennemis[i].y > canvas.height) {
+                    ennemis.splice(i, 1);
+                }
+            }
+
+            // Mettre à jour et dessiner les particules
+            for (let i = particules.length - 1; i >= 0; i--) {
+                particules[i].mettreAJour();
+                particules[i].dessiner();
+                if (particules[i].opacite <= 0) {
+                    particules.splice(i, 1);
+                }
+            }
+
+            // Mettre à jour et dessiner les power-ups
+            for (let i = powerUps.length - 1; i >= 0; i--) {
+                powerUps[i].mettreAJour();
+                powerUps[i].dessiner();
+                if (powerUps[i].y > canvas.height) {
+                    powerUps.splice(i, 1);
+                }
+            }
+
+            // Vérifier les collisions
+            verifierCollisions();
+
+            // Vérifier si tous les ennemis sont morts
+            if (ennemis.length === 0) {
+                vague++;
+                genererVague();
+            }
+
+            // Vérifier si le jeu est terminé
+            if (joueurs.length === 0) {
+                gameOver = true;
+            }
+
+            // Afficher le score et la vague
+            ctx.fillStyle = 'white';
+            ctx.font = '24px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`Score: ${score}`, 10, 30);
+            ctx.fillText(`Vague: ${vague}`, 10, 60);
+
+            // Continuer la boucle de jeu
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Démarrer le jeu
+        init();
+    </script>
+</body>
+
+</html>

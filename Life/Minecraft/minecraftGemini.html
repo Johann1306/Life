@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Mini-Craft HTML/CSS/JS</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #87CEEB; /* Ciel bleu */
+            font-family: Arial, sans-serif;
+            perspective: 800px; /* Ajoute de la profondeur pour l'effet 3D */
+            overflow: hidden;
+        }
+
+        /* --- Interface utilisateur --- */
+        #ui {
+            position: fixed;
+            top: 10px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border-radius: 5px;
+            z-index: 100;
+            text-align: center;
+        }
+        #ui span { font-weight: bold; color: #4CAF50; }
+
+        /* --- Conteneur du monde (point de vue isométrique) --- */
+        #world {
+            transform-style: preserve-3d;
+            transform: rotateX(60deg) rotateZ(45deg); /* Vue isométrique */
+            margin-top: 150px;
+            position: relative;
+        }
+
+        /* --- Style générique d'un bloc --- */
+        .stack {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+
+        /* --- Styles des différents types de blocs --- */
+        .block-face {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            outline: 1px solid rgba(0, 0, 0, 0.3);
+        }
+        .grass .top { background-color: #4CAF50; transform: rotateX(90deg) translateZ(25px); } /* Vert */
+        .grass .side { background-color: #6D4C41; } /* Terre */
+        .stone .top, .stone .side { background-color: #8D8D8D; } /* Gris */
+        .wood .top, .wood .side { background-color: #966F3A; } /* Bois */
+
+        /* Faces d'un cube 3D (seulement celles visibles en isométrique) */
+        .front { transform: translateZ(25px); }
+        .back { transform: translateZ(-25px); }
+        .left { transform: rotateY(-90deg) translateZ(25px); }
+        .right { transform: rotateY(90deg) translateZ(25px); }
+        .top { transform: rotateX(90deg) translateZ(25px); }
+        .bottom { transform: rotateX(-90deg) translateZ(25px); }
+
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        Bloc sélectionné : <span id="current-block-name">Herbe</span> (Appuyez sur MAJ + clic pour miner)
+        <p>1: Herbe | 2: Pierre | 3: Bois</p>
+    </div>
+
+    <div id="world">
+        </div>
+
+    <script>
+        // --- 1. CONFIGURATION DU JEU ---
+        const WORLD_SIZE = 5; // Grille de 5x5 blocs
+        const BLOCK_SIZE = 50; // Taille en pixels
+        const world = document.getElementById('world');
+        const uiName = document.getElementById('current-block-name');
+        
+        // Définition des types de blocs
+        const BLOCK_TYPES = {
+            1: { name: 'Herbe', class: 'grass' },
+            2: { name: 'Pierre', class: 'stone' },
+            3: { name: 'Bois', class: 'wood' }
+        };
+        let currentBlockType = 1; // Commence avec le bloc Herbe
+
+        // Tableau 2D pour stocker les piles de blocs
+        // Chaque élément (x, z) contient un tableau [bloc1, bloc2, ...]
+        const blockStacks = []; 
+        for (let i = 0; i < WORLD_SIZE; i++) {
+            blockStacks[i] = [];
+            for (let j = 0; j < WORLD_SIZE; j++) {
+                blockStacks[i][j] = [];
+            }
+        }
+        
+        // --- 2. FONCTIONS DE RENDU DES BLOCS ---
+        
+        /** Crée le code HTML pour un bloc de type donné */
+        function createBlockElement(typeId) {
+            const blockClass = BLOCK_TYPES[typeId].class;
+            
+            // Un bloc est un conteneur 'div' qui utilise transform-style: preserve-3d
+            const block = document.createElement('div');
+            block.classList.add('block-element');
+            
+            // Ajout des faces (CSS 3D)
+            const faces = ['top', 'bottom', 'front', 'back', 'left', 'right'];
+            faces.forEach(faceName => {
+                const face = document.createElement('div');
+                face.classList.add('block-face', faceName, blockClass);
+                block.appendChild(face);
+            });
+            
+            return block;
+        }
+        
+        /** Ajoute un bloc à une pile spécifique (x, z) */
+        function placeBlock(x, z, typeId) {
+            const stack = blockStacks[x][z];
+            const y = stack.length; // Nouvelle hauteur
+            
+            const newBlock = createBlockElement(typeId);
+            newBlock.style.transform = `translateY(-${y * BLOCK_SIZE}px)`;
+            newBlock.dataset.type = typeId; // Stocke le type
+            
+            const stackContainer = document.getElementById(`stack-${x}-${z}`);
+            stackContainer.appendChild(newBlock);
+            stack.push(newBlock);
+        }
+
+        /** Retire le bloc supérieur d'une pile spécifique (x, z) */
+        function mineBlock(x, z) {
+            const stack = blockStacks[x][z];
+            if (stack.length > 1) { // Laisse le bloc de sol (hauteur 0)
+                const minedBlock = stack.pop();
+                minedBlock.remove();
+                return true;
+            }
+            return false;
+        }
+
+        // --- 3. INITIALISATION DU MONDE ---
+        
+        /** Crée le conteneur pour une pile de blocs */
+        function createStackContainer(x, z) {
+            const stackContainer = document.createElement('div');
+            stackContainer.classList.add('stack');
+            stackContainer.id = `stack-${x}-${z}`;
+            
+            // Positionnement en 2D pour l'effet isométrique
+            stackContainer.style.left = `${(x - z) * (BLOCK_SIZE / 2)}px`;
+            stackContainer.style.top = `${(x + z) * (BLOCK_SIZE / 4)}px`;
+            
+            stackContainer.dataset.x = x;
+            stackContainer.dataset.z = z;
+            stackContainer.addEventListener('click', handleStackClick);
+            
+            world.appendChild(stackContainer);
+            
+            // Ajoute le bloc de sol initial (type Herbe)
+            placeBlock(x, z, 1); 
+        }
+
+        // Création de la grille du monde
+        for (let x = 0; x < WORLD_SIZE; x++) {
+            for (let z = 0; z < WORLD_SIZE; z++) {
+                createStackContainer(x, z);
+            }
+        }
+        
+        // --- 4. GESTION DES INTERACTIONS ---
+
+        /** Gère le clic sur un conteneur de pile */
+        function handleStackClick(event) {
+            const x = parseInt(this.dataset.x);
+            const z = parseInt(this.dataset.z);
+
+            if (event.shiftKey) {
+                // MAJ + Clic = Minage
+                mineBlock(x, z);
+            } else {
+                // Clic simple = Placement
+                placeBlock(x, z, currentBlockType);
+            }
+        }
+        
+        /** Gère la sélection du bloc par les touches numériques */
+        document.addEventListener('keydown', (event) => {
+            const key = parseInt(event.key);
+            if (key >= 1 && key <= Object.keys(BLOCK_TYPES).length) {
+                currentBlockType = key;
+                uiName.textContent = BLOCK_TYPES[key].name;
+                uiName.style.color = getBlockColor(key);
+            }
+        });
+
+        /** Fonction utilitaire pour la couleur de l'UI */
+        function getBlockColor(typeId) {
+            switch (typeId) {
+                case 1: return '#4CAF50';
+                case 2: return '#8D8D8D';
+                case 3: return '#966F3A';
+                default: return 'white';
+            }
+        }
+
+    </script>
+</body>
+</html>

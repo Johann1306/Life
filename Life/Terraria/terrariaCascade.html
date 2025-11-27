@@ -1,0 +1,1378 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terraria Cascade</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #7cd6ff;
+            font-family: 'Arial', sans-serif;
+            user-select: none;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        #gameCanvas {
+            display: block;
+            background-color: #7cd6ff;
+        }
+        
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: monospace;
+            font-size: 16px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+            z-index: 100;
+            pointer-events: none;
+        }
+        
+        #inventory {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 5px;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 8px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        
+        .inventory-slot {
+            width: 50px;
+            height: 50px;
+            border: 2px solid #666;
+            background-color: rgba(100, 100, 100, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        
+        .inventory-slot.selected {
+            border-color: #ffcc00;
+            transform: scale(1.1);
+            box-shadow: 0 0 10px #ffcc00;
+        }
+        
+        .inventory-slot .block-count {
+            position: absolute;
+            bottom: 2px;
+            right: 5px;
+            font-size: 12px;
+            color: white;
+            text-shadow: 1px 1px 2px black;
+        }
+        
+        #day-night-cycle {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 100px;
+            height: 20px;
+            background: linear-gradient(90deg, #1a1a2e, #4a90e2, #ffcc00, #ff9900, #ff6600, #ff3300);
+            border: 2px solid #333;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        #day-night-indicator {
+            height: 100%;
+            width: 2px;
+            background-color: white;
+            position: absolute;
+            box-shadow: 0 0 5px white;
+        }
+        
+        #health-bar {
+            position: absolute;
+            top: 40px;
+            left: 10px;
+            width: 200px;
+            height: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 2px solid #333;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        #health-fill {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(to right, #ff0000, #ff9900);
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="hud">
+            <div>Position: <span id="player-pos">0, 0</span></div>
+            <div>Blocs: <span id="block-count">0</span></div>
+        </div>
+        
+        <div id="health-bar">
+            <div id="health-fill"></div>
+        </div>
+        
+        <div id="day-night-cycle">
+            <div id="day-night-indicator"></div>
+        </div>
+        
+        <div id="inventory">
+            <div class="inventory-slot selected" data-block="dirt">
+                <span>🌱</span>
+                <span class="block-count">99</span>
+            </div>
+            <div class="inventory-slot" data-block="stone">
+                <span>🪨</span>
+                <span class="block-count">99</span>
+            </div>
+            <div class="inventory-slot" data-block="wood">
+                <span>🪵</span>
+                <span class="block-count">99</span>
+            </div>
+            <div class="inventory-slot" data-block="grass">
+                <span>🌿</span>
+                <span class="block-count">99</span>
+            </div>
+            <div class="inventory-slot" data-block="sand">
+                <span>🏖️</span>
+                <span class="block-count">99</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration du jeu
+        const config = {
+            gravity: 0.5,
+            playerSpeed: 5,
+            jumpForce: 12,
+            world: {
+                width: 2000,
+                height: 1000,
+                chunkSize: 16,
+                seed: Math.floor(Math.random() * 1000000)
+            },
+            blockSize: 40,
+            renderDistance: 15
+        };
+
+        // Éléments du DOM
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const playerPosElement = document.getElementById('player-pos');
+        const blockCountElement = document.getElementById('block-count');
+        const healthFill = document.getElementById('health-fill');
+        const dayNightIndicator = document.getElementById('day-night-indicator');
+        const inventorySlots = document.querySelectorAll('.inventory-slot');
+
+        // Redimensionnement du canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Définition des blocs
+        const blocks = {
+            air: { id: 0, name: 'Air', color: '#7cd6ff', solid: false, emoji: ' ' },
+            dirt: { id: 1, name: 'Terre', color: '#8B4513', solid: true, emoji: '🌱' },
+            grass: { id: 2, name: 'Herbe', color: '#7CFC00', solid: true, emoji: '🌿' },
+            stone: { id: 3, name: 'Pierre', color: '#808080', solid: true, emoji: '🪨' },
+            wood: { id: 4, name: 'Bois', color: '#8B4513', solid: true, emoji: '🪵' },
+            leaves: { id: 5, name: 'Feuilles', color: '#228B22', solid: true, emoji: '🍃' },
+            sand: { id: 6, name: 'Sable', color: '#F4A460', solid: true, emoji: '🏖️', gravity: true },
+            water: { id: 7, name: 'Eau', color: '#1E90FF', solid: false, liquid: true, emoji: '💧' },
+            cloud: { id: 8, name: 'Nuage', color: '#FFFFFF', solid: false, emoji: '☁️' }
+        };
+
+        // Définition des biomes
+        const biomes = [
+            { name: 'plains', color: '#7CFC00', surfaceHeight: 0.5, amplitude: 0.1, frequency: 0.02 },
+            { name: 'desert', color: '#F4A460', surfaceHeight: 0.4, amplitude: 0.05, frequency: 0.01 },
+            { name: 'forest', color: '#228B22', surfaceHeight: 0.6, amplitude: 0.2, frequency: 0.015 },
+            { name: 'mountains', color: '#A9A9A9', surfaceHeight: 0.7, amplitude: 0.3, frequency: 0.03 }
+        ];
+
+        // Génération de bruit de Perlin
+        class PerlinNoise {
+            constructor(seed) {
+                this.seed = seed || Math.random() * 10000;
+                this.perm = new Uint8Array(512);
+                this.gradP = new Array(512);
+                this.seedNoise();
+            }
+
+            seedNoise() {
+                const p = new Uint8Array(256);
+                for (let i = 0; i < 256; i++) p[i] = i;
+                
+                // Mélanger le tableau avec la graine
+                for (let i = 255; i > 0; i--) {
+                    const j = Math.floor(this.noise2d(i, this.seed) * 256) % 256;
+                    [p[i], p[j]] = [p[j], p[i]];
+                }
+                
+                for (let i = 0; i < 512; i++) {
+                    this.perm[i] = p[i & 255];
+                    this.gradP[i] = ((this.perm[i] % 12) - 5.5) / 5.5;
+                }
+            }
+
+            fade(t) {
+                return t * t * t * (t * (t * 6 - 15) + 10);
+            }
+
+            lerp(a, b, t) {
+                return (1 - t) * a + t * b;
+            }
+
+            grad(hash, x, y) {
+                const h = hash & 15;
+                const u = h < 8 ? x : y;
+                const v = h < 4 ? y : h === 12 || h === 14 ? x : 0;
+                return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+            }
+
+            noise2d(x, y) {
+                const X = Math.floor(x) & 255;
+                const Y = Math.floor(y) & 255;
+                
+                x -= Math.floor(x);
+                y -= Math.floor(y);
+                
+                const u = this.fade(x);
+                const v = this.fade(y);
+                
+                const A = this.perm[X] + Y;
+                const B = this.perm[X + 1] + Y;
+                
+                return this.lerp(
+                    this.lerp(this.grad(this.perm[A], x, y), this.grad(this.perm[B], x - 1, y), u),
+                    this.lerp(this.grad(this.perm[A + 1], x, y - 1), this.grad(this.perm[B + 1], x - 1, y - 1), u),
+                    v
+                ) * 0.5 + 0.5; // Normalisation entre 0 et 1
+            }
+        }
+
+        // Classe du monde
+        class World {
+            constructor() {
+                this.width = config.world.width;
+                this.height = config.world.height;
+                this.chunkSize = config.world.chunkSize;
+                this.seed = config.world.seed;
+                this.chunks = new Map();
+                this.perlin = new PerlinNoise(this.seed);
+                this.biomeNoise = new PerlinNoise(this.seed + 1);
+                this.caveNoise = new PerlinNoise(this.seed + 2);
+                this.oreNoise = new PerlinNoise(this.seed + 3);
+                
+                // Générer les biomes
+                this.generateBiomes();
+                // Générer la surface
+                this.generateTerrain();
+                // Générer les grottes
+                this.generateCaves();
+                // Générer les minerais
+                this.generateOres();
+                // Ajouter des arbres
+                this.generateTrees();
+                // Ajouter des nuages
+                this.generateClouds();
+            }
+
+            generateBiomes() {
+                this.biomeMap = [];
+                for (let x = 0; x < this.width; x++) {
+                    const noise = this.biomeNoise.noise2d(x * 0.01, 0);
+                    this.biomeMap[x] = Math.floor(noise * biomes.length) % biomes.length;
+                }
+            }
+
+            getBiomeAt(x) {
+                const chunkX = Math.floor(x / this.chunkSize);
+                const biomeIndex = this.biomeMap[chunkX] || 0;
+                return biomes[biomeIndex];
+            }
+
+            generateTerrain() {
+                for (let x = 0; x < this.width; x++) {
+                    const biome = this.getBiomeAt(x * config.blockSize);
+                    const surfaceY = Math.floor(
+                        this.height * biome.surfaceHeight + 
+                        Math.sin(x * biome.frequency) * biome.amplitude * this.height / 2
+                    );
+                    
+                    for (let y = 0; y < this.height; y++) {
+                        if (y > surfaceY + 5) {
+                            // Pierre sous la surface
+                            this.setBlock(x, y, 'stone');
+                        } else if (y === surfaceY) {
+                            // Herbe en surface
+                            this.setBlock(x, y, 'grass');
+                        } else if (y > surfaceY - 3) {
+                            // Terre sous l'herbe
+                            this.setBlock(x, y, 'dirt');
+                        } else if (y > surfaceY - 5) {
+                            // Mélange de terre et de pierre
+                            this.setBlock(x, y, Math.random() > 0.3 ? 'dirt' : 'stone');
+                        }
+                        
+                        // Eau pour les biomes désert
+                        if (biome.name === 'desert' && y > surfaceY && y < surfaceY + 5 && Math.random() < 0.1) {
+                            this.setBlock(x, y, 'sand');
+                        }
+                    }
+                }
+            }
+
+            generateCaves() {
+                for (let x = 0; x < this.width; x++) {
+                    for (let y = 0; y < this.height; y++) {
+                        const block = this.getBlock(x, y);
+                        if (block === 'air') continue;
+                        
+                        // Ne pas générer de grottes dans le sable
+                        if (block === 'sand') continue;
+                        
+                        const noise = this.caveNoise.noise2d(x * 0.1, y * 0.1);
+                        const threshold = 0.3 + (y / this.height) * 0.4; // Moins de grottes en surface
+                        
+                        if (noise > threshold) {
+                            this.setBlock(x, y, 'air');
+                        }
+                    }
+                }
+            }
+
+            generateOres() {
+                // Générer des veines de minerais
+                for (let i = 0; i < 100; i++) {
+                    const oreType = Math.random() > 0.7 ? 'stone' : 'dirt';
+                    const size = Math.floor(Math.random() * 5) + 3;
+                    const x = Math.floor(Math.random() * (this.width - size * 2)) + size;
+                    const y = Math.floor(Math.random() * (this.height / 2)) + this.height / 4;
+                    
+                    this.generateOreVein(x, y, size, oreType);
+                }
+            }
+
+            generateOreVein(x, y, size, oreType) {
+                for (let dx = -size; dx <= size; dx++) {
+                    for (let dy = -size; dy <= size; dy++) {
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist <= size && Math.random() > 0.3) {
+                            const blockX = x + dx;
+                            const blockY = y + dy;
+                            
+                            if (blockX >= 0 && blockX < this.width && blockY >= 0 && blockY < this.height) {
+                                const block = this.getBlock(blockX, blockY);
+                                if (block === 'dirt' || block === 'stone') {
+                                    this.setBlock(blockX, blockY, oreType);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            generateTrees() {
+                for (let x = 20; x < this.width - 20; x++) {
+                    const biome = this.getBiomeAt(x * config.blockSize);
+                    
+                    // Moins d'arbres dans le désert
+                    if (biome.name === 'desert' && Math.random() > 0.1) continue;
+                    
+                    // Plus d'arbres dans la forêt
+                    const treeChance = biome.name === 'forest' ? 0.95 : 0.98;
+                    
+                    if (Math.random() > treeChance) {
+                        // Trouver la surface à cette position x
+                        let surfaceY = 0;
+                        for (let y = 0; y < this.height; y++) {
+                            const block = this.getBlock(x, y);
+                            if (block === 'grass' || block === 'sand') {
+                                surfaceY = y;
+                                break;
+                            }
+                        }
+                        
+                        // Vérifier qu'il y a assez d'espace pour un arbre
+                        let canPlaceTree = true;
+                        for (let dx = -2; dx <= 2; dx++) {
+                            for (let dy = 1; dy <= 6; dy++) {
+                                const block = this.getBlock(x + dx, surfaceY - dy);
+                                if (block !== 'air') {
+                                    canPlaceTree = false;
+                                    break;
+                                }
+                            }
+                            if (!canPlaceTree) break;
+                        }
+                        
+                        if (canPlaceTree) {
+                            // Tronc
+                            const trunkHeight = 4 + Math.floor(Math.random() * 2);
+                            for (let dy = 1; dy <= trunkHeight; dy++) {
+                                this.setBlock(x, surfaceY - dy, 'wood');
+                            }
+                            
+                            // Feuillage
+                            const leafStart = surfaceY - trunkHeight - 2;
+                            const leafEnd = surfaceY - trunkHeight + 1;
+                            
+                            for (let ly = leafStart; ly <= leafEnd; ly++) {
+                                const radius = ly === leafStart || ly === leafEnd ? 1 : 2;
+                                for (let lx = x - radius; lx <= x + radius; lx++) {
+                                    for (let lz = -radius; lz <= radius; lz++) {
+                                        if (Math.random() > 0.3) {
+                                            this.setBlock(lx, ly, 'leaves');
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Pommes ou pas de pommes
+                            if (Math.random() > 0.7) {
+                                this.setBlock(x, surfaceY - trunkHeight, 'leaves');
+                            }
+                        }
+                    }
+                }
+            }
+
+            generateClouds() {
+                for (let x = 0; x < this.width; x += 5) {
+                    for (let y = 10; y < 20; y += 3) {
+                        if (Math.random() > 0.7) {
+                            const cloudWidth = Math.floor(Math.random() * 5) + 3;
+                            const cloudHeight = Math.floor(Math.random() * 2) + 1;
+                            
+                            for (let dx = 0; dx < cloudWidth; dx++) {
+                                for (let dy = 0; dy < cloudHeight; dy++) {
+                                    if (Math.random() > 0.3) {
+                                        this.setBlock(x + dx, y + dy, 'cloud');
+                                    }
+                                }
+                            }
+                            
+                            x += cloudWidth + Math.floor(Math.random() * 10) + 5;
+                        }
+                    }
+                }
+            }
+
+            getChunk(x, y) {
+                const chunkX = Math.floor(x / this.chunkSize);
+                const chunkY = Math.floor(y / this.chunkSize);
+                const chunkKey = `${chunkX},${chunkY}`;
+                
+                if (!this.chunks.has(chunkKey)) {
+                    this.chunks.set(chunkKey, new Array(this.chunkSize * this.chunkSize).fill(0));
+                }
+                
+                return {
+                    chunk: this.chunks.get(chunkKey),
+                    chunkX,
+                    chunkY,
+                    localX: x % this.chunkSize,
+                    localY: y % this.chunkSize
+                };
+            }
+
+            getBlock(x, y) {
+                if (x < 0 || x >= this.width || y < 0 || y >= this.height) {
+                    return 'air';
+                }
+                
+                const { chunk, localX, localY } = this.getChunk(x, y);
+                const blockId = chunk[localY * this.chunkSize + localX];
+                
+                for (const [key, block] of Object.entries(blocks)) {
+                    if (block.id === blockId) {
+                        return key;
+                    }
+                }
+                
+                return 'air';
+            }
+
+            setBlock(x, y, type) {
+                if (x < 0 || x >= this.width || y < 0 || y >= this.height) {
+                    return false;
+                }
+                
+                const { chunk, localX, localY } = this.getChunk(x, y);
+                chunk[localY * this.chunkSize + localX] = blocks[type]?.id || 0;
+                return true;
+            }
+
+            update() {
+                // Mettre à jour les blocs avec gravité (comme le sable)
+                for (let x = 0; x < this.width; x++) {
+                    for (let y = this.height - 2; y >= 0; y--) {
+                        const block = this.getBlock(x, y);
+                        const blockBelow = this.getBlock(x, y + 1);
+                        
+                        if (blocks[block]?.gravity && blockBelow === 'air') {
+                            this.setBlock(x, y, 'air');
+                            this.setBlock(x, y + 1, block);
+                        }
+                    }
+                }
+                
+                // Mettre à jour les liquides (comme l'eau)
+                for (let x = 0; x < this.width; x++) {
+                    for (let y = this.height - 2; y >= 0; y--) {
+                        if (this.getBlock(x, y) === 'water') {
+                            this.updateWater(x, y);
+                        }
+                    }
+                }
+            }
+
+            updateWater(x, y) {
+                const below = this.getBlock(x, y + 1);
+                
+                // Tomber si en dessous c'est vide
+                if (below === 'air') {
+                    this.setBlock(x, y, 'air');
+                    this.setBlock(x, y + 1, 'water');
+                    return;
+                }
+                
+                // Se répandre horizontalement
+                if (below === 'water') {
+                    const dir = Math.random() > 0.5 ? 1 : -1;
+                    
+                    // Essayer à gauche ou à droite
+                    if (this.getBlock(x + dir, y) === 'air' && this.getBlock(x + dir, y + 1) !== 'air') {
+                        this.setBlock(x, y, 'air');
+                        this.setBlock(x + dir, y, 'water');
+                        return;
+                    }
+                    
+                    // Essayer de l'autre côté si le premier échoue
+                    if (this.getBlock(x - dir, y) === 'air' && this.getBlock(x - dir, y + 1) !== 'air') {
+                        this.setBlock(x, y, 'air');
+                        this.setBlock(x - dir, y, 'water');
+                        return;
+                    }
+                }
+            }
+
+            render(camera) {
+                // Calculer les limites de rendu
+                const startX = Math.max(0, Math.floor(camera.x / config.blockSize) - 1);
+                const endX = Math.min(this.width, Math.ceil((camera.x + canvas.width) / config.blockSize) + 1);
+                const startY = Math.max(0, Math.floor(camera.y / config.blockSize) - 1);
+                const endY = Math.min(this.height, Math.ceil((camera.y + canvas.height) / config.blockSize) + 1);
+                
+                // Rendre les blocs visibles
+                for (let y = startY; y < endY; y++) {
+                    for (let x = startX; x < endX; x++) {
+                        const block = this.getBlock(x, y);
+                        
+                        if (block === 'air') continue;
+                        
+                        const blockX = x * config.blockSize - camera.x;
+                        const blockY = y * config.blockSize - camera.y;
+                        
+                        // Dessiner le bloc
+                        if (blocks[block].emoji) {
+                            // Dessiner l'émoji au lieu d'un rectangle
+                            ctx.font = `${config.blockSize}px Arial`;
+                            ctx.fillText(blocks[block].emoji, blockX, blockY + config.blockSize);
+                        } else {
+                            // Dessiner un rectangle coloré si pas d'émoji
+                            ctx.fillStyle = blocks[block].color;
+                            ctx.fillRect(blockX, blockY, config.blockSize, config.blockSize);
+                            
+                            // Ajouter des détails pour certains blocs
+                            if (block === 'grass') {
+                                ctx.fillStyle = '#5A8F3C';
+                                ctx.fillRect(blockX, blockY, config.blockSize, 2);
+                            } else if (block === 'dirt') {
+                                // Ajouter des taches de terre
+                                for (let i = 0; i < 3; i++) {
+                                    const dx = Math.random() * config.blockSize;
+                                    const dy = Math.random() * config.blockSize;
+                                    const size = Math.random() * 3 + 1;
+                                    ctx.fillStyle = `rgba(0, 0, 0, ${Math.random() * 0.2})`;
+                                    ctx.fillRect(blockX + dx, blockY + dy, size, size);
+                                }
+                            }
+                        }
+                        
+                        // Ajouter une bordure subtile
+                        ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+                        ctx.strokeRect(blockX, blockY, config.blockSize, config.blockSize);
+                    }
+                }
+                
+                // Rendre les effets spéciaux (comme l'eau)
+                for (let y = startY; y < endY; y++) {
+                    for (let x = startX; x < endX; x++) {
+                        const block = this.getBlock(x, y);
+                        
+                        if (block !== 'water') continue;
+                        
+                        const blockX = x * config.blockSize - camera.x;
+                        const blockY = y * config.blockSize - camera.y;
+                        
+                        // Rendu de l'eau avec transparence
+                        ctx.fillStyle = 'rgba(30, 144, 255, 0.7)';
+                        ctx.fillRect(blockX, blockY, config.blockSize, config.blockSize);
+                        
+                        // Ajouter des reflets
+                        if (Math.random() > 0.8) {
+                            const size = Math.random() * 3 + 1;
+                            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                            ctx.fillRect(
+                                blockX + Math.random() * (config.blockSize - size),
+                                blockY + Math.random() * (config.blockSize - size),
+                                size,
+                                size
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // Classe du joueur
+        class Player {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = config.blockSize * 0.8;
+                this.height = config.blockSize * 1.8;
+                this.velocityX = 0;
+                this.velocityY = 0;
+                this.speed = config.playerSpeed;
+                this.jumpForce = config.jumpForce;
+                this.isJumping = false;
+                this.facing = 1; // 1 pour droite, -1 pour gauche
+                this.health = 100;
+                this.maxHealth = 100;
+                this.inventory = {
+                    dirt: 99,
+                    stone: 99,
+                    wood: 99,
+                    grass: 99,
+                    sand: 99
+                };
+                this.selectedBlock = 'dirt';
+                this.breakProgress = 0;
+                this.breakingBlock = null;
+                this.breakSpeed = 0.02; // Vitesse de cassage des blocs
+            }
+
+            update(world, deltaTime) {
+                // Appliquer la gravité
+                this.velocityY += config.gravity * deltaTime;
+                
+                // Limiter la vitesse de chute
+                if (this.velocityY > 15) this.velocityY = 15;
+                
+                // Déplacement horizontal
+                this.x += this.velocityX * deltaTime * 60; // Multiplier par 60 pour compenser le deltaTime
+                
+                // Collision horizontale
+                this.checkHorizontalCollisions(world);
+                
+                // Déplacement vertical
+                this.y += this.velocityY * deltaTime * 60; // Multiplier par 60 pour compenser le deltaTime
+                
+                // Collision verticale
+                this.checkVerticalCollisions(world);
+                
+                // Mettre à jour la position de la caméra
+                camera.x = this.x - canvas.width / 2 + this.width / 2;
+                camera.y = this.y - canvas.height / 2 + this.height / 2;
+                
+                // Limiter la caméra aux bords du monde
+                camera.x = Math.max(0, Math.min(camera.x, world.width * config.blockSize - canvas.width));
+                camera.y = Math.max(0, Math.min(camera.y, world.height * config.blockSize - canvas.height));
+                
+                // Mettre à jour la position affichée
+                playerPosElement.textContent = `${Math.floor(this.x / config.blockSize)}, ${Math.floor(this.y / config.blockSize)}`;
+                
+                // Mettre à jour la barre de vie
+                healthFill.style.width = `${(this.health / this.maxHealth) * 100}%`;
+                
+                // Gérer la cassure des blocs
+                this.updateBlockBreaking(world, deltaTime);
+            }
+            
+            moveLeft() {
+                this.velocityX = -this.speed;
+                this.facing = -1;
+            }
+            
+            moveRight() {
+                this.velocityX = this.speed;
+                this.facing = 1;
+            }
+            
+            stopMoving() {
+                this.velocityX = 0;
+            }
+
+            checkHorizontalCollisions(world) {
+                const playerLeft = this.x;
+                const playerRight = this.x + this.width;
+                const playerTop = this.y;
+                const playerBottom = this.y + this.height;
+                
+                // Vérifier les collisions avec les blocs solides
+                for (let y = Math.floor(playerTop / config.blockSize); y <= Math.floor(playerBottom / config.blockSize); y++) {
+                    // Collision à gauche
+                    if (this.velocityX < 0) {
+                        const leftBlock = world.getBlock(
+                            Math.floor(playerLeft / config.blockSize) - 1,
+                            y
+                        );
+                        
+                        if (blocks[leftBlock]?.solid) {
+                            this.x = (Math.floor(playerLeft / config.blockSize) + 1) * config.blockSize;
+                            this.velocityX = 0;
+                            break;
+                        }
+                    }
+                    
+                    // Collision à droite
+                    if (this.velocityX > 0) {
+                        const rightBlock = world.getBlock(
+                            Math.floor(playerRight / config.blockSize) + 1,
+                            y
+                        );
+                        
+                        if (blocks[rightBlock]?.solid) {
+                            this.x = Math.floor(playerRight / config.blockSize) * config.blockSize - this.width;
+                            this.velocityX = 0;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            checkVerticalCollisions(world) {
+                const playerLeft = this.x;
+                const playerRight = this.x + this.width;
+                const playerTop = this.y;
+                const playerBottom = this.y + this.height;
+                
+                // Vérifier les collisions avec les blocs solides
+                for (let x = Math.floor(playerLeft / config.blockSize); x <= Math.floor(playerRight / config.blockSize); x++) {
+                    // Collision en haut
+                    if (this.velocityY < 0) {
+                        const topBlock = world.getBlock(
+                            x,
+                            Math.floor(playerTop / config.blockSize) - 1
+                        );
+                        
+                        if (blocks[topBlock]?.solid) {
+                            this.y = (Math.floor(playerTop / config.blockSize) + 1) * config.blockSize;
+                            this.velocityY = 0;
+                            break;
+                        }
+                    }
+                    
+                    // Collision en bas
+                    if (this.velocityY > 0) {
+                        const bottomBlock = world.getBlock(
+                            x,
+                            Math.floor(playerBottom / config.blockSize) + 1
+                        );
+                        
+                        if (blocks[bottomBlock]?.solid) {
+                            this.y = Math.floor(playerBottom / config.blockSize) * config.blockSize - this.height;
+                            this.velocityY = 0;
+                            this.isJumping = false;
+                            break;
+                        }
+                    }
+                }
+                
+                // Vérifier si le joueur est dans l'eau
+                const inWater = this.isInWater(world);
+                if (inWater) {
+                    // Réduire la gravité dans l'eau
+                    this.velocityY *= 0.9;
+                    // Limiter la vitesse de chute dans l'eau
+                    if (this.velocityY > 5) this.velocityY = 5;
+                }
+            }
+
+            isInWater(world) {
+                const playerLeft = Math.floor(this.x / config.blockSize);
+                const playerRight = Math.floor((this.x + this.width) / config.blockSize);
+                const playerBottom = Math.floor((this.y + this.height) / config.blockSize);
+                
+                for (let x = playerLeft; x <= playerRight; x++) {
+                    const block = world.getBlock(x, playerBottom);
+                    if (block === 'water') {
+                        return true;
+                    }
+                }
+                
+                return false;
+            }
+
+            jump() {
+                if (!this.isJumping) {
+                    this.velocityY = -this.jumpForce;
+                    this.isJumping = true;
+                }
+            }
+
+            moveLeft() {
+                this.velocityX = -this.speed;
+                this.facing = -1;
+            }
+
+            moveRight() {
+                this.velocityX = this.speed;
+                this.facing = 1;
+            }
+
+            stopMoving() {
+                this.velocityX = 0;
+            }
+
+            placeBlock(world, x, y) {
+                // Vérifier si le bloc est à côté du joueur
+                const playerX = Math.floor(this.x / config.blockSize);
+                const playerY = Math.floor(this.y / config.blockSize);
+                
+                if (Math.abs(x - playerX) > 3 || Math.abs(y - playerY) > 3) {
+                    return false; // Trop loin
+                }
+                
+                // Vérifier si le bloc est sur le joueur
+                if (x >= playerX - 1 && x <= playerX + 1 && y >= playerY - 2 && y <= playerY + 2) {
+                    return false; // Ne pas placer sur ou trop près du joueur
+                }
+                
+                // Vérifier l'inventaire
+                if (this.inventory[this.selectedBlock] <= 0) {
+                    return false; // Pas assez de blocs dans l'inventaire
+                }
+                
+                // Placer le bloc
+                if (world.getBlock(x, y) === 'air') {
+                    world.setBlock(x, y, this.selectedBlock);
+                    this.inventory[this.selectedBlock]--;
+                    this.updateInventoryUI();
+                    return true;
+                }
+                
+                return false;
+            }
+
+            startBreaking(world, x, y) {
+                const block = world.getBlock(x, y);
+                
+                // Ne pas casser les blocs d'air ou les liquides
+                if (block === 'air' || blocks[block]?.liquid) {
+                    this.breakingBlock = null;
+                    this.breakProgress = 0;
+                    return;
+                }
+                
+                // Vérifier si le bloc est à portée
+                const playerX = Math.floor(this.x / config.blockSize);
+                const playerY = Math.floor(this.y / config.blockSize);
+                
+                if (Math.abs(x - playerX) > 3 || Math.abs(y - playerY) > 3) {
+                    this.breakingBlock = null;
+                    this.breakProgress = 0;
+                    return;
+                }
+                
+                this.breakingBlock = { x, y };
+            }
+
+            stopBreaking() {
+                this.breakingBlock = null;
+                this.breakProgress = 0;
+            }
+
+            updateBlockBreaking(world, deltaTime) {
+                if (!this.breakingBlock) return;
+                
+                const { x, y } = this.breakingBlock;
+                const block = world.getBlock(x, y);
+                
+                // Vérifier si le bloc est toujours là
+                if (block === 'air' || blocks[block]?.liquid) {
+                    this.breakingBlock = null;
+                    this.breakProgress = 0;
+                    return;
+                }
+                
+                // Augmenter la progression de cassage
+                this.breakProgress += this.breakSpeed * deltaTime;
+                
+                // Si le bloc est cassé
+                if (this.breakProgress >= 1) {
+                    // Ajouter le bloc à l'inventaire
+                    if (block !== 'leaves' && block !== 'cloud') { // Les feuilles et les nuages ne donnent rien
+                        this.inventory[block] = (this.inventory[block] || 0) + 1;
+                        this.updateInventoryUI();
+                    }
+                    
+                    // Supprimer le bloc du monde
+                    world.setBlock(x, y, 'air');
+                    
+                    // Réinitialiser la progression
+                    this.breakingBlock = null;
+                    this.breakProgress = 0;
+                }
+            }
+
+            updateInventoryUI() {
+                inventorySlots.forEach(slot => {
+                    const blockType = slot.dataset.block;
+                    const count = this.inventory[blockType] || 0;
+                    const countElement = slot.querySelector('.block-count');
+                    if (countElement) {
+                        countElement.textContent = count;
+                    }
+                    
+                    // Mettre à jour la sélection
+                    if (blockType === this.selectedBlock) {
+                        slot.classList.add('selected');
+                    } else {
+                        slot.classList.remove('selected');
+                    }
+                });
+                
+                blockCountElement.textContent = Object.values(this.inventory).reduce((a, b) => a + b, 0);
+            }
+
+            selectBlock(blockType) {
+                if (this.inventory[blockType] > 0) {
+                    this.selectedBlock = blockType;
+                    this.updateInventoryUI();
+                    return true;
+                }
+                return false;
+            }
+
+            render(ctx, camera) {
+                // Calculer la position du joueur à l'écran
+                const screenX = this.x - camera.x;
+                const screenY = this.y - camera.y;
+                
+                // Dessiner le joueur (un simple rectangle pour l'instant)
+                ctx.fillStyle = this.facing > 0 ? '#3498db' : '#2980b9';
+                ctx.fillRect(screenX, screenY, this.width, this.height);
+                
+                // Dessiner les yeux
+                const eyeOffset = this.facing > 0 ? 10 : this.width - 20;
+                ctx.fillStyle = 'white';
+                ctx.fillRect(screenX + eyeOffset, screenY + 15, 10, 10);
+                
+                // Dessiner la barre de vie au-dessus du joueur
+                if (this.health < this.maxHealth) {
+                    const healthBarWidth = 40;
+                    const healthBarHeight = 5;
+                    const healthPercent = this.health / this.maxHealth;
+                    
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                    ctx.fillRect(
+                        screenX + (this.width - healthBarWidth) / 2,
+                        screenY - 10,
+                        healthBarWidth,
+                        healthBarHeight
+                    );
+                    
+                    ctx.fillStyle = healthPercent > 0.6 ? '#2ecc71' : healthPercent > 0.3 ? '#f1c40f' : '#e74c3c';
+                    ctx.fillRect(
+                        screenX + (this.width - healthBarWidth) / 2,
+                        screenY - 10,
+                        healthBarWidth * healthPercent,
+                        healthBarHeight
+                    );
+                }
+                
+                // Afficher la barre de cassage si en train de casser un bloc
+                if (this.breakingBlock) {
+                    const blockX = this.breakingBlock.x * config.blockSize - camera.x;
+                    const blockY = this.breakingBlock.y * config.blockSize - camera.y;
+                    
+                    // Dessiner la barre de progression
+                    const barWidth = 30;
+                    const barHeight = 5;
+                    const barX = blockX + (config.blockSize - barWidth) / 2;
+                    const barY = blockY - 10;
+                    
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                    ctx.fillRect(barX, barY, barWidth, barHeight);
+                    
+                    ctx.fillStyle = '#f1c40f';
+                    ctx.fillRect(barX, barY, barWidth * this.breakProgress, barHeight);
+                }
+            }
+        }
+
+        // Classe de la caméra
+        class Camera {
+            constructor() {
+                this.x = 0;
+                this.y = 0;
+                this.targetX = 0;
+                this.targetY = 0;
+                this.smoothness = 0.1;
+            }
+            
+            update(targetX, targetY) {
+                this.targetX = targetX;
+                this.targetY = targetY;
+                
+                // Lissage du mouvement de la caméra
+                this.x += (this.targetX - this.x) * this.smoothness;
+                this.y += (this.targetY - this.y) * this.smoothness;
+            }
+        }
+
+        // Classe du cycle jour/nuit
+        class DayNightCycle {
+            constructor() {
+                this.time = 0; // 0-1, où 0.5 est midi et 0/1 est minuit
+                this.dayLength = 300; // secondes pour un cycle jour/nuit complet
+                this.lastUpdate = Date.now();
+                this.isDay = true;
+            }
+            
+            update() {
+                const now = Date.now();
+                const deltaTime = (now - this.lastUpdate) / 1000; // en secondes
+                this.lastUpdate = now;
+                
+                // Mettre à jour le temps
+                this.time += deltaTime / this.dayLength;
+                if (this.time >= 1) this.time = 0;
+                
+                // Vérifier si c'est le jour ou la nuit
+                this.isDay = this.time > 0.25 && this.time < 0.75;
+                
+                // Mettre à jour l'indicateur jour/nuit
+                dayNightIndicator.style.left = `${this.time * 100}%`;
+                
+                // Changer la couleur du ciel en fonction de l'heure
+                let skyColor;
+                if (this.time < 0.25) { // Nuit à aube
+                    const t = this.time / 0.25;
+                    skyColor = `rgb(${Math.floor(20 + 60 * t)}, ${Math.floor(20 + 60 * t)}, ${Math.floor(40 + 100 * t)})`;
+                } else if (this.time < 0.5) { // Aube à midi
+                    const t = (this.time - 0.25) / 0.25;
+                    skyColor = `rgb(${Math.floor(80 + 120 * t)}, ${Math.floor(80 + 120 * t)}, ${Math.floor(140 + 100 * t)})`;
+                } else if (this.time < 0.75) { // Midi à crépuscule
+                    const t = (this.time - 0.5) / 0.25;
+                    skyColor = `rgb(${Math.floor(200 - 120 * t)}, ${Math.floor(200 - 120 * t)}, ${Math.floor(240 - 100 * t)})`;
+                } else { // Crépuscule à nuit
+                    const t = (this.time - 0.75) / 0.25;
+                    skyColor = `rgb(${Math.floor(80 - 60 * t)}, ${Math.floor(80 - 60 * t)}, ${Math.floor(140 - 100 * t)})`;
+                }
+                
+                document.body.style.backgroundColor = skyColor;
+                
+                return {
+                    isDay: this.isDay,
+                    time: this.time,
+                    lightLevel: this.isDay ? 1 : 0.3
+                };
+            }
+        }
+
+        // Initialisation du jeu
+        const camera = new Camera();
+        const world = new World();
+        const player = new Player(100, 100);
+        const dayNightCycle = new DayNightCycle();
+        
+        // Variables de contrôle
+        const keys = {
+            left: false,
+            right: false,
+            up: false,
+            space: false,
+            shift: false
+        };
+        
+        let mouseX = 0;
+        let mouseY = 0;
+        let isMouseDown = false;
+        let isRightClick = false;
+        
+        // Mettre à jour l'interface utilisateur
+        player.updateInventoryUI();
+        
+        // Gestion des événements clavier
+        window.addEventListener('keydown', (e) => {
+            switch (e.key) {
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                case 'q':
+                case 'Q':
+                    keys.left = true;
+                    break;
+                    
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    keys.right = true;
+                    break;
+                    
+                case 'ArrowUp':
+                case ' ': // Espace
+                case 'z':
+                case 'Z':
+                case 'w':
+                case 'W':
+                    if (!keys.space) {
+                        player.jump();
+                        keys.space = true;
+                    }
+                    break;
+                    
+                case 'Shift':
+                    keys.shift = true;
+                    break;
+                    
+                // Sélection d'objets dans l'inventaire avec les touches 1-5
+                case '1':
+                    player.selectBlock('dirt');
+                    break;
+                case '2':
+                    player.selectBlock('stone');
+                    break;
+                case '3':
+                    player.selectBlock('wood');
+                    break;
+                case '4':
+                    player.selectBlock('grass');
+                    break;
+                case '5':
+                    player.selectBlock('sand');
+                    break;
+            }
+        });
+        
+        window.addEventListener('keyup', (e) => {
+            switch (e.key) {
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                case 'q':
+                case 'Q':
+                    keys.left = false;
+                    break;
+                    
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    keys.right = false;
+                    break;
+                    
+                case 'ArrowUp':
+                case ' ':
+                case 'z':
+                case 'Z':
+                case 'w':
+                case 'W':
+                    keys.space = false;
+                    break;
+                    
+                case 'Shift':
+                    keys.shift = false;
+                    break;
+            }
+        });
+        
+        // Gestion des événements de la souris
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left + camera.x;
+            mouseY = e.clientY - rect.top + camera.y;
+            
+            // Mettre à jour le bloc ciblé pour la casse/placement
+            if (isMouseDown) {
+                const blockX = Math.floor(mouseX / config.blockSize);
+                const blockY = Math.floor(mouseY / config.blockSize);
+                
+                if (isRightClick) {
+                    // Placer un bloc
+                    player.placeBlock(world, blockX, blockY);
+                } else {
+                    // Casser un bloc
+                    player.startBreaking(world, blockX, blockY);
+                }
+            }
+        });
+        
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            isRightClick = e.button === 2;
+            
+            const blockX = Math.floor(mouseX / config.blockSize);
+            const blockY = Math.floor(mouseY / config.blockSize);
+            
+            if (isRightClick) {
+                // Placer un bloc
+                player.placeBlock(world, blockX, blockY);
+            } else {
+                // Commencer à casser un bloc
+                player.startBreaking(world, blockX, blockY);
+            }
+            
+            // Empêcher le menu contextuel
+            if (e.button === 2) {
+                e.preventDefault();
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+            player.stopBreaking();
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            isMouseDown = false;
+            player.stopBreaking();
+        });
+        
+        // Gestion du clic droit
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+        
+        // Gestion des clics sur l'inventaire
+        inventorySlots.forEach(slot => {
+            slot.addEventListener('click', () => {
+                const blockType = slot.dataset.block;
+                player.selectBlock(blockType);
+            });
+        });
+        
+        // Fonction de rendu
+        function render() {
+            // Effacer le canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Mettre à jour le cycle jour/nuit
+            const timeInfo = dayNightCycle.update();
+            
+            // Rendre le monde
+            world.render(camera);
+            
+            // Rendre le joueur
+            player.render(ctx, camera);
+            
+            // Afficher des informations de débogage
+            if (keys.shift) {
+                ctx.fillStyle = 'white';
+                ctx.font = '14px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText(`FPS: ${Math.round(fps)}`, 10, 30);
+                ctx.fillText(`Position: ${Math.floor(player.x / config.blockSize)}, ${Math.floor(player.y / config.blockSize)}`, 10, 50);
+                ctx.fillText(`Temps: ${(timeInfo.time * 24).toFixed(2)}h`, 10, 70);
+                ctx.fillText(`Bloc sélectionné: ${player.selectedBlock}`, 10, 90);
+            }
+        }
+        
+        // Boucle de jeu
+        let lastTime = 0;
+        let fps = 0;
+        let frameCount = 0;
+        let lastFpsUpdate = 0;
+        
+        function gameLoop(timestamp) {
+            // Calculer le deltaTime (temps écoulé depuis la dernière frame)
+            const deltaTime = Math.min((timestamp - lastTime) / 1000, 0.1); // Limiter à 100ms max
+            lastTime = timestamp;
+            
+            // Mettre à jour le compteur FPS
+            frameCount++;
+            if (timestamp - lastFpsUpdate >= 1000) {
+                fps = frameCount * 1000 / (timestamp - lastFpsUpdate);
+                frameCount = 0;
+                lastFpsUpdate = timestamp;
+            }
+            
+            // Mettre à jour les entrées du joueur
+            if (keys.left) player.moveLeft();
+            else if (keys.right) player.moveRight();
+            else player.velocityX = 0; // Arrêter le joueur si aucune touche de déplacement n'est enfoncée
+            
+            // Mettre à jour le monde
+            world.update();
+            
+            // Mettre à jour le joueur
+            player.update(world, deltaTime);
+            
+            // Rendu
+            render();
+            
+            // Prochaine frame
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Démarrer le jeu
+        requestAnimationFrame(gameLoop);
+        
+        // Focus sur le canvas pour les contrôles clavier
+        canvas.focus();
+        
+        // Fonction pour gérer le redimensionnement
+        function handleResize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        
+        window.addEventListener('resize', handleResize);
+        handleResize();
+        
+        // Désactiver le défilement de la page avec les flèches
+        window.addEventListener('keydown', (e) => {
+            if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.code)) {
+                if (e.target === canvas || e.target === document.body) {
+                    e.preventDefault();
+                }
+            }
+        }, { passive: false });
+        
+        // Afficher les instructions
+        console.log('Contrôles :');
+        console.log('- Flèches ou ZQSD/WAZ pour se déplacer');
+        console.log('- Clic gauche : casser un bloc');
+        console.log('- Clic droit : placer un bloc');
+        console.log('- 1-5 : sélectionner un bloc dans l\'inventaire');
+        console.log('- Shift : afficher les informations de débogage');
+    </script>
+</body>
+</html>

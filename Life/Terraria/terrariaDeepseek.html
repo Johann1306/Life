@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PixelDiggers - Jeu de Bac à Sable</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            image-rendering: pixelated;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: #1a1a2e;
+            color: #e6e6e6;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(to bottom, #87CEEB, #1a1a2e 60%);
+        }
+
+        #game-canvas {
+            background-color: #0f3460;
+            border: 4px solid #3498db;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        #health-bar {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 200px;
+            height: 30px;
+            background-color: #333;
+            border: 2px solid #555;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        #health-fill {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(to right, #e74c3c, #2ecc71);
+            transition: width 0.3s;
+        }
+
+        #hotbar {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            background-color: rgba(0, 0, 0, 0.7);
+            border: 2px solid #555;
+            border-radius: 8px;
+            padding: 5px;
+            gap: 5px;
+        }
+
+        .hotbar-slot {
+            width: 50px;
+            height: 50px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 2px solid #777;
+            border-radius: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            pointer-events: auto;
+        }
+
+        .hotbar-slot.active {
+            border-color: #3498db;
+            box-shadow: 0 0 10px #3498db;
+        }
+
+        #mobile-controls {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            display: none;
+            gap: 20px;
+            pointer-events: auto;
+        }
+
+        #movement-joystick {
+            width: 120px;
+            height: 120px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            position: relative;
+        }
+
+        #joystick-handle {
+            width: 50px;
+            height: 50px;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            position: absolute;
+            top: 35px;
+            left: 35px;
+        }
+
+        #action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .action-button {
+            width: 70px;
+            height: 70px;
+            background-color: rgba(52, 152, 219, 0.7);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            color: white;
+            border: 2px solid white;
+        }
+
+        #jump-button {
+            background-color: rgba(46, 204, 113, 0.7);
+        }
+
+        #menu-button {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background-color: rgba(0, 0, 0, 0.7);
+            border: 2px solid #555;
+            border-radius: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            pointer-events: auto;
+        }
+
+        #crafting-menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            background-color: rgba(0, 0, 0, 0.9);
+            border: 4px solid #3498db;
+            border-radius: 10px;
+            padding: 20px;
+            display: none;
+            pointer-events: auto;
+            z-index: 10;
+        }
+
+        #crafting-menu h2 {
+            text-align: center;
+            margin-bottom: 15px;
+            color: #3498db;
+        }
+
+        .crafting-recipe {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+        }
+
+        .recipe-result {
+            margin-left: 10px;
+            font-weight: bold;
+        }
+
+        #start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, #1a1a2e, #0f3460);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+        }
+
+        #game-title {
+            font-size: 48px;
+            margin-bottom: 30px;
+            text-align: center;
+            color: #3498db;
+            text-shadow: 3px 3px 0 #000;
+        }
+
+        .title-variant {
+            font-size: 24px;
+            color: #2ecc71;
+            margin-top: -10px;
+            margin-bottom: 20px;
+        }
+
+        #start-button {
+            padding: 15px 40px;
+            font-size: 24px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        #start-button:hover {
+            background-color: #2980b9;
+            transform: scale(1.05);
+        }
+
+        #game-instructions {
+            max-width: 600px;
+            text-align: center;
+            margin-top: 20px;
+            line-height: 1.6;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        #mini-map {
+            position: absolute;
+            top: 20px;
+            right: 80px;
+            width: 150px;
+            height: 100px;
+            background-color: rgba(0, 0, 0, 0.7);
+            border: 2px solid #555;
+            border-radius: 5px;
+        }
+
+        @media (max-width: 768px) {
+            #mobile-controls {
+                display: flex;
+            }
+            
+            #mini-map {
+                width: 100px;
+                height: 70px;
+            }
+            
+            #health-bar {
+                width: 150px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        
+        <div id="ui-overlay">
+            <div id="health-bar">
+                <div id="health-fill"></div>
+            </div>
+            
+            <div id="mini-map"></div>
+            
+            <div id="hotbar">
+                <div class="hotbar-slot active">⛏️</div>
+                <div class="hotbar-slot">🪓</div>
+                <div class="hotbar-slot">🗡️</div>
+                <div class="hotbar-slot">🪵</div>
+                <div class="hotbar-slot">🪨</div>
+                <div class="hotbar-slot">🔦</div>
+            </div>
+            
+            <div id="mobile-controls">
+                <div id="movement-joystick">
+                    <div id="joystick-handle"></div>
+                </div>
+                <div id="action-buttons">
+                    <div class="action-button" id="action-button">⚡</div>
+                    <div class="action-button" id="jump-button">⬆️</div>
+                </div>
+            </div>
+            
+            <div id="menu-button">≡</div>
+            
+            <div id="crafting-menu">
+                <h2>Table de Fabrication</h2>
+                <div class="crafting-recipe">
+                    <div>🪵🪵 → 🪓</div>
+                    <div class="recipe-result">Hache en bois</div>
+                </div>
+                <div class="crafting-recipe">
+                    <div>🪵🪵🪨 → ⛏️</div>
+                    <div class="recipe-result">Pioche en bois</div>
+                </div>
+                <div class="crafting-recipe">
+                    <div>🪵🪵🪵 → 🗡️</div>
+                    <div class="recipe-result">Épée en bois</div>
+                </div>
+                <div class="crafting-recipe">
+                    <div>🪨🪨🪨 → 🔦</div>
+                    <div class="recipe-result">Torche</div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="start-screen">
+            <h1 id="game-title">PIXELDIGGERS</h1>
+            <div class="title-variant">(ou BlockBound)</div>
+            <button id="start-button">COMMENCER</button>
+            <div id="game-instructions">
+                <p>CONTROLES PC: WASD pour se déplacer, ESPACE pour sauter, CLIC GAUCHE pour miner/attaquer, CLIC DROIT pour placer des blocs</p>
+                <p>CONTROLES MOBILE: Utilisez le joystick et les boutons à l'écran</p>
+                <p>OBJECTIF: Explorez, minez des ressources, craftez des outils et survivez!</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration du jeu
+        const config = {
+            tileSize: 16,
+            worldWidth: 100,
+            worldHeight: 50,
+            gravity: 0.5,
+            playerSpeed: 3,
+            jumpForce: 10,
+            playerWidth: 12,
+            playerHeight: 20
+        };
+
+        // Éléments du DOM
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('start-screen');
+        const startButton = document.getElementById('start-button');
+        const healthFill = document.getElementById('health-fill');
+        const hotbarSlots = document.querySelectorAll('.hotbar-slot');
+        const craftingMenu = document.getElementById('crafting-menu');
+        const menuButton = document.getElementById('menu-button');
+        const mobileControls = document.getElementById('mobile-controls');
+        const joystick = document.getElementById('movement-joystick');
+        const joystickHandle = document.getElementById('joystick-handle');
+        const actionButton = document.getElementById('action-button');
+        const jumpButton = document.getElementById('jump-button');
+
+        // État du jeu
+        let gameState = {
+            running: false,
+            player: {
+                x: 100,
+                y: 100,
+                velocityX: 0,
+                velocityY: 0,
+                health: 100,
+                onGround: false,
+                selectedSlot: 0
+            },
+            world: [],
+            camera: {
+                x: 0,
+                y: 0
+            },
+            keys: {},
+            touch: {
+                active: false,
+                x: 0,
+                y: 0
+            }
+        };
+
+        // Types de blocs
+        const blockTypes = {
+            0: { name: 'Air', color: null },
+            1: { name: 'Terre', color: '#8B4513' },
+            2: { name: 'Herbe', color: '#556B2F' },
+            3: { name: 'Pierre', color: '#696969' },
+            4: { name: 'Bois', color: '#8B7355' },
+            5: { name: 'Feuille', color: '#2E8B57' },
+            6: { name: 'Cuivre', color: '#B87333' },
+            7: { name: 'Fer', color: '#A9A9A9' }
+        };
+
+        // Initialisation du canvas
+        function initCanvas() {
+            const container = document.getElementById('game-container');
+            canvas.width = Math.min(container.clientWidth, 1200);
+            canvas.height = Math.min(container.clientHeight, 700);
+            
+            // Ajuster la taille pour le mobile
+            if (window.innerWidth <= 768) {
+                mobileControls.style.display = 'flex';
+            }
+        }
+
+        // Génération procédurale du monde
+        function generateWorld() {
+            const world = [];
+            
+            // Générer le sol de base
+            for (let x = 0; x < config.worldWidth; x++) {
+                world[x] = [];
+                const groundHeight = Math.floor(config.worldHeight * 0.7);
+                
+                for (let y = 0; y < config.worldHeight; y++) {
+                    if (y > groundHeight) {
+                        // Sous-sol avec différents types de blocs
+                        if (y === groundHeight + 1) {
+                            world[x][y] = 2; // Herbe en surface
+                        } else if (y < groundHeight + 5) {
+                            world[x][y] = 1; // Terre
+                        } else {
+                            // Génération aléatoire de pierre et minerais
+                            const rand = Math.random();
+                            if (rand < 0.7) {
+                                world[x][y] = 3; // Pierre
+                            } else if (rand < 0.85) {
+                                world[x][y] = 6; // Cuivre
+                            } else {
+                                world[x][y] = 7; // Fer
+                            }
+                        }
+                    } else {
+                        world[x][y] = 0; // Air
+                    }
+                }
+            }
+            
+            // Générer des arbres
+            for (let i = 0; i < 5; i++) {
+                const treeX = Math.floor(Math.random() * (config.worldWidth - 10)) + 5;
+                const groundY = Math.floor(config.worldHeight * 0.7);
+                
+                // Tronc
+                for (let y = groundY - 4; y <= groundY; y++) {
+                    if (y >= 0) world[treeX][y] = 4; // Bois
+                }
+                
+                // Feuilles
+                for (let x = treeX - 2; x <= treeX + 2; x++) {
+                    for (let y = groundY - 7; y <= groundY - 5; y++) {
+                        if (x >= 0 && x < config.worldWidth && y >= 0) {
+                            world[x][y] = 5; // Feuille
+                        }
+                    }
+                }
+            }
+            
+            // Générer des cavernes
+            for (let i = 0; i < 3; i++) {
+                const caveX = Math.floor(Math.random() * (config.worldWidth - 20)) + 10;
+                const caveY = Math.floor(config.worldHeight * 0.5);
+                const caveRadius = Math.floor(Math.random() * 5) + 3;
+                
+                for (let x = caveX - caveRadius; x <= caveX + caveRadius; x++) {
+                    for (let y = caveY - caveRadius; y <= caveY + caveRadius; y++) {
+                        if (x >= 0 && x < config.worldWidth && y >= 0 && y < config.worldHeight) {
+                            const dist = Math.sqrt((x - caveX) ** 2 + (y - caveY) ** 2);
+                            if (dist < caveRadius) {
+                                world[x][y] = 0; // Air pour la caverne
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return world;
+        }
+
+        // Dessiner le monde
+        function drawWorld() {
+            const startX = Math.max(0, Math.floor(gameState.camera.x / config.tileSize));
+            const endX = Math.min(config.worldWidth, startX + Math.ceil(canvas.width / config.tileSize) + 1);
+            const startY = Math.max(0, Math.floor(gameState.camera.y / config.tileSize));
+            const endY = Math.min(config.worldHeight, startY + Math.ceil(canvas.height / config.tileSize) + 1);
+            
+            for (let x = startX; x < endX; x++) {
+                for (let y = startY; y < endY; y++) {
+                    const blockType = gameState.world[x][y];
+                    const block = blockTypes[blockType];
+                    
+                    if (block && block.color) {
+                        ctx.fillStyle = block.color;
+                        ctx.fillRect(
+                            x * config.tileSize - gameState.camera.x,
+                            y * config.tileSize - gameState.camera.y,
+                            config.tileSize,
+                            config.tileSize
+                        );
+                        
+                        // Ajouter des détails pour certains blocs
+                        if (blockType === 2) { // Herbe
+                            ctx.fillStyle = '#6B8E23';
+                            ctx.fillRect(
+                                x * config.tileSize - gameState.camera.x,
+                                y * config.tileSize - gameState.camera.y,
+                                config.tileSize,
+                                2
+                            );
+                        } else if (blockType === 6 || blockType === 7) { // Minerais
+                            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                            ctx.fillRect(
+                                x * config.tileSize - gameState.camera.x + 2,
+                                y * config.tileSize - gameState.camera.y + 2,
+                                4,
+                                4
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // Dessiner le joueur
+        function drawPlayer() {
+            ctx.fillStyle = '#3498db';
+            ctx.fillRect(
+                gameState.player.x - gameState.camera.x,
+                gameState.player.y - gameState.camera.y,
+                config.playerWidth,
+                config.playerHeight
+            );
+            
+            // Yeux du joueur
+            ctx.fillStyle = 'white';
+            ctx.fillRect(
+                gameState.player.x - gameState.camera.x + 2,
+                gameState.player.y - gameState.camera.y + 5,
+                3,
+                3
+            );
+            ctx.fillRect(
+                gameState.player.x - gameState.camera.x + 7,
+                gameState.player.y - gameState.camera.y + 5,
+                3,
+                3
+            );
+        }
+
+        // Mettre à jour la caméra
+        function updateCamera() {
+            gameState.camera.x = gameState.player.x - canvas.width / 2 + config.playerWidth / 2;
+            gameState.camera.y = gameState.player.y - canvas.height / 2 + config.playerHeight / 2;
+            
+            // Limites de la caméra
+            gameState.camera.x = Math.max(0, Math.min(gameState.camera.x, config.worldWidth * config.tileSize - canvas.width));
+            gameState.camera.y = Math.max(0, Math.min(gameState.camera.y, config.worldHeight * config.tileSize - canvas.height));
+        }
+
+        // Gestion des collisions
+        function checkCollision(x, y, width, height) {
+            const left = Math.floor(x / config.tileSize);
+            const right = Math.floor((x + width - 1) / config.tileSize);
+            const top = Math.floor(y / config.tileSize);
+            const bottom = Math.floor((y + height - 1) / config.tileSize);
+            
+            for (let blockX = left; blockX <= right; blockX++) {
+                for (let blockY = top; blockY <= bottom; blockY++) {
+                    if (blockX >= 0 && blockX < config.worldWidth && blockY >= 0 && blockY < config.worldHeight) {
+                        if (gameState.world[blockX][blockY] !== 0) {
+                            return true;
+                        }
+                    } else if (blockY >= config.worldHeight) {
+                        return true; // Collision avec le bas du monde
+                    }
+                }
+            }
+            
+            return false;
+        }
+
+        // Mettre à jour le joueur
+        function updatePlayer() {
+            // Appliquer la gravité
+            gameState.player.velocityY += config.gravity;
+            
+            // Déplacement horizontal
+            let moveX = 0;
+            if (gameState.keys['ArrowLeft'] || gameState.keys['KeyA'] || gameState.touch.x < -10) {
+                moveX = -config.playerSpeed;
+            }
+            if (gameState.keys['ArrowRight'] || gameState.keys['KeyD'] || gameState.touch.x > 10) {
+                moveX = config.playerSpeed;
+            }
+            
+            gameState.player.velocityX = moveX;
+            
+            // Saut
+            if ((gameState.keys['Space'] || gameState.keys['ArrowUp'] || gameState.keys['KeyW'] || gameState.touch.jump) && gameState.player.onGround) {
+                gameState.player.velocityY = -config.jumpForce;
+                gameState.player.onGround = false;
+                gameState.touch.jump = false;
+            }
+            
+            // Déplacement horizontal avec collision
+            if (!checkCollision(
+                gameState.player.x + gameState.player.velocityX,
+                gameState.player.y,
+                config.playerWidth,
+                config.playerHeight
+            )) {
+                gameState.player.x += gameState.player.velocityX;
+            }
+            
+            // Déplacement vertical avec collision
+            gameState.player.onGround = false;
+            if (!checkCollision(
+                gameState.player.x,
+                gameState.player.y + gameState.player.velocityY,
+                config.playerWidth,
+                config.playerHeight
+            )) {
+                gameState.player.y += gameState.player.velocityY;
+            } else {
+                if (gameState.player.velocityY > 0) {
+                    gameState.player.onGround = true;
+                }
+                gameState.player.velocityY = 0;
+            }
+            
+            // Limites du monde
+            gameState.player.x = Math.max(0, Math.min(gameState.player.x, config.worldWidth * config.tileSize - config.playerWidth));
+            gameState.player.y = Math.max(0, Math.min(gameState.player.y, config.worldHeight * config.tileSize - config.playerHeight));
+        }
+
+        // Mettre à jour l'UI
+        function updateUI() {
+            // Barre de vie
+            healthFill.style.width = `${gameState.player.health}%`;
+            
+            // Hotbar
+            hotbarSlots.forEach((slot, index) => {
+                if (index === gameState.player.selectedSlot) {
+                    slot.classList.add('active');
+                } else {
+                    slot.classList.remove('active');
+                }
+            });
+        }
+
+        // Boucle de jeu principale
+        function gameLoop() {
+            if (!gameState.running) return;
+            
+            // Effacer le canvas
+            ctx.fillStyle = '#0f3460';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Mettre à jour les éléments du jeu
+            updatePlayer();
+            updateCamera();
+            updateUI();
+            
+            // Dessiner les éléments du jeu
+            drawWorld();
+            drawPlayer();
+            
+            // Continuer la boucle
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Gestion des événements clavier
+        document.addEventListener('keydown', (e) => {
+            gameState.keys[e.code] = true;
+            
+            // Changer d'emplacement dans la hotbar
+            if (e.code >= 'Digit1' && e.code <= 'Digit6') {
+                gameState.player.selectedSlot = parseInt(e.code[5]) - 1;
+            }
+            
+            // Ouvrir/fermer le menu de craft avec E
+            if (e.code === 'KeyE') {
+                craftingMenu.style.display = craftingMenu.style.display === 'block' ? 'none' : 'block';
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            gameState.keys[e.code] = false;
+        });
+
+        // Gestion des événements de souris/tactile
+        canvas.addEventListener('mousedown', (e) => {
+            // Clic gauche pour miner/attaquer
+            if (e.button === 0) {
+                // Logique de minage/attaque
+            }
+            
+            // Clic droit pour placer des blocs
+            if (e.button === 2) {
+                // Logique de placement de blocs
+                e.preventDefault();
+            }
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault(); // Empêcher le menu contextuel
+        });
+
+        // Gestion des événements tactiles pour mobile
+        joystick.addEventListener('touchstart', handleTouchStart);
+        joystick.addEventListener('touchmove', handleTouchMove);
+        joystick.addEventListener('touchend', handleTouchEnd);
+        
+        actionButton.addEventListener('touchstart', () => {
+            // Action de minage/attaque/placement
+        });
+        
+        jumpButton.addEventListener('touchstart', () => {
+            gameState.touch.jump = true;
+        });
+
+        function handleTouchStart(e) {
+            gameState.touch.active = true;
+            updateJoystickPosition(e);
+        }
+
+        function handleTouchMove(e) {
+            if (gameState.touch.active) {
+                updateJoystickPosition(e);
+            }
+        }
+
+        function handleTouchEnd() {
+            gameState.touch.active = false;
+            gameState.touch.x = 0;
+            gameState.touch.y = 0;
+            joystickHandle.style.top = '35px';
+            joystickHandle.style.left = '35px';
+        }
+
+        function updateJoystickPosition(e) {
+            const rect = joystick.getBoundingClientRect();
+            const touch = e.touches[0];
+            const x = touch.clientX - rect.left - rect.width / 2;
+            const y = touch.clientY - rect.top - rect.height / 2;
+            
+            // Limiter le joystick au cercle
+            const distance = Math.min(Math.sqrt(x*x + y*y), rect.width / 2);
+            const angle = Math.atan2(y, x);
+            
+            const limitedX = Math.cos(angle) * distance;
+            const limitedY = Math.sin(angle) * distance;
+            
+            // Mettre à jour la position du joystick
+            joystickHandle.style.left = `${limitedX + rect.width / 2 - 25}px`;
+            joystickHandle.style.top = `${limitedY + rect.height / 2 - 25}px`;
+            
+            // Mettre à jour les valeurs de déplacement
+            gameState.touch.x = limitedX / (rect.width / 2) * config.playerSpeed * 2;
+            gameState.touch.y = limitedY / (rect.height / 2);
+        }
+
+        // Démarrer le jeu
+        startButton.addEventListener('click', () => {
+            startScreen.style.display = 'none';
+            gameState.running = true;
+            gameState.world = generateWorld();
+            gameLoop();
+        });
+
+        // Ouvrir/fermer le menu de craft
+        menuButton.addEventListener('click', () => {
+            craftingMenu.style.display = craftingMenu.style.display === 'block' ? 'none' : 'block';
+        });
+
+        // Initialisation
+        window.addEventListener('load', () => {
+            initCanvas();
+            gameState.world = generateWorld();
+        });
+
+        window.addEventListener('resize', initCanvas);
+    </script>
+</body>
+</html>

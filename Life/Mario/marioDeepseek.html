@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mario Canvas</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #87CEEB;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 4px solid #333;
+            background: #6B8CFF;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+        }
+        .info {
+            text-align: center;
+            margin-top: 10px;
+            color: #333;
+        }
+        .hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 18px;
+            text-shadow: 2px 2px 0 #000;
+        }
+    </style>
+</head>
+<body>
+    <div style="position: relative;">
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+        <div class="hud" id="hud">Vies: 3 | Score: 0</div>
+        <div class="info">Flèches pour se déplacer, Espace pour sauter</div>
+    </div>
+
+    <script>
+// CONFIG & CONSTANTS
+const CONFIG = {
+    GRAVITY: 0.8,
+    FRICTION: 0.8,
+    PLAYER_SPEED: 5,
+    JUMP_FORCE: -15,
+    CAMERA_SMOOTH: 0.05,
+    ENEMY_SPEED: 1.5
+};
+
+// CORE ENGINE
+class GameEngine {
+    constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.lastTime = 0;
+        this.accumulator = 0;
+        this.timestep = 1000 / 60;
+        
+        this.world = new World();
+        this.player = new Player(100, 200);
+        this.input = new InputManager();
+        this.renderer = new Renderer(this.ctx);
+        this.enemyManager = new EnemyManager();
+        this.itemManager = new ItemManager();
+        
+        this.score = 0;
+        this.lives = 3;
+        this.gameState = 'playing';
+        
+        this.gameLoop = this.gameLoop.bind(this);
+    }
+    
+    start() {
+        requestAnimationFrame(this.gameLoop);
+    }
+    
+    gameLoop(timestamp) {
+        if (!this.lastTime) this.lastTime = timestamp;
+        const deltaTime = timestamp - this.lastTime;
+        this.lastTime = timestamp;
+        
+        this.accumulator += deltaTime;
+        while (this.accumulator >= this.timestep) {
+            this.update(this.timestep);
+            this.accumulator -= this.timestep;
+        }
+        
+        this.render();
+        this.updateHUD();
+        requestAnimationFrame(this.gameLoop);
+    }
+    
+    update(deltaTime) {
+        if (this.gameState === 'playing') {
+            this.player.update(deltaTime, this.world);
+            this.enemyManager.update(deltaTime, this.world, this.player, this);
+            this.itemManager.update(deltaTime, this.world, this.player, this);
+            this.updateCamera();
+            this.checkPlayerDeath();
+        }
+    }
+    
+    updateCamera() {
+        const targetX = this.player.x - this.canvas.width / 3;
+        this.world.cameraX += (targetX - this.world.cameraX) * CONFIG.CAMERA_SMOOTH;
+    }
+    
+    checkPlayerDeath() {
+        if (this.player.y > this.world.height + 100) {
+            this.respawnPlayer();
+        }
+    }
+    
+    respawnPlayer() {
+        this.lives--;
+        if (this.lives <= 0) {
+            this.gameState = 'gameover';
+            return;
+        }
+        this.player.x = Math.max(100, this.world.cameraX);
+        this.player.y = 200;
+        this.player.vx = 0;
+        this.player.vy = 0;
+    }
+    
+    addScore(points) {
+        this.score += points;
+    }
+    
+    updateHUD() {
+        const hud = document.getElementById('hud');
+        hud.textContent = `Vies: ${this.lives} | Score: ${this.score}`;
+    }
+    
+    render() {
+        this.renderer.clear();
+        this.renderer.drawWorld(this.world, this.player, this.enemyManager, this.itemManager);
+        
+        if (this.gameState === 'gameover') {
+            this.renderer.drawGameOver(this.score);
+        }
+    }
+}
+
+// INPUT MANAGER
+class InputManager {
+    constructor() {
+        this.keys = {};
+        this.setupEventListeners();
+    }
+    
+    setupEventListeners() {
+        document.addEventListener('keydown', (e) => {
+            this.keys[e.code] = true;
+            if (e.code === 'Space') e.preventDefault();
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            this.keys[e.code] = false;
+        });
+    }
+    
+    isKeyPressed(key) {
+        return this.keys[key] || false;
+    }
+}
+
+// ENTITY BASE CLASS
+class Entity {
+    constructor(x, y, width, height) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.vx = 0;
+        this.vy = 0;
+        this.onGround = false;
+        this.active = true;
+    }
+    
+    getBounds() {
+        return {
+            x: this.x,
+            y: this.y,
+            width: this.width,
+            height: this.height
+        };
+    }
+    
+    isColliding(other) {
+        const a = this.getBounds();
+        const b = other.getBounds();
+        return a.x < b.x + b.width &&
+               a.x + a.width > b.x &&
+               a.y < b.y + b.height &&
+               a.y + a.height > b.y;
+    }
+}
+
+// PLAYER
+class Player extends Entity {
+    constructor(x, y) {
+        super(x, y, 32, 48);
+        this.color = '#E52521';
+        this.hatColor = '#FF0000';
+        this.faceColor = '#FFAA00';
+        this.invulnerable = 0;
+    }
+    
+    update(deltaTime, world) {
+        if (this.invulnerable > 0) {
+            this.invulnerable -= deltaTime;
+        }
+        
+        this.handleInput();
+        this.applyPhysics(deltaTime, world);
+    }
+    
+    handleInput() {
+        if (input.isKeyPressed('ArrowLeft')) this.vx = -CONFIG.PLAYER_SPEED;
+        else if (input.isKeyPressed('ArrowRight')) this.vx = CONFIG.PLAYER_SPEED;
+        else this.vx *= CONFIG.FRICTION;
+        
+        if (input.isKeyPressed('Space') && this.onGround) {
+            this.vy = CONFIG.JUMP_FORCE;
+            this.onGround = false;
+        }
+    }
+    
+    applyPhysics(deltaTime, world) {
+        this.vy += CONFIG.GRAVITY;
+        this.x += this.vx;
+        this.y += this.vy;
+        
+        this.onGround = false;
+        world.checkCollisions(this);
+        
+        this.x = Math.max(0, Math.min(this.x, world.width - this.width));
+    }
+    
+    takeDamage() {
+        if (this.invulnerable <= 0) {
+            this.invulnerable = 2000;
+            return true;
+        }
+        return false;
+    }
+}
+
+// ENEMY MANAGER
+class EnemyManager {
+    constructor() {
+        this.enemies = [];
+        this.spawnTimer = 0;
+        this.spawnInterval = 3000;
+        this.generateInitialEnemies();
+    }
+    
+    generateInitialEnemies() {
+        this.enemies = [
+            new Goomba(400, 330),
+            new Goomba(700, 280),
+            new Koopa(1100, 330),
+            new Goomba(1400, 280)
+        ];
+    }
+    
+    update(deltaTime, world, player, game) {
+        this.spawnTimer += deltaTime;
+        if (this.spawnTimer >= this.spawnInterval && this.enemies.length < 8) {
+            this.spawnEnemy(world);
+            this.spawnTimer = 0;
+        }
+        
+        for (let i = this.enemies.length - 1; i >= 0; i--) {
+            const enemy = this.enemies[i];
+            if (enemy.active) {
+                enemy.update(deltaTime, world);
+                
+                if (enemy.isColliding(player)) {
+                    this.handleEnemyCollision(enemy, player, game, i);
+                }
+            } else {
+                this.enemies.splice(i, 1);
+            }
+        }
+    }
+    
+    spawnEnemy(world) {
+        const x = world.cameraX + 900 + Math.random() * 200;
+        const type = Math.random() > 0.7 ? 'koopa' : 'goomba';
+        
+        if (type === 'goomba') {
+            this.enemies.push(new Goomba(x, 330));
+        } else {
+            this.enemies.push(new Koopa(x, 330));
+        }
+    }
+    
+    handleEnemyCollision(enemy, player, game, index) {
+        if (player.vy > 0 && player.y + player.height - player.vy <= enemy.y + 10) {
+            game.addScore(enemy.points);
+            enemy.stomp();
+            player.vy = -10;
+        } else if (player.invulnerable <= 0) {
+            if (player.takeDamage()) {
+                game.respawnPlayer();
+            }
+        }
+    }
+}
+
+// ENEMY CLASSES
+class Goomba extends Entity {
+    constructor(x, y) {
+        super(x, y, 32, 32);
+        this.color = '#8B4513';
+        this.eyeColor = '#000000';
+        this.direction = -1;
+        this.speed = CONFIG.ENEMY_SPEED;
+        this.points = 100;
+        this.stomped = false;
+    }
+    
+    update(deltaTime, world) {
+        if (!this.stomped) {
+            this.vx = this.direction * this.speed;
+            this.vy += CONFIG.GRAVITY;
+            
+            this.x += this.vx;
+            this.y += this.vy;
+            
+            world.checkCollisions(this);
+            
+            if (this.onGround && Math.random() < 0.005) {
+                this.direction *= -1;
+            }
+            
+            if (!this.onGround && this.vy > 0) {
+                const futureX = this.x + this.vx;
+                const groundY = world.height - world.groundHeight;
+                if (!world.hasGroundAt(futureX, this.y + this.height + 5)) {
+                    this.direction *= -1;
+                }
+            }
+        } else {
+            this.alpha -= 0.02;
+            if (this.alpha <= 0) {
+                this.active = false;
+            }
+        }
+    }
+    
+    stomp() {
+        this.stomped = true;
+        this.height = 16;
+        this.vy = 0;
+        this.vx = 0;
+        this.alpha = 1;
+    }
+}
+
+class Koopa extends Entity {
+    constructor(x, y) {
+        super(x, y, 32, 48);
+        this.color = '#228B22';
+        this.shellColor = '#32CD32';
+        this.direction = -1;
+        this.speed = CONFIG.ENEMY_SPEED * 0.8;
+        this.points = 200;
+        this.inShell = false;
+    }
+    
+    update(deltaTime, world) {
+        this.vx = this.direction * this.speed;
+        this.vy += CONFIG.GRAVITY;
+        
+        this.x += this.vx;
+        this.y += this.vy;
+        
+        world.checkCollisions(this);
+        
+        if (this.onGround && Math.random() < 0.003) {
+            this.direction *= -1;
+        }
+    }
+    
+    stomp() {
+        if (!this.inShell) {
+            this.inShell = true;
+            this.height = 32;
+            this.speed *= 2;
+        } else {
+            this.direction = this.x < player.x ? 1 : -1;
+            this.speed *= 3;
+        }
+    }
+}
+
+// ITEM MANAGER
+class ItemManager {
+    constructor() {
+        this.items = [];
+        this.generateInitialItems();
+    }
+    
+    generateInitialItems() {
+        this.items = [
+            new Coin(500, 250),
+            new Coin(550, 250),
+            new Coin(600, 250),
+            new Mushroom(800, 150)
+        ];
+    }
+    
+    update(deltaTime, world, player, game) {
+        for (let i = this.items.length - 1; i >= 0; i--) {
+            const item = this.items[i];
+            if (item.active) {
+                item.update(deltaTime, world);
+                
+                if (item.isColliding(player)) {
+                    item.collect(game);
+                    this.items.splice(i, 1);
+                }
+            } else {
+                this.items.splice(i, 1);
+            }
+        }
+    }
+}
+
+// ITEM CLASSES
+class Coin extends Entity {
+    constructor(x, y) {
+        super(x, y, 16, 16);
+        this.color = '#FFD700';
+        this.bounce = 0;
+        this.collected = false;
+    }
+    
+    update(deltaTime, world) {
+        this.bounce += 0.1;
+        this.y += Math.sin(this.bounce) * 0.5;
+    }
+    
+    collect(game) {
+        game.addScore(200);
+    }
+}
+
+class Mushroom extends Entity {
+    constructor(x, y) {
+        super(x, y, 24, 24);
+        this.color = '#FF0000';
+        this.vx = 1;
+    }
+    
+    update(deltaTime, world) {
+        this.vy += CONFIG.GRAVITY;
+        this.x += this.vx;
+        this.y += this.vy;
+        
+        world.checkCollisions(this);
+        
+        if (!this.onGround && this.vy > 0) {
+            const futureX = this.x + this.vx;
+            const groundY = world.height - world.groundHeight;
+            if (!world.hasGroundAt(futureX, this.y + this.height + 5)) {
+                this.vx *= -1;
+            }
+        }
+    }
+    
+    collect(game) {
+        game.addScore(1000);
+        if (game.lives < 5) {
+            game.lives++;
+        }
+    }
+}
+
+// WORLD
+class World {
+    constructor() {
+        this.width = 3000;
+        this.height = 400;
+        this.cameraX = 0;
+        this.groundHeight = 50;
+        this.platforms = this.generatePlatforms();
+        this.groundPattern = this.createGroundPattern();
+    }
+    
+    generatePlatforms() {
+        return [
+            {x: 300, y: 300, width: 200, height: 20},
+            {x: 600, y: 250, width: 150, height: 20},
+            {x: 900, y: 200, width: 200, height: 20},
+            {x: 1200, y: 300, width: 250, height: 20},
+            {x: 1600, y: 150, width: 100, height: 20},
+            {x: 1800, y: 280, width: 180, height: 20},
+            {x: 2200, y: 220, width: 220, height: 20},
+            {x: 2600, y: 300, width: 200, height: 20}
+        ];
+    }
+    
+    createGroundPattern() {
+        const pattern = [];
+        for (let i = 0; i < this.width; i += 32) {
+            pattern.push({
+                x: i,
+                type: Math.random() > 0.8 ? 'grass' : 'dirt'
+            });
+        }
+        return pattern;
+    }
+    
+    hasGroundAt(x, y) {
+        if (y >= this.height - this.groundHeight) return true;
+        
+        for (const platform of this.platforms) {
+            if (x >= platform.x && x <= platform.x + platform.width &&
+                y >= platform.y && y <= platform.y + platform.height) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    checkCollisions(entity) {
+        const bounds = entity.getBounds();
+        
+        if (bounds.y + bounds.height > this.height - this.groundHeight) {
+            entity.y = this.height - this.groundHeight - bounds.height;
+            entity.vy = 0;
+            entity.onGround = true;
+        }
+        
+        this.platforms.forEach(platform => {
+            if (this.isColliding(bounds, platform)) {
+                if (entity.vy > 0 && entity.y + entity.height - entity.vy <= platform.y) {
+                    entity.y = platform.y - entity.height;
+                    entity.vy = 0;
+                    entity.onGround = true;
+                } else if (entity.vy < 0 && entity.y - entity.vy >= platform.y + platform.height) {
+                    entity.y = platform.y + platform.height;
+                    entity.vy = 0;
+                } else if (entity.vx > 0 && entity.x + entity.width - entity.vx <= platform.x) {
+                    entity.x = platform.x - entity.width;
+                    entity.vx = 0;
+                    if (entity instanceof Goomba || entity instanceof Koopa) {
+                        entity.direction *= -1;
+                    }
+                } else if (entity.vx < 0 && entity.x - entity.vx >= platform.x + platform.width) {
+                    entity.x = platform.x + platform.width;
+                    entity.vx = 0;
+                    if (entity instanceof Goomba || entity instanceof Koopa) {
+                        entity.direction *= -1;
+                    }
+                }
+            }
+        });
+    }
+    
+    isColliding(a, b) {
+        return a.x < b.x + b.width &&
+               a.x + a.width > b.x &&
+               a.y < b.y + b.height &&
+               a.y + a.height > b.y;
+    }
+}
+
+// RENDERER
+class Renderer {
+    constructor(ctx) {
+        this.ctx = ctx;
+    }
+    
+    clear() {
+        this.ctx.fillStyle = '#6B8CFF';
+        this.ctx.fillRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
+    }
+    
+    drawWorld(world, player, enemyManager, itemManager) {
+        this.ctx.save();
+        this.ctx.translate(-world.cameraX, 0);
+        
+        this.drawBackground(world);
+        this.drawGround(world);
+        this.drawPlatforms(world);
+        this.drawItems(itemManager);
+        this.drawEnemies(enemyManager);
+        this.drawPlayer(player);
+        
+        this.ctx.restore();
+    }
+    
+    drawBackground(world) {
+        this.ctx.fillStyle = '#87CEEB';
+        this.ctx.fillRect(0, 0, world.width, world.height);
+        
+        for (let i = 0; i < 10; i++) {
+            this.ctx.fillStyle = '#FFFFFF';
+            this.ctx.beginPath();
+            this.ctx.arc(100 + i * 300, 50 + Math.sin(i) * 20, 10, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+    }
+    
+    drawGround(world) {
+        this.ctx.fillStyle = '#8B4513';
+        this.ctx.fillRect(0, world.height - world.groundHeight, world.width, world.groundHeight);
+        
+        this.ctx.fillStyle = '#556B2F';
+        world.groundPattern.forEach(segment => {
+            if (segment.type === 'grass') {
+                this.ctx.fillRect(segment.x, world.height - world.groundHeight, 32, 10);
+            }
+        });
+    }
+    
+    drawPlatforms(world) {
+        this.ctx.fillStyle = '#8B4513';
+        world.platforms.forEach(platform => {
+            this.ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+            
+            this.ctx.fillStyle = '#A0522D';
+            this.ctx.fillRect(platform.x, platform.y, platform.width, 5);
+            this.ctx.fillStyle = '#8B4513';
+        });
+    }
+    
+    drawPlayer(player) {
+        if (player.invulnerable > 0 && Math.floor(player.invulnerable / 100) % 2 === 0) {
+            return;
+        }
+        
+        this.ctx.fillStyle = player.color;
+        this.ctx.fillRect(player.x, player.y, player.width, player.height);
+        
+        this.ctx.fillStyle = player.hatColor;
+        this.ctx.fillRect(player.x - 5, player.y, player.width + 10, 15);
+        
+        this.ctx.fillStyle = player.faceColor;
+        this.ctx.fillRect(player.x + 20, player.y + 15, 8, 8);
+    }
+    
+    drawEnemies(enemyManager) {
+        enemyManager.enemies.forEach(enemy => {
+            if (enemy instanceof Goomba) {
+                this.drawGoomba(enemy);
+            } else if (enemy instanceof Koopa) {
+                this.drawKoopa(enemy);
+            }
+        });
+    }
+    
+    drawGoomba(goomba) {
+        if (goomba.stomped) {
+            this.ctx.globalAlpha = goomba.alpha;
+            this.ctx.fillStyle = goomba.color;
+            this.ctx.fillRect(goomba.x, goomba.y + 16, goomba.width, 8);
+            this.ctx.globalAlpha = 1;
+        } else {
+            this.ctx.fillStyle = goomba.color;
+            this.ctx.fillRect(goomba.x, goomba.y, goomba.width, goomba.height);
+            
+            this.ctx.fillStyle = goomba.eyeColor;
+            this.ctx.fillRect(goomba.x + 8, goomba.y + 8, 4, 4);
+            this.ctx.fillRect(goomba.x + 20, goomba.y + 8, 4, 4);
+        }
+    }
+    
+    drawKoopa(koopa) {
+        this.ctx.fillStyle = koopa.color;
+        this.ctx.fillRect(koopa.x, koopa.y, koopa.width, koopa.height);
+        
+        this.ctx.fillStyle = koopa.shellColor;
+        if (koopa.inShell) {
+            this.ctx.fillRect(koopa.x, koopa.y + 16, koopa.width, 16);
+        } else {
+            this.ctx.fillRect(koopa.x + 4, koopa.y + 20, koopa.width - 8, 20);
+        }
+    }
+    
+    drawItems(itemManager) {
+        itemManager.items.forEach(item => {
+            if (item instanceof Coin) {
+                this.ctx.fillStyle = item.color;
+                this.ctx.beginPath();
+                this.ctx.arc(item.x + 8, item.y + 8, 8, 0, Math.PI * 2);
+                this.ctx.fill();
+            } else if (item instanceof Mushroom) {
+                this.ctx.fillStyle = item.color;
+                this.ctx.fillRect(item.x, item.y, item.width, item.height);
+                
+                this.ctx.fillStyle = '#FFFFFF';
+                this.ctx.fillRect(item.x + 4, item.y + 6, 4, 4);
+                this.ctx.fillRect(item.x + 16, item.y + 6, 4, 4);
+            }
+        });
+    }
+    
+    drawGameOver(score) {
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.fillRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
+        
+        this.ctx.fillStyle = '#FFFFFF';
+        this.ctx.font = '36px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('GAME OVER', this.ctx.canvas.width / 2, this.ctx.canvas.height / 2 - 20);
+        this.ctx.font = '24px Arial';
+        this.ctx.fillText(`Score: ${score}`, this.ctx.canvas.width / 2, this.ctx.canvas.height / 2 + 20);
+        this.ctx.fillText('Appuyez sur F5 pour rejouer', this.ctx.canvas.width / 2, this.ctx.canvas.height / 2 + 60);
+    }
+}
+
+// FUTURE: LevelManager (placeholder)
+// class LevelManager { /* ... */ }
+
+// FUTURE: AudioSystem (placeholder)
+// class AudioSystem { /* ... */ }
+
+// FUTURE: SpriteSystem (placeholder)
+// class SpriteSystem { /* ... */ }
+
+// FUTURE: SaveSystem (placeholder)
+// class SaveSystem { /* ... */ }
+
+// INITIALIZATION
+let game, input;
+window.onload = function() {
+    game = new GameEngine();
+    input = new InputManager();
+    game.start();
+};
+    </script>
+</body>
+</html>

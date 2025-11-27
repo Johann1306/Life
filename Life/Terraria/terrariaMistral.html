@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PixelDiggers - Jeu Sandbox 2D</title>
+    <style>
+        /* CSS Pixel Art & Responsive */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Courier New', monospace;
+            background-color: #1a1a1a;
+            color: white;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        #game-canvas {
+            background-color: #3a2c1a;
+            image-rendering: pixelated;
+        }
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            width: 100%;
+            height: 100%;
+        }
+        #hotbar {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 5px;
+            pointer-events: auto;
+        }
+        .hotbar-slot {
+            width: 40px;
+            height: 40px;
+            border: 2px solid #555;
+            background-color: #222;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .hotbar-slot.selected {
+            border-color: #ff0;
+        }
+        #health-bar {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 200px;
+            height: 20px;
+            border: 2px solid #555;
+            background-color: #333;
+            pointer-events: none;
+        }
+        #health {
+            height: 100%;
+            background-color: #f00;
+            width: 100%;
+        }
+        #crafting-menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 300px;
+            height: 200px;
+            background-color: #222;
+            border: 2px solid #555;
+            display: none;
+            flex-direction: column;
+            pointer-events: auto;
+        }
+        .crafting-slot {
+            width: 50px;
+            height: 50px;
+            border: 1px solid #555;
+            margin: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 12px;
+        }
+        #touch-controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            display: none;
+            pointer-events: auto;
+        }
+        #joystick {
+            width: 80px;
+            height: 80px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 50%;
+            position: relative;
+        }
+        #jump-button, #action-button {
+            width: 60px;
+            height: 60px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 50%;
+            position: absolute;
+            right: 10px;
+            bottom: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        #action-button {
+            right: 80px;
+        }
+        @media (max-width: 768px) {
+            #touch-controls {
+                display: block;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        <div id="ui">
+            <div id="health-bar">
+                <div id="health"></div>
+            </div>
+            <div id="hotbar">
+                <div class="hotbar-slot selected" data-slot="0">1</div>
+                <div class="hotbar-slot" data-slot="1">2</div>
+                <div class="hotbar-slot" data-slot="2">3</div>
+                <div class="hotbar-slot" data-slot="3">4</div>
+                <div class="hotbar-slot" data-slot="4">5</div>
+            </div>
+            <div id="crafting-menu">
+                <h3 style="text-align: center; margin: 5px;">Fabriquer</h3>
+                <div style="display: flex; flex-wrap: wrap; justify-content: center;">
+                    <div class="crafting-slot" data-recipe="wood_pickaxe">Pioche en bois</div>
+                    <div class="crafting-slot" data-recipe="wood_sword">Épée en bois</div>
+                    <div class="crafting-slot" data-recipe="torch">Torche</div>
+                </div>
+                <button id="close-crafting" style="margin-top: 10px;">Fermer</button>
+            </div>
+            <div id="touch-controls">
+                <div id="joystick"></div>
+                <div id="jump-button">↑</div>
+                <div id="action-button">•</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =============================================
+        // MOTEUR DE JEU - PixelDiggers
+        // =============================================
+
+        // --- Constantes ---
+        const TILE_SIZE = 16;
+        const WORLD_WIDTH = 200;
+        const WORLD_HEIGHT = 80;
+        const GRAVITY = 0.5;
+        const JUMP_FORCE = 10;
+        const TILE_TYPES = {
+            0: { name: "Air", color: "transparent", breakable: false, solid: false },
+            1: { name: "Terre", color: "#8B4513", breakable: true, solid: true },
+            2: { name: "Herbe", color: "#228B22", breakable: true, solid: true },
+            3: { name: "Pierre", color: "#808080", breakable: true, solid: true, toolLevel: 1 },
+            4: { name: "Bois", color: "#8B4513", breakable: true, solid: true },
+            5: { name: "Feuille", color: "#008000", breakable: true, solid: false },
+            6: { name: "Cuivre", color: "#B87333", breakable: true, solid: true, toolLevel: 1 },
+        };
+        const TOOL_LEVELS = {
+            "hand": 0,
+            "wood_pickaxe": 1,
+            "stone_pickaxe": 2,
+        };
+        const RECIPES = {
+            wood_pickaxe: { name: "Pioche en bois", cost: { 4: 3, 1: 2 }, result: { type: "wood_pickaxe" } },
+            wood_sword: { name: "Épée en bois", cost: { 4: 2 }, result: { type: "wood_sword" } },
+            torch: { name: "Torche", cost: { 1: 1, 4: 1 }, result: { type: "torch" } },
+        };
+
+        // --- Canvas & Contexte ---
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const ui = document.getElementById('ui');
+        const hotbar = document.getElementById('hotbar');
+        const craftingMenu = document.getElementById('crafting-menu');
+        const closeCrafting = document.getElementById('close-crafting');
+        const touchControls = document.getElementById('touch-controls');
+        const joystick = document.getElementById('joystick');
+        const jumpButton = document.getElementById('jump-button');
+        const actionButton = document.getElementById('action-button');
+
+        // --- Redimensionnement ---
+        function resizeCanvas() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- Monde ---
+        const world = {
+            width: WORLD_WIDTH,
+            height: WORLD_HEIGHT,
+            tiles: new Array(WORLD_WIDTH * WORLD_HEIGHT).fill(0),
+            generate: function() {
+                // Génération procédurale basique
+                const groundLevel = WORLD_HEIGHT - 20;
+                for (let x = 0; x < WORLD_WIDTH; x++) {
+                    for (let y = 0; y < WORLD_HEIGHT; y++) {
+                        if (y > groundLevel + Math.sin(x/20)*10) {
+                            this.tiles[x + y * WORLD_WIDTH] = 1; // Terre
+                        }
+                        if (y === groundLevel + Math.sin(x/20)*10) {
+                            this.tiles[x + y * WORLD_WIDTH] = 2; // Herbe
+                        }
+                        if (y > groundLevel + Math.sin(x/20)*10 + 5) {
+                            if (Math.random() < 0.1) this.tiles[x + y * WORLD_WIDTH] = 3; // Pierre
+                            if (Math.random() < 0.05) this.tiles[x + y * WORLD_WIDTH] = 6; // Cuivre
+                        }
+                        if (y < groundLevel - 5 && Math.random() < 0.02) {
+                            this.tiles[x + y * WORLD_WIDTH] = 4; // Bois (arbres)
+                            if (y > groundLevel - 10) this.tiles[x + (y-1) * WORLD_WIDTH] = 5; // Feuilles
+                        }
+                    }
+                }
+            },
+            getTile: function(x, y) {
+                if (x < 0 || y < 0 || x >= WORLD_WIDTH || y >= WORLD_HEIGHT) return 0;
+                return this.tiles[Math.floor(x) + Math.floor(y) * WORLD_WIDTH];
+            },
+            setTile: function(x, y, type) {
+                if (x < 0 || y < 0 || x >= WORLD_WIDTH || y >= WORLD_HEIGHT) return;
+                this.tiles[Math.floor(x) + Math.floor(y) * WORLD_WIDTH] = type;
+            }
+        };
+        world.generate();
+
+        // --- Joueur ---
+        const player = {
+            x: 100,
+            y: 100,
+            width: 16,
+            height: 32,
+            velX: 0,
+            velY: 0,
+            jumping: false,
+            health: 100,
+            selectedSlot: 0,
+            tool: "hand",
+            inventory: [
+                { type: 1, name: "Terre", count: 64 },
+                { type: 2, name: "Herbe", count: 32 },
+                { type: 4, name: "Bois", count: 10 },
+                { type: 0, name: "Vide", count: 0 },
+                { type: 0, name: "Vide", count: 0 }
+            ],
+            update: function() {
+                // Mouvement horizontal
+                if (keys['ArrowLeft'] || keys['q']) this.velX = -3;
+                else if (keys['ArrowRight'] || keys['d']) this.velX = 3;
+                else this.velX = 0;
+
+                // Saut
+                if ((keys['ArrowUp'] || keys['z'] || keys[' ']) && !this.jumping) {
+                    this.velY = -JUMP_FORCE;
+                    this.jumping = true;
+                }
+
+                // Gravité
+                this.velY += GRAVITY;
+                this.y += this.velY;
+
+                // Collision avec le sol
+                const tileX = Math.floor(this.x / TILE_SIZE);
+                const tileY = Math.floor(this.y / TILE_SIZE);
+                if (world.getTile(tileX, tileY + 1) !== 0 ||
+                    world.getTile(tileX + this.width/TILE_SIZE, tileY + 1) !== 0) {
+                    this.y = tileY * TILE_SIZE - (this.y % TILE_SIZE);
+                    this.velY = 0;
+                    this.jumping = false;
+                }
+
+                this.x += this.velX;
+            },
+            draw: function() {
+                ctx.fillStyle = '#ff0000';
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+            },
+            breakTile: function(x, y) {
+                const tileX = Math.floor(x / TILE_SIZE);
+                const tileY = Math.floor(y / TILE_SIZE);
+                const tileType = world.getTile(tileX, tileY);
+                if (tileType === 0) return false;
+                if (!TILE_TYPES[tileType].breakable) return false;
+                if (TILE_TYPES[tileType].toolLevel && TOOL_LEVELS[this.tool] < TILE_TYPES[tileType].toolLevel) {
+                    alert("Il te faut un meilleur outil !");
+                    return false;
+                }
+                world.setTile(tileX, tileY, 0);
+                this.addToInventory(tileType);
+                return true;
+            },
+            placeTile: function(x, y, tileType) {
+                const tileX = Math.floor(x / TILE_SIZE);
+                const tileY = Math.floor(y / TILE_SIZE);
+                if (world.getTile(tileX, tileY) !== 0) return false;
+                if (this.inventory[this.selectedSlot].type !== tileType) return false;
+                if (this.inventory[this.selectedSlot].count <= 0) return false;
+                world.setTile(tileX, tileY, tileType);
+                this.inventory[this.selectedSlot].count--;
+                return true;
+            },
+            addToInventory: function(tileType) {
+                for (let i = 0; i < this.inventory.length; i++) {
+                    if (this.inventory[i].type === tileType) {
+                        this.inventory[i].count++;
+                        return;
+                    }
+                }
+                for (let i = 0; i < this.inventory.length; i++) {
+                    if (this.inventory[i].type === 0) {
+                        this.inventory[i] = { type: tileType, name: TILE_TYPES[tileType].name, count: 1 };
+                        return;
+                    }
+                }
+            },
+            canCraft: function(recipe) {
+                const cost = RECIPES[recipe].cost;
+                for (const [type, amount] of Object.entries(cost)) {
+                    let found = false;
+                    for (const item of this.inventory) {
+                        if (item.type == type && item.count >= amount) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) return false;
+                }
+                return true;
+            },
+            craft: function(recipe) {
+                if (!this.canCraft(recipe)) return false;
+                const cost = RECIPES[recipe].cost;
+                for (const [type, amount] of Object.entries(cost)) {
+                    for (let i = 0; i < this.inventory.length; i++) {
+                        if (this.inventory[i].type == type) {
+                            this.inventory[i].count -= amount;
+                            break;
+                        }
+                    }
+                }
+                // Ajouter l'objet fabriqué (simplifié)
+                const result = RECIPES[recipe].result;
+                if (result.type === "wood_pickaxe") this.tool = "wood_pickaxe";
+                return true;
+            }
+        };
+
+        // --- Contrôles ---
+        const keys = {};
+        window.addEventListener('keydown', (e) => keys[e.key] = true);
+        window.addEventListener('keyup', (e) => keys[e.key] = false);
+        window.addEventListener('mousedown', (e) => {
+            if (e.button === 0) { // Clic gauche
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const tileX = Math.floor(x / TILE_SIZE);
+                const tileY = Math.floor(y / TILE_SIZE);
+                const tileType = world.getTile(tileX, tileY);
+                if (tileType !== 0) {
+                    player.breakTile(x, y);
+                } else {
+                    const selected = player.inventory[player.selectedSlot];
+                    if (selected.type !== 0) {
+                        player.placeTile(x, y, selected.type);
+                    }
+                }
+            }
+        });
+        // Hotbar
+        document.querySelectorAll('.hotbar-slot').forEach(slot => {
+            slot.addEventListener('click', () => {
+                document.querySelectorAll('.hotbar-slot').forEach(s => s.classList.remove('selected'));
+                slot.classList.add('selected');
+                player.selectedSlot = parseInt(slot.dataset.slot);
+            });
+        });
+        // Crafting
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'e') {
+                craftingMenu.style.display = craftingMenu.style.display === 'none' ? 'flex' : 'none';
+            }
+        });
+        closeCrafting.addEventListener('click', () => {
+            craftingMenu.style.display = 'none';
+        });
+        document.querySelectorAll('.crafting-slot').forEach(slot => {
+            slot.addEventListener('click', () => {
+                const recipe = slot.dataset.recipe;
+                if (player.canCraft(recipe)) {
+                    player.craft(recipe);
+                    alert(`Tu as fabriqué : ${RECIPES[recipe].name}`);
+                } else {
+                    alert("Ressources insuffisantes !");
+                }
+            });
+        });
+        // Contrôles tactiles
+        let touchX = 0, touchY = 0;
+        joystick.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = joystick.getBoundingClientRect();
+            touchX = e.touches[0].clientX - rect.left;
+            touchY = e.touches[0].clientY - rect.top;
+        });
+        joystick.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = joystick.getBoundingClientRect();
+            const newX = e.touches[0].clientX - rect.left;
+            const newY = e.touches[0].clientY - rect.top;
+            const dx = newX - touchX;
+            const dy = newY - touchY;
+            if (Math.abs(dx) > 10) {
+                player.velX = dx > 0 ? 3 : -3;
+            } else {
+                player.velX = 0;
+            }
+        });
+        joystick.addEventListener('touchend', () => {
+            player.velX = 0;
+        });
+        jumpButton.addEventListener('click', () => {
+            if (!player.jumping) {
+                player.velY = -JUMP_FORCE;
+                player.jumping = true;
+            }
+        });
+        actionButton.addEventListener('click', () => {
+            const rect = canvas.getBoundingClientRect();
+            const x = rect.width / 2;
+            const y = rect.height / 2;
+            const tileX = Math.floor((x + player.x - canvas.width/2) / TILE_SIZE);
+            const tileY = Math.floor((y + player.y - canvas.height/2) / TILE_SIZE);
+            const tileType = world.getTile(tileX, tileY);
+            if (tileType !== 0) {
+                player.breakTile(tileX * TILE_SIZE, tileY * TILE_SIZE);
+            } else {
+                const selected = player.inventory[player.selectedSlot];
+                if (selected.type !== 0) {
+                    player.placeTile(tileX * TILE_SIZE, tileY * TILE_SIZE, selected.type);
+                }
+            }
+        });
+
+        // --- Ennemis ---
+        const enemies = [];
+        function spawnEnemy() {
+            enemies.push({
+                x: Math.random() * WORLD_WIDTH * TILE_SIZE,
+                y: 100,
+                width: 16,
+                height: 16,
+                health: 30,
+                update: function() {
+                    // Déplacement vers le joueur
+                    if (this.x < player.x) this.x += 1;
+                    else if (this.x > player.x) this.x -= 1;
+                    // Collision avec le joueur
+                    if (Math.abs(this.x - player.x) < 20 && Math.abs(this.y - player.y) < 20) {
+                        player.health -= 1;
+                    }
+                },
+                draw: function() {
+                    ctx.fillStyle = '#00ff00';
+                    ctx.fillRect(this.x, this.y, this.width, this.height);
+                }
+            });
+        }
+        setInterval(spawnEnemy, 5000);
+
+        // --- Rendu du Monde ---
+        function drawWorld() {
+            const startX = Math.max(0, Math.floor(player.x / TILE_SIZE) - 20);
+            const endX = Math.min(WORLD_WIDTH, startX + 40);
+            const startY = Math.max(0, Math.floor(player.y / TILE_SIZE) - 15);
+            const endY = Math.min(WORLD_HEIGHT, startY + 30);
+
+            for (let x = startX; x < endX; x++) {
+                for (let y = startY; y < endY; y++) {
+                    const tile = world.getTile(x, y);
+                    if (tile === 0) continue;
+                    ctx.fillStyle = TILE_TYPES[tile].color;
+                    ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                }
+            }
+        }
+
+        // --- Boucle de Jeu ---
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Mise à jour
+            player.update();
+            enemies.forEach(enemy => enemy.update());
+
+            // Rendu
+            drawWorld();
+            player.draw();
+            enemies.forEach(enemy => enemy.draw());
+
+            // UI
+            document.getElementById('health').style.width = `${player.health}%`;
+            // Hotbar
+            hotbar.innerHTML = '';
+            player.inventory.forEach((item, i) => {
+                const slot = document.createElement('div');
+                slot.className = `hotbar-slot ${i === player.selectedSlot ? 'selected' : ''}`;
+                slot.dataset.slot = i;
+                slot.textContent = item.count > 0 ? item.name[0] : '∅';
+                slot.addEventListener('click', () => {
+                    document.querySelectorAll('.hotbar-slot').forEach(s => s.classList.remove('selected'));
+                    slot.classList.add('selected');
+                    player.selectedSlot = i;
+                });
+                hotbar.appendChild(slot);
+            });
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- Démarrage ---
+        gameLoop();
+    </script>
+</body>
+</html>

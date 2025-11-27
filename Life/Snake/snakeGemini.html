@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Snake Duel - 1v1</title>
+    <style>
+        /* --- CSS & DESIGN NEON --- */
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+
+        body {
+            background-color: #050505;
+            /* Noir profond */
+            color: #fff;
+            font-family: 'Orbitron', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        #ui-container {
+            width: 800px;
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            z-index: 10;
+        }
+
+        .score-box {
+            font-size: 1.5rem;
+            padding: 10px 20px;
+            border: 1px solid #333;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 5px;
+            min-width: 150px;
+            text-align: center;
+        }
+
+        #p1-score {
+            color: #0f0;
+            border-color: #0f0;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
+        }
+
+        #p2-score {
+            color: #0ff;
+            border-color: #0ff;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+        }
+
+        canvas {
+            background-color: #0a0a0a;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8), inset 0 0 50px rgba(0, 0, 0, 0.5);
+            border: 2px solid #333;
+            display: block;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #fff;
+            padding: 40px;
+            text-align: center;
+            display: none;
+            /* Caché par défaut */
+            box-shadow: 0 0 20px #fff;
+            z-index: 20;
+        }
+
+        #overlay h1 {
+            margin: 0 0 20px 0;
+            color: #ff0055;
+            text-shadow: 0 0 10px #ff0055;
+        }
+
+        #overlay p {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+        }
+
+        .controls-info {
+            font-size: 0.9rem;
+            color: #aaa;
+            margin-top: 20px;
+        }
+
+        .key {
+            display: inline-block;
+            border: 1px solid #555;
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #ddd;
+            background: #222;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- INTERFACE -->
+    <div id="ui-container">
+        <div id="p1-score">P1 (Vert): 0</div>
+        <div id="p2-score">P2 (Bleu): 0</div>
+    </div>
+
+    <!-- ZONE DE JEU -->
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <!-- OVERLAY GAME OVER / START -->
+    <div id="overlay">
+        <h1 id="winner-text">NEON SNAKE DUEL</h1>
+        <p>Appuyez sur <span class="key">ESPACE</span> pour commencer</p>
+        <div class="controls-info">
+            <div style="color:#0f0; margin-bottom:5px;">J1: <span class="key">Z</span><span class="key">Q</span><span
+                    class="key">S</span><span class="key">D</span></div>
+            <div style="color:#0ff;">J2: <span class="key">Flèches</span></div>
+        </div>
+    </div>
+
+    <!-- LOGIQUE DU JEU -->
+    <script>
+        // --- CONFIGURATION ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const overlay = document.getElementById('overlay');
+        const winnerText = document.getElementById('winner-text');
+        const p1ScoreEl = document.getElementById('p1-score');
+        const p2ScoreEl = document.getElementById('p2-score');
+
+        const GRID_SIZE = 20; // Taille d'une case en pixels
+        const TILE_COUNT_X = canvas.width / GRID_SIZE;
+        const TILE_COUNT_Y = canvas.height / GRID_SIZE;
+        const GAME_SPEED = 15; // Images par seconde (FPS cible pour le mouvement)
+
+        let lastTime = 0;
+        let accumulator = 0;
+        let gameRunning = false;
+        let animationId;
+
+        // --- OBJETS ---
+
+        class Snake {
+            constructor(id, x, y, color, controls) {
+                this.id = id;
+                this.startPos = { x, y };
+                this.x = x;
+                this.y = y;
+                this.dx = 0; // Vélocité X
+                this.dy = 0; // Vélocité Y
+
+                // CORRECTION : Initialiser avec la position de départ pour éviter l'erreur "undefined reading x"
+                this.cells = [{ x: x, y: y }];
+
+                this.maxCells = 5; // Longueur initiale
+                this.color = color;
+                this.score = 0;
+                this.controls = controls;
+                this.nextDx = 0; // Buffer pour empêcher demi-tour instantané
+                this.nextDy = 0;
+                this.dead = false;
+            }
+
+            reset() {
+                this.x = this.startPos.x;
+                this.y = this.startPos.y;
+
+                // CORRECTION : Réinitialiser avec la tête présente
+                this.cells = [{ x: this.x, y: this.y }];
+
+                this.maxCells = 5;
+                this.score = 0;
+                this.dx = 0;
+                this.dy = 0;
+                this.nextDx = 0;
+                this.nextDy = 0;
+                this.dead = false;
+            }
+
+            changeDirection(key) {
+                // Empêcher le retournement sur soi-même
+                if (key === this.controls.up && this.dy === 0) {
+                    this.nextDx = 0; this.nextDy = -1;
+                } else if (key === this.controls.down && this.dy === 0) {
+                    this.nextDx = 0; this.nextDy = 1;
+                } else if (key === this.controls.left && this.dx === 0) {
+                    this.nextDx = -1; this.nextDy = 0;
+                } else if (key === this.controls.right && this.dx === 0) {
+                    this.nextDx = 1; this.nextDy = 0;
+                }
+            }
+
+            update() {
+                if (this.dead) return;
+
+                // Appliquer la direction bufferisée
+                if (this.nextDx !== 0 || this.nextDy !== 0) {
+                    this.dx = this.nextDx;
+                    this.dy = this.nextDy;
+                }
+
+                // Ne bouge pas si le jeu commence et aucune touche n'est pressée
+                if (this.dx === 0 && this.dy === 0) return;
+
+                this.x += this.dx;
+                this.y += this.dy;
+
+                // Collision Murs
+                if (this.x < 0 || this.x >= TILE_COUNT_X || this.y < 0 || this.y >= TILE_COUNT_Y) {
+                    this.dead = true;
+                    return;
+                }
+
+                // Ajouter la nouvelle tête
+                this.cells.unshift({ x: this.x, y: this.y });
+
+                // Couper la queue si on ne grandit pas
+                if (this.cells.length > this.maxCells) {
+                    this.cells.pop();
+                }
+            }
+
+            draw(ctx) {
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 15; // Effet Neon
+                ctx.shadowColor = this.color;
+
+                this.cells.forEach((cell, index) => {
+                    // La tête est un peu plus claire ou différente si on veut
+                    // Dessiner un rectangle légèrement plus petit que la case pour l'effet de grille
+                    ctx.fillRect(cell.x * GRID_SIZE + 1, cell.y * GRID_SIZE + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+
+                    // Yeux pour la tête
+                    if (index === 0) {
+                        ctx.fillStyle = '#fff';
+                        ctx.shadowBlur = 0;
+                        // Logique simple pour les yeux
+                        ctx.fillRect(cell.x * GRID_SIZE + 4, cell.y * GRID_SIZE + 4, 4, 4);
+                        ctx.fillRect(cell.x * GRID_SIZE + 12, cell.y * GRID_SIZE + 4, 4, 4);
+                        // Reset couleur
+                        ctx.fillStyle = this.color;
+                        ctx.shadowBlur = 15;
+                        ctx.shadowColor = this.color;
+                    }
+                });
+
+                // Reset shadow pour ne pas affecter le reste du rendu
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        class Apple {
+            constructor() {
+                this.x = 0;
+                this.y = 0;
+                this.randomize();
+            }
+
+            randomize() {
+                // Éviter de spawner sur un serpent (logique simplifiée)
+                this.x = Math.floor(Math.random() * TILE_COUNT_X);
+                this.y = Math.floor(Math.random() * TILE_COUNT_Y);
+            }
+
+            draw(ctx) {
+                ctx.fillStyle = '#ff0044';
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#ff0000';
+
+                // Dessiner une pomme ronde
+                const cx = this.x * GRID_SIZE + GRID_SIZE / 2;
+                const cy = this.y * GRID_SIZE + GRID_SIZE / 2;
+                const r = GRID_SIZE / 2 - 2;
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // --- INSTANCIATION ---
+
+        // Joueur 1 (Vert) - Contrôles ZQSD (Mapping physique AZERTY/QWERTY)
+        // KeyW = Z (Azerty) / W (Qwerty) -- Position Haut
+        // KeyA = Q (Azerty) / A (Qwerty) -- Position Gauche
+        // KeyS = S (Azerty) / S (Qwerty) -- Position Bas
+        // KeyD = D (Azerty) / D (Qwerty) -- Position Droite
+        const player1 = new Snake(1, 5, 5, '#00ff00', {
+            up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD'
+        });
+
+        // Joueur 2 (Bleu) - Flèches
+        const player2 = new Snake(2, TILE_COUNT_X - 6, TILE_COUNT_Y - 6, '#00ffff', {
+            up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight'
+        });
+
+        const apple = new Apple();
+
+        // --- MOTEUR DE JEU ---
+
+        function update() {
+            if (!gameRunning) return;
+
+            player1.update();
+            player2.update();
+
+            // Vérification Défaite (Mort)
+            if (player1.dead && player2.dead) endGame("Match Nul !");
+            else if (player1.dead) endGame("Joueur 2 Gagne !");
+            else if (player2.dead) endGame("Joueur 1 Gagne !");
+
+            if (!gameRunning) return;
+
+            // --- CORRECTION : Vérifier que les cellules existent (normalement garanti par le fix du constructeur) ---
+            if (player1.cells.length === 0 || player2.cells.length === 0) return;
+
+            // Collision Tête P1 vs Pomme
+            if (player1.cells[0].x === apple.x && player1.cells[0].y === apple.y) {
+                player1.maxCells++;
+                player1.score += 10;
+                p1ScoreEl.innerText = `P1 (Vert): ${player1.score}`;
+                apple.randomize();
+            }
+
+            // Collision Tête P2 vs Pomme
+            if (player2.cells[0].x === apple.x && player2.cells[0].y === apple.y) {
+                player2.maxCells++;
+                player2.score += 10;
+                p2ScoreEl.innerText = `P2 (Bleu): ${player2.score}`;
+                apple.randomize();
+            }
+
+            // Collision Tête P1 vs Corps P2
+            for (let cell of player2.cells) {
+                if (player1.cells[0].x === cell.x && player1.cells[0].y === cell.y) {
+                    endGame("Joueur 2 Gagne !");
+                    return;
+                }
+            }
+
+            // Collision Tête P2 vs Corps P1
+            for (let cell of player1.cells) {
+                if (player2.cells[0].x === cell.x && player2.cells[0].y === cell.y) {
+                    endGame("Joueur 1 Gagne !");
+                    return;
+                }
+            }
+
+            // Collision Tête P1 vs Corps P1 (Auto-morsure)
+            // On commence à l'index 1 car l'index 0 est la tête elle-même
+            for (let i = 1; i < player1.cells.length; i++) {
+                if (player1.cells[0].x === player1.cells[i].x && player1.cells[0].y === player1.cells[i].y) {
+                    endGame("Joueur 2 Gagne ! (P1 suicide)");
+                    return;
+                }
+            }
+
+            // Collision Tête P2 vs Corps P2 (Auto-morsure)
+            for (let i = 1; i < player2.cells.length; i++) {
+                if (player2.cells[0].x === player2.cells[i].x && player2.cells[0].y === player2.cells[i].y) {
+                    endGame("Joueur 1 Gagne ! (P2 suicide)");
+                    return;
+                }
+            }
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = '#1a1a1a';
+            ctx.lineWidth = 1;
+
+            // Lignes verticales
+            for (let x = 0; x <= canvas.width; x += GRID_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            // Lignes horizontales
+            for (let y = 0; y <= canvas.height; y += GRID_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        function draw() {
+            // Effacer l'écran
+            ctx.fillStyle = '#050505';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawGrid();
+            apple.draw(ctx);
+            player1.draw(ctx);
+            player2.draw(ctx);
+        }
+
+        function gameLoop(currentTime) {
+            if (!animationId) return; // Sécurité si stop
+
+            const deltaTime = currentTime - lastTime;
+
+            // Limiter la vitesse de mise à jour (Game Logic Tick)
+            if (deltaTime >= 1000 / GAME_SPEED) {
+                update();
+                draw(); // On dessine après la mise à jour
+                lastTime = currentTime;
+            }
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            if (gameRunning) return;
+
+            player1.reset();
+            player2.reset();
+            apple.randomize();
+
+            p1ScoreEl.innerText = "P1 (Vert): 0";
+            p2ScoreEl.innerText = "P2 (Bleu): 0";
+
+            overlay.style.display = 'none';
+            gameRunning = true;
+            lastTime = performance.now();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function endGame(winnerMsg) {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+            winnerText.innerText = winnerMsg;
+            overlay.style.display = 'block';
+
+            // Redessiner une dernière fois pour voir le crash
+            draw();
+        }
+
+        // --- GESTION DES ENTRÉES ---
+
+        document.addEventListener('keydown', (e) => {
+            // Empêcher le scroll avec les flèches et espace
+            if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].indexOf(e.code) > -1) {
+                e.preventDefault();
+            }
+
+            if (e.code === 'Space') {
+                if (!gameRunning) startGame();
+                return;
+            }
+
+            if (gameRunning) {
+                // Note technique : J'utilise e.code pour la position physique
+                // KeyW correspond à Z sur un clavier AZERTY.
+                player1.changeDirection(e.code);
+                player2.changeDirection(e.code);
+            }
+        });
+
+        // Initialisation de l'écran d'accueil
+        draw();
+        overlay.style.display = 'block';
+
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft-like en HTML/JS</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #blockType {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        Cliquez pour jouer. Déplacez-vous avec ZQSD, sautez avec ESPACE.<br>
+        Clic gauche : casser un bloc<br>
+        Clic droit : placer un bloc
+    </div>
+    <div id="blockType">Bloc sélectionné : Terre</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/PointerLockControls.js"></script>
+
+    <script>
+        // --- Variables globales ---
+        let scene, camera, renderer, controls;
+        let cubes = [];
+        let world = {};
+        let selectedBlockType = "dirt";
+        const blockTypes = {
+            dirt: { color: 0x8B4513, name: "Terre" },
+            grass: { color: 0x00a86b, name: "Herbe" },
+            stone: { color: 0x808080, name: "Pierre" }
+        };
+
+        // --- Initialisation ---
+        function init() {
+            // Scène
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+
+            // Caméra
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+            // Rendu
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Contrôles
+            controls = new THREE.PointerLockControls(camera, document.body);
+            document.addEventListener('click', () => controls.lock());
+
+            // Sol
+            const groundGeometry = new THREE.PlaneGeometry(100, 100);
+            const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x32CD32, side: THREE.DoubleSide });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = Math.PI / 2;
+            scene.add(ground);
+
+            // Lumière
+            const light = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(light);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+
+            // Position de la caméra
+            camera.position.y = 2;
+
+            // Génération de cubes aléatoires
+            generateWorld();
+
+            // Écouteurs
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('mousedown', onMouseDown);
+            document.addEventListener('contextmenu', (e) => e.preventDefault());
+            document.addEventListener('keydown', onKeyDown);
+
+            // Animation
+            animate();
+        }
+
+        // --- Génération du monde ---
+        function generateWorld() {
+            const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+            for (let i = 0; i < 50; i++) {
+                const x = Math.floor(Math.random() * 20 - 10);
+                const z = Math.floor(Math.random() * 20 - 10);
+                const y = 0;
+                const blockType = Object.keys(blockTypes)[Math.floor(Math.random() * 3)];
+                addBlock(x, y, z, blockType);
+            }
+        }
+
+        // --- Ajouter un bloc ---
+        function addBlock(x, y, z, type) {
+            const color = blockTypes[type].color;
+            const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+            const cubeMaterial = new THREE.MeshBasicMaterial({ color: color });
+            const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+            cube.position.set(x, y, z);
+            cube.userData = { type: type };
+            scene.add(cube);
+            cubes.push(cube);
+            world[`${x},${y},${z}`] = cube;
+        }
+
+        // --- Supprimer un bloc ---
+        function removeBlock(x, y, z) {
+            const key = `${x},${y},${z}`;
+            if (world[key]) {
+                scene.remove(world[key]);
+                delete world[key];
+                cubes = cubes.filter(cube => cube !== world[key]);
+            }
+        }
+
+        // --- Gestion des clics ---
+        function onMouseDown(event) {
+            if (!controls.isLocked) return;
+
+            // Raycasting pour détecter le bloc visé
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersects = raycaster.intersectObjects(cubes);
+
+            if (intersects.length > 0) {
+                const cube = intersects[0].object;
+                const { x, y, z } = cube.position;
+
+                if (event.button === 0) { // Clic gauche : casser
+                    removeBlock(x, y, z);
+                } else if (event.button === 2) { // Clic droit : placer
+                    const normal = intersects[0].face.normal;
+                    let nx = Math.round(x + normal.x);
+                    let ny = Math.round(y + normal.y);
+                    let nz = Math.round(z + normal.z);
+                    if (!world[`${nx},${ny},${nz}`]) {
+                        addBlock(nx, ny, nz, selectedBlockType);
+                    }
+                }
+            }
+        }
+
+        // --- Gestion du clavier ---
+        function onKeyDown(event) {
+            if (event.code === "Digit1") selectedBlockType = "dirt";
+            if (event.code === "Digit2") selectedBlockType = "grass";
+            if (event.code === "Digit3") selectedBlockType = "stone";
+            document.getElementById("blockType").textContent = `Bloc sélectionné : ${blockTypes[selectedBlockType].name}`;
+        }
+
+        // --- Redimensionnement ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- Animation ---
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        // --- Lancement ---
+        init();
+    </script>
+</body>
+</html>

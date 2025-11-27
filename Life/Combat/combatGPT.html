@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Petit Combat - Deux Joueurs (Canvas)</title>
+    <style>
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            background: #111;
+            color: #eee;
+            font-family: Inter, Arial, Helvetica, sans-serif;
+        }
+
+        #gameWrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        canvas {
+            background: linear-gradient(#1e1e1e, #121212);
+            box-shadow: 0 6px 30px rgba(0, 0, 0, 0.7);
+            border-radius: 8px;
+        }
+
+        .ui {
+            position: absolute;
+            top: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 18px;
+            align-items: center;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.35);
+            padding: 8px 12px;
+            border-radius: 8px;
+            backdrop-filter: blur(4px);
+        }
+
+        .hpBar {
+            width: 220px;
+            height: 14px;
+            background: #333;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .hpInner {
+            height: 100%;
+            background: linear-gradient(#ff6b6b, #ff3b3b);
+            width: 100%;
+            transition: width 0.12s linear;
+        }
+
+        .hpInner.blue {
+            background: linear-gradient(#6bc4ff, #3bb0ff);
+        }
+
+        .label {
+            font-weight: 600;
+            margin-right: 8px;
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.35);
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+
+        .centerOverlay {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.65);
+            padding: 18px 22px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        button {
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 0;
+            background: #2b6cff;
+            color: white;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        small {
+            color: #bbb;
+            display: block;
+            margin-top: 6px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="gameWrap">
+        <canvas id="game" width="1000" height="520"></canvas>
+
+        <div class="ui" id="hud" style="display:flex;">
+            <div style="display:flex;align-items:center;">
+                <span class="label">Rouge</span>
+                <div class="hpBar">
+                    <div id="hpR" class="hpInner" style="width:100%"></div>
+                </div>
+                <span style="margin-left:10px" id="hpRnum">100</span>
+            </div>
+            <div style="width:22px"></div>
+            <div style="display:flex;align-items:center;">
+                <span class="label">Bleu</span>
+                <div class="hpBar">
+                    <div id="hpB" class="hpInner blue" style="width:100%"></div>
+                </div>
+                <span style="margin-left:10px" id="hpBnum">100</span>
+            </div>
+        </div>
+
+        <div class="instructions">
+            Contrôles — <strong>Joueur 1 (Rouge)</strong> : Q/D (←→), Z (saut) / (W pour QWERTY), Espace (attaque).
+            &nbsp;|&nbsp;
+            <strong>Joueur 2 (Bleu)</strong> : ← → (déplacements), ↑ saut, Entrée (attaque).
+            <br><small>R pour recommencer. Attaque = 10 dégâts + knockback.</small>
+        </div>
+    </div>
+
+    <script>
+        /*
+          Petit jeu de combat 2 joueurs sur canvas.
+          - deux rectangles (rouge / bleu)
+          - HP 100, attaque inflige 10 et knockback
+          - sauts, gravité, limites du canvas
+          - restart avec R
+          - support AZERTY & QWERTY (Z/W, Q/A pour gauche)
+        */
+
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        const W = canvas.width, H = canvas.height;
+        const groundY = H - 80; // position du sol
+        const gravity = 0.9;
+        const friction = 0.98;
+
+        let keys = {};
+        window.addEventListener('keydown', e => {
+            keys[e.key] = true;
+            // also track special keys
+            if (e.code === 'Space') keys[' '] = true;
+            if (e.key === 'Enter') keys['Enter'] = true;
+        });
+        window.addEventListener('keyup', e => {
+            keys[e.key] = false;
+            if (e.code === 'Space') keys[' '] = false;
+            if (e.key === 'Enter') keys['Enter'] = false;
+        });
+
+        // Joueur : structure partagée
+        function createPlayer(x, color) {
+            return {
+                x: x, y: groundY - 60,
+                w: 48, h: 60,
+                vx: 0, vy: 0,
+                color: color,
+                facing: 1, // 1 = droite, -1 = gauche
+                onGround: false,
+                hp: 100,
+                attacking: false,
+                attackTimer: 0,
+                attackCooldown: 0
+            };
+        }
+
+        let p1 = createPlayer(180, '#ff4b4b'); // rouge
+        let p2 = createPlayer(W - 220, '#4bb8ff'); // bleu
+
+        // helper DOM
+        const hpRElem = document.getElementById('hpR');
+        const hpBElem = document.getElementById('hpB');
+        const hpRnum = document.getElementById('hpRnum');
+        const hpBnum = document.getElementById('hpBnum');
+
+        let gameOver = false;
+        let winner = null;
+
+        // gameplay params
+        const speed = 3.2;
+        const jumpPower = 15;
+        const attackDuration = 12; // frames
+        const attackRange = 32; // extension beyond player front
+        const attackWidth = 16;
+        const attackCooldownFrames = 22;
+        const damage = 10;
+        const knockbackVel = 8; // horizontal velocity applied on hit
+        const verticalKnock = -6;
+
+        // helper: clamp
+        function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+        function resetGame() {
+            p1 = createPlayer(180, '#ff4b4b');
+            p2 = createPlayer(W - 220, '#4bb8ff');
+            gameOver = false; winner = null;
+            updateHUD();
+        }
+
+        // update HUD
+        function updateHUD() {
+            hpRElem.style.width = (p1.hp) + '%';
+            hpBElem.style.width = (p2.hp) + '%';
+            hpRnum.textContent = p1.hp;
+            hpBnum.textContent = p2.hp;
+        }
+
+        // attack hit detection
+        function checkAttack(attacker, defender) {
+            // Only during attack frames
+            if (!attacker.attacking) return false;
+            // compute attack rect in front of attacker
+            const dir = attacker.facing;
+            const ax = attacker.x + (dir === 1 ? attacker.w : -attackRange - attackWidth);
+            const ay = attacker.y + attacker.h / 2 - attackWidth / 2;
+            const aw = attackRange + attackWidth;
+            const ah = attackWidth;
+
+            // defender rect
+            const dx = defender.x, dy = defender.y, dw = defender.w, dh = defender.h;
+            const collided = !(ax + aw < dx || ax > dx + dw || ay + ah < dy || ay > dy + dh);
+            return collided;
+        }
+
+        // Apply damage & knockback
+        function applyHit(attacker, defender) {
+            if (defender._hitInv) return; // brief invulnerable after hit to avoid multi-damage in same attack
+            defender.hp = clamp(defender.hp - damage, 0, 100);
+            defender._hitInv = 8; // frames of temporary invulnerability
+            // knockback direction: away from attacker
+            const dir = attacker.x < defender.x ? 1 : -1;
+            defender.vx = dir * knockbackVel;
+            defender.vy = verticalKnock;
+            updateHUD();
+            // check death
+            if (defender.hp <= 0 && !gameOver) {
+                gameOver = true;
+                winner = attacker === p1 ? 'Rouge' : 'Bleu';
+            }
+        }
+
+        // game loop
+        function update() {
+            // Player 1 controls (support AZERTY and QWERTY)
+            // Gauche: q OR a ; Droite: d ; Saut: z OR w ; Attaque: Space
+            let p1Left = keys['q'] || keys['Q'] || keys['a'] || keys['A'];
+            let p1Right = keys['d'] || keys['D'];
+            let p1Jump = keys['z'] || keys['Z'] || keys['w'] || keys['W'];
+            let p1Attack = keys[' '] || false;
+
+            // Player 2 controls: arrows and Enter
+            let p2Left = keys['ArrowLeft'] || false;
+            let p2Right = keys['ArrowRight'] || false;
+            let p2Jump = keys['ArrowUp'] || false;
+            let p2Attack = keys['Enter'] || false;
+
+            // handle restart
+            if ((keys['r'] || keys['R']) && gameOver) {
+                resetGame();
+            }
+
+            // skip input processing if game over (but allow restart)
+            if (!gameOver) {
+                // P1 movement
+                if (p1Left) { p1.vx = -speed; p1.facing = -1; }
+                else if (p1Right) { p1.vx = speed; p1.facing = 1; }
+                else { p1.vx *= friction; if (Math.abs(p1.vx) < 0.05) p1.vx = 0; }
+
+                // P1 jump
+                if (p1Jump && p1.onGround) { p1.vy = -jumpPower; p1.onGround = false; }
+
+                // P1 attack
+                if (p1Attack && p1.attackCooldown <= 0) {
+                    p1.attacking = true;
+                    p1.attackTimer = attackDuration;
+                    p1.attackCooldown = attackCooldownFrames;
+                }
+
+                // P2 movement
+                if (p2Left) { p2.vx = -speed; p2.facing = -1; }
+                else if (p2Right) { p2.vx = speed; p2.facing = 1; }
+                else { p2.vx *= friction; if (Math.abs(p2.vx) < 0.05) p2.vx = 0; }
+
+                // P2 jump
+                if (p2Jump && p2.onGround) { p2.vy = -jumpPower; p2.onGround = false; }
+
+                // P2 attack
+                if (p2Attack && p2.attackCooldown <= 0) {
+                    p2.attacking = true;
+                    p2.attackTimer = attackDuration;
+                    p2.attackCooldown = attackCooldownFrames;
+                }
+            }
+
+            // timers and physics per player
+            [p1, p2].forEach(p => {
+                // attack timers
+                if (p.attackCooldown > 0) p.attackCooldown--;
+                if (p.attacking) {
+                    p.attackTimer--;
+                    if (p.attackTimer <= 0) p.attacking = false;
+                }
+                // invulnerability timer
+                if (p._hitInv) p._hitInv--;
+
+                // apply gravity
+                p.vy += gravity;
+                // limit falling speed
+                if (p.vy > 28) p.vy = 28;
+
+                // integrate
+                p.x += p.vx;
+                p.y += p.vy;
+
+                // ground collision
+                if (p.y + p.h > groundY) {
+                    p.y = groundY - p.h;
+                    p.vy = 0;
+                    p.onGround = true;
+                } else {
+                    p.onGround = false;
+                }
+
+                // canvas bounds
+                if (p.x < 8) { p.x = 8; p.vx = 0; }
+                if (p.x + p.w > W - 8) { p.x = W - 8 - p.w; p.vx = 0; }
+            });
+
+            // handle attacks - check collisions once per frame
+            if (!gameOver) {
+                // p1 hit p2 ?
+                if (p1.attacking) {
+                    if (checkAttack(p1, p2)) applyHit(p1, p2);
+                }
+                if (p2.attacking) {
+                    if (checkAttack(p2, p1)) applyHit(p2, p1);
+                }
+            }
+
+            // update HUD numbers & bars smoothly
+            updateHUD();
+        }
+
+        // drawing
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+            // background subtle grid
+            ctx.fillStyle = '#0f0f12';
+            ctx.fillRect(0, 0, W, H);
+
+            // draw ground
+            ctx.fillStyle = '#222';
+            ctx.fillRect(0, groundY, W, H - groundY);
+
+            // small platform line
+            ctx.strokeStyle = '#2c2c2c';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, groundY);
+            ctx.lineTo(W, groundY);
+            ctx.stroke();
+
+            // draw players
+            drawPlayer(p1);
+            drawPlayer(p2);
+
+            // draw attack hitboxes for debug/visual
+            if (p1.attacking) drawAttackBox(p1);
+            if (p2.attacking) drawAttackBox(p2);
+
+            // draw life numbers above players
+            ctx.font = '13px Inter,Arial';
+            ctx.fillStyle = '#fff';
+            ctx.fillText('HP: ' + p1.hp, p1.x, p1.y - 10);
+            ctx.fillText('HP: ' + p2.hp, p2.x, p2.y - 10);
+
+            // game over screen
+            if (gameOver) {
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(W / 2 - 290, H / 2 - 80, 580, 160);
+                ctx.fillStyle = '#fff';
+                ctx.textAlign = 'center';
+                ctx.font = '36px Inter, Arial';
+                ctx.fillText((winner || '---') + ' a gagné !', W / 2, H / 2 - 6);
+                ctx.font = '16px Inter, Arial';
+                ctx.fillText('Appuie sur R pour recommencer', W / 2, H / 2 + 28);
+                ctx.textAlign = 'start';
+            }
+        }
+
+        function drawPlayer(p) {
+            // shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.fillRect(p.x + 4, groundY - 6, p.w, 6);
+
+            // flicker when recently hit
+            if (p._hitInv && Math.floor(p._hitInv / 2) % 2 === 0) {
+                ctx.globalAlpha = 0.6;
+            }
+
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, p.w, p.h);
+
+            ctx.globalAlpha = 1;
+            // simple eye to show facing
+            ctx.fillStyle = '#111';
+            const ex = p.facing === 1 ? p.x + p.w - 12 : p.x + 8;
+            const ey = p.y + 12;
+            ctx.fillRect(ex, ey, 8, 8);
+        }
+
+        function drawAttackBox(p) {
+            const dir = p.facing;
+            const ax = p.x + (dir === 1 ? p.w : -attackRange - attackWidth);
+            const ay = p.y + p.h / 2 - attackWidth / 2;
+            const aw = attackRange + attackWidth;
+            const ah = attackWidth;
+            ctx.save();
+            ctx.globalAlpha = 0.15;
+            ctx.fillStyle = '#ffdd57';
+            ctx.fillRect(ax, ay, aw, ah);
+            ctx.restore();
+        }
+
+        // main loop
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        // start
+        resetGame();
+        loop();
+
+    </script>
+</body>
+
+</html>

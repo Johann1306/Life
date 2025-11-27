@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Combat Stickman</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        #gameCanvas {
+            background: linear-gradient(to bottom, #4a6491, #2a3f5f);
+            display: block;
+        }
+
+        #ui {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-sizing: border-box;
+        }
+
+        .player-ui {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: white;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+        }
+
+        .health-bar {
+            width: 200px;
+            height: 20px;
+            background-color: #333;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 5px;
+            border: 2px solid white;
+        }
+
+        .health-fill {
+            height: 100%;
+            transition: width 0.3s;
+        }
+
+        #player1 .health-fill {
+            background: linear-gradient(to right, #ff416c, #ff4b2b);
+        }
+
+        #player2 .health-fill {
+            background: linear-gradient(to right, #2193b0, #6dd5ed);
+        }
+
+        #controls {
+            position: absolute;
+            bottom: 10px;
+            width: 100%;
+            display: flex;
+            justify-content: space-around;
+            color: white;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .control-info {
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 8px 15px;
+            border-radius: 5px;
+        }
+
+        #gameOver {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 36px;
+            display: none;
+        }
+
+        #restartBtn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #ff416c;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #restartBtn:hover {
+            background-color: #ff4b2b;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="500"></canvas>
+
+        <div id="ui">
+            <div id="player1" class="player-ui">
+                <div>Joueur 1</div>
+                <div class="health-bar">
+                    <div id="health1" class="health-fill" style="width: 100%"></div>
+                </div>
+            </div>
+
+            <div id="player2" class="player-ui">
+                <div>Joueur 2</div>
+                <div class="health-bar">
+                    <div id="health2" class="health-fill" style="width: 100%"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="controls">
+            <div class="control-info">
+                <div>Joueur 1</div>
+                <div>Déplacement: Q/D</div>
+                <div>Saut: Z</div>
+                <div>Attaque: Espace</div>
+            </div>
+
+            <div class="control-info">
+                <div>Joueur 2</div>
+                <div>Déplacement: ←/→</div>
+                <div>Saut: ↑</div>
+                <div>Attaque: Entrée</div>
+            </div>
+        </div>
+
+        <div id="gameOver">
+            <div id="winnerText"></div>
+            <button id="restartBtn">Rejouer (R)</button>
+        </div>
+    </div>
+
+    <script>
+        // Initialisation du canvas
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameOverScreen = document.getElementById('gameOver');
+        const winnerText = document.getElementById('winnerText');
+        const restartBtn = document.getElementById('restartBtn');
+        const health1 = document.getElementById('health1');
+        const health2 = document.getElementById('health2');
+
+        // Constantes du jeu
+        const GRAVITY = 0.5;
+        const FLOOR_HEIGHT = 50;
+        const GROUND_Y = canvas.height - FLOOR_HEIGHT;
+        const PLAYER_WIDTH = 40;
+        const PLAYER_HEIGHT = 80;
+        const PLAYER_SPEED = 5;
+        const JUMP_FORCE = -12;
+        const ATTACK_DAMAGE = 10;
+        const KNOCKBACK_FORCE = 10;
+
+        // États des joueurs
+        const players = {
+            player1: {
+                x: 200,
+                y: GROUND_Y - PLAYER_HEIGHT,
+                width: PLAYER_WIDTH,
+                height: PLAYER_HEIGHT,
+                velocityX: 0,
+                velocityY: 0,
+                isOnGround: false,
+                health: 100,
+                color: '#ff416c',
+                facing: 1, // 1 pour droite, -1 pour gauche
+                isAttacking: false,
+                attackCooldown: 0
+            },
+            player2: {
+                x: 600,
+                y: GROUND_Y - PLAYER_HEIGHT,
+                width: PLAYER_WIDTH,
+                height: PLAYER_HEIGHT,
+                velocityX: 0,
+                velocityY: 0,
+                isOnGround: false,
+                health: 100,
+                color: '#2193b0',
+                facing: -1, // 1 pour droite, -1 pour gauche
+                isAttacking: false,
+                attackCooldown: 0
+            }
+        };
+
+        // État des touches
+        const keys = {
+            // Joueur 1
+            KeyQ: false,
+            KeyD: false,
+            KeyZ: false,
+            Space: false,
+
+            // Joueur 2
+            ArrowLeft: false,
+            ArrowRight: false,
+            ArrowUp: false,
+            Enter: false,
+
+            // Redémarrage
+            KeyR: false
+        };
+
+        // Gestion des événements clavier
+        document.addEventListener('keydown', (e) => {
+            if (keys.hasOwnProperty(e.code)) {
+                keys[e.code] = true;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (keys.hasOwnProperty(e.code)) {
+                keys[e.code] = false;
+            }
+        });
+
+        // Fonction de redémarrage
+        function restartGame() {
+            players.player1.health = 100;
+            players.player2.health = 100;
+            players.player1.x = 200;
+            players.player2.x = 600;
+            players.player1.y = GROUND_Y - PLAYER_HEIGHT;
+            players.player2.y = GROUND_Y - PLAYER_HEIGHT;
+            players.player1.velocityX = 0;
+            players.player2.velocityX = 0;
+            players.player1.velocityY = 0;
+            players.player2.velocityY = 0;
+            gameOverScreen.style.display = 'none';
+            updateHealthBars();
+        }
+
+        restartBtn.addEventListener('click', restartGame);
+
+        // Mise à jour des barres de vie
+        function updateHealthBars() {
+            health1.style.width = `${players.player1.health}%`;
+            health2.style.width = `${players.player2.health}%`;
+        }
+
+        // Dessin du sol
+        function drawFloor() {
+            ctx.fillStyle = '#5d4037';
+            ctx.fillRect(0, GROUND_Y, canvas.width, FLOOR_HEIGHT);
+
+            // Texture du sol
+            ctx.fillStyle = '#8d6e63';
+            for (let i = 0; i < canvas.width; i += 40) {
+                ctx.fillRect(i, GROUND_Y, 20, 5);
+            }
+        }
+
+        // Dessin d'un joueur
+        function drawPlayer(player) {
+            // Corps
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+
+            // Tête
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x - 5, player.y - 20, player.width + 10, 20);
+
+            // Indicateur de direction
+            ctx.fillStyle = 'white';
+            if (player.facing === 1) {
+                ctx.fillRect(player.x + player.width, player.y + 20, 10, 10);
+            } else {
+                ctx.fillRect(player.x - 10, player.y + 20, 10, 10);
+            }
+
+            // Animation d'attaque
+            if (player.isAttacking) {
+                ctx.fillStyle = 'yellow';
+                if (player.facing === 1) {
+                    ctx.fillRect(player.x + player.width, player.y + 30, 30, 10);
+                } else {
+                    ctx.fillRect(player.x - 30, player.y + 30, 30, 10);
+                }
+            }
+        }
+
+        // Vérification des collisions
+        function checkCollision(player1, player2) {
+            return player1.x < player2.x + player2.width &&
+                player1.x + player1.width > player2.x &&
+                player1.y < player2.y + player2.height &&
+                player1.y + player1.height > player2.y;
+        }
+
+        // Application des dégâts et knockback
+        function applyDamage(attacker, defender) {
+            if (attacker.isAttacking && attacker.attackCooldown === 0) {
+                defender.health -= ATTACK_DAMAGE;
+                updateHealthBars();
+
+                // Knockback
+                defender.velocityX = attacker.facing * KNOCKBACK_FORCE;
+                defender.velocityY = -5;
+
+                // Cooldown de l'attaque
+                attacker.attackCooldown = 20;
+
+                // Vérifier la victoire
+                if (defender.health <= 0) {
+                    defender.health = 0;
+                    gameOver(attacker === players.player1 ? "Joueur 1" : "Joueur 2");
+                }
+            }
+        }
+
+        // Écran de fin de partie
+        function gameOver(winner) {
+            winnerText.textContent = `${winner} a gagné !`;
+            gameOverScreen.style.display = 'flex';
+        }
+
+        // Boucle de jeu principale
+        function gameLoop() {
+            // Effacer le canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dessiner le sol
+            drawFloor();
+
+            // Mettre à jour les joueurs
+            updatePlayer(players.player1, true);
+            updatePlayer(players.player2, false);
+
+            // Dessiner les joueurs
+            drawPlayer(players.player1);
+            drawPlayer(players.player2);
+
+            // Vérifier les collisions et appliquer les dégâts
+            if (checkCollision(players.player1, players.player2)) {
+                applyDamage(players.player1, players.player2);
+                applyDamage(players.player2, players.player1);
+            }
+
+            // Redémarrage avec la touche R
+            if (keys.KeyR) {
+                restartGame();
+            }
+
+            // Appeler la prochaine frame
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Mise à jour d'un joueur
+        function updatePlayer(player, isPlayer1) {
+            // Contrôles
+            if (isPlayer1) {
+                // Déplacement horizontal
+                if (keys.KeyQ && !keys.KeyD) {
+                    player.velocityX = -PLAYER_SPEED;
+                    player.facing = -1;
+                } else if (keys.KeyD && !keys.KeyQ) {
+                    player.velocityX = PLAYER_SPEED;
+                    player.facing = 1;
+                } else {
+                    player.velocityX = 0;
+                }
+
+                // Saut
+                if (keys.KeyZ && player.isOnGround) {
+                    player.velocityY = JUMP_FORCE;
+                    player.isOnGround = false;
+                }
+
+                // Attaque
+                player.isAttacking = keys.Space;
+            } else {
+                // Déplacement horizontal
+                if (keys.ArrowLeft && !keys.ArrowRight) {
+                    player.velocityX = -PLAYER_SPEED;
+                    player.facing = -1;
+                } else if (keys.ArrowRight && !keys.ArrowLeft) {
+                    player.velocityX = PLAYER_SPEED;
+                    player.facing = 1;
+                } else {
+                    player.velocityX = 0;
+                }
+
+                // Saut
+                if (keys.ArrowUp && player.isOnGround) {
+                    player.velocityY = JUMP_FORCE;
+                    player.isOnGround = false;
+                }
+
+                // Attaque
+                player.isAttacking = keys.Enter;
+            }
+
+            // Appliquer la gravité
+            player.velocityY += GRAVITY;
+
+            // Mettre à jour la position
+            player.x += player.velocityX;
+            player.y += player.velocityY;
+
+            // Gestion des collisions avec le sol
+            if (player.y > GROUND_Y - player.height) {
+                player.y = GROUND_Y - player.height;
+                player.velocityY = 0;
+                player.isOnGround = true;
+            }
+
+            // Garder les joueurs dans les limites
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+
+            // Gestion du cooldown d'attaque
+            if (player.attackCooldown > 0) {
+                player.attackCooldown--;
+            }
+        }
+
+        // Démarrer le jeu
+        restartGame();
+        gameLoop();
+    </script>
+</body>
+
+</html>

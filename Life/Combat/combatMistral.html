@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeu de Combat 2D</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #222;
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+
+        canvas {
+            border: 2px solid white;
+            background-color: #333;
+        }
+
+        #info {
+            position: absolute;
+            top: 20px;
+            text-align: center;
+            width: 100%;
+        }
+
+        #victory {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="info">
+        <p>Joueur 1 (Rouge) : Q/D (Déplacement), Z (Saut), Espace (Attaque)</p>
+        <p>Joueur 2 (Bleu) : ←/→ (Déplacement), ↑ (Saut), Entrée (Attaque)</p>
+    </div>
+    <div id="victory"></div>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+    <script>
+        // --- Variables globales ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const victoryDiv = document.getElementById('victory');
+        let keys = {};
+        let gameOver = false;
+
+        // --- Joueurs ---
+        const player1 = {
+            x: 200,
+            y: 200,
+            width: 40,
+            height: 60,
+            color: 'red',
+            speed: 5,
+            jumpForce: 12,
+            velocityY: 0,
+            isJumping: false,
+            health: 100,
+            attackCooldown: 0,
+            facingRight: true
+        };
+
+        const player2 = {
+            x: 600,
+            y: 200,
+            width: 40,
+            height: 60,
+            color: 'blue',
+            speed: 5,
+            jumpForce: 12,
+            velocityY: 0,
+            isJumping: false,
+            health: 100,
+            attackCooldown: 0,
+            facingRight: false
+        };
+
+        // --- Gestion des touches ---
+        window.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (gameOver && (e.key.toLowerCase() === 'r')) {
+                resetGame();
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // --- Mise à jour des joueurs ---
+        function updatePlayers() {
+            // Joueur 1 (Q/D/Z/Espace)
+            if (keys['q'] && player1.x > 0) {
+                player1.x -= player1.speed;
+                player1.facingRight = false;
+            }
+            if (keys['d'] && player1.x < canvas.width - player1.width) {
+                player1.x += player1.speed;
+                player1.facingRight = true;
+            }
+            if (keys['z'] && !player1.isJumping) {
+                player1.velocityY = -player1.jumpForce;
+                player1.isJumping = true;
+            }
+            if (keys[' '] && player1.attackCooldown <= 0) {
+                attack(player1, player2);
+                player1.attackCooldown = 20;
+            }
+
+            // Joueur 2 (Flèches/Entrée)
+            if (keys['ArrowLeft'] && player2.x > 0) {
+                player2.x -= player2.speed;
+                player2.facingRight = false;
+            }
+            if (keys['ArrowRight'] && player2.x < canvas.width - player2.width) {
+                player2.x += player2.speed;
+                player2.facingRight = true;
+            }
+            if (keys['ArrowUp'] && !player2.isJumping) {
+                player2.velocityY = -player2.jumpForce;
+                player2.isJumping = true;
+            }
+            if (keys['Enter'] && player2.attackCooldown <= 0) {
+                attack(player2, player1);
+                player2.attackCooldown = 20;
+            }
+
+            // Gravité et saut
+            player1.velocityY += 0.8;
+            player1.y += player1.velocityY;
+            if (player1.y > canvas.height - player1.height - 20) {
+                player1.y = canvas.height - player1.height - 20;
+                player1.velocityY = 0;
+                player1.isJumping = false;
+            }
+
+            player2.velocityY += 0.8;
+            player2.y += player2.velocityY;
+            if (player2.y > canvas.height - player2.height - 20) {
+                player2.y = canvas.height - player2.height - 20;
+                player2.velocityY = 0;
+                player2.isJumping = false;
+            }
+
+            // Cooldown attaques
+            if (player1.attackCooldown > 0) player1.attackCooldown--;
+            if (player2.attackCooldown > 0) player2.attackCooldown--;
+        }
+
+        // --- Attaque ---
+        function attack(attacker, defender) {
+            const direction = attacker.facingRight ? 1 : -1;
+            const attackRange = 60;
+            const distance = Math.abs(attacker.x - defender.x);
+
+            if (distance < attackRange) {
+                defender.health -= 10;
+                defender.x += direction * 20; // Knockback
+                if (defender.health <= 0) {
+                    gameOver = true;
+                    victoryDiv.textContent = `${attacker.color === 'red' ? 'Joueur 1' : 'Joueur 2'} gagne !`;
+                    victoryDiv.style.display = 'block';
+                }
+            }
+        }
+
+        // --- Dessin ---
+        function draw() {
+            // Effacer le canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dessiner les joueurs (rectangles)
+            ctx.fillStyle = player1.color;
+            ctx.fillRect(player1.x, player1.y, player1.width, player1.height);
+            ctx.fillStyle = player2.color;
+            ctx.fillRect(player2.x, player2.y, player2.width, player2.height);
+
+            // Dessiner les barres de vie
+            ctx.fillStyle = 'white';
+            ctx.fillText(`J1: ${player1.health} HP`, 20, 30);
+            ctx.fillText(`J2: ${player2.health} HP`, canvas.width - 100, 30);
+            ctx.fillStyle = 'red';
+            ctx.fillRect(20, 40, player1.health, 10);
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(canvas.width - 120, 40, player2.health, 10);
+        }
+
+        // --- Boucle de jeu ---
+        function gameLoop() {
+            if (!gameOver) {
+                updatePlayers();
+                draw();
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // --- Réinitialiser le jeu ---
+        function resetGame() {
+            player1.x = 200;
+            player1.y = 200;
+            player1.health = 100;
+            player2.x = 600;
+            player2.y = 200;
+            player2.health = 100;
+            gameOver = false;
+            victoryDiv.style.display = 'none';
+            gameLoop();
+        }
+
+        // --- Démarrer le jeu ---
+        gameLoop();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arkanoid Multijoueur</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #111;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+        }
+
+        canvas {
+            background-color: #000;
+            border: 2px solid #444;
+            box-shadow: 0 0 20px rgba(0, 150, 255, 0.3);
+        }
+
+        #uiOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+
+        .score {
+            font-size: 36px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 0 10px rgba(0, 150, 255, 0.7);
+            padding: 10px 20px;
+        }
+
+        #player1Score {
+            align-self: flex-start;
+            color: #0f0;
+        }
+
+        #player2Score {
+            align-self: flex-end;
+            color: #0af;
+        }
+
+        #gameMessage {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 0 10px rgba(255, 50, 50, 0.8);
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px 30px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        #instructions {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 14px;
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 8px 15px;
+            border-radius: 5px;
+        }
+
+        .boost-indicator {
+            position: absolute;
+            bottom: 10px;
+            width: 100px;
+            height: 10px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        #boost1 {
+            left: 20px;
+        }
+
+        #boost2 {
+            right: 20px;
+        }
+
+        .boost-fill {
+            height: 100%;
+            width: 100%;
+            background-color: #ff0;
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 0.1s;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+        <div id="uiOverlay">
+            <div id="player1Score" class="score">0</div>
+            <div id="player2Score" class="score">0</div>
+
+            <div id="boost1" class="boost-indicator">
+                <div class="boost-fill" id="boost1Fill"></div>
+            </div>
+
+            <div id="boost2" class="boost-indicator">
+                <div class="boost-fill" id="boost2Fill"></div>
+            </div>
+        </div>
+
+        <div id="gameMessage"></div>
+
+        <div id="instructions">
+            <div>J1: Z (Haut) | S (Bas) | ESPACE (Boost)</div>
+            <div>J2: ↑ (Haut) | ↓ (Bas) | ENTREE (Boost)</div>
+        </div>
+    </div>
+
+    <script>
+        // Variables du jeu
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const player1ScoreElement = document.getElementById('player1Score');
+        const player2ScoreElement = document.getElementById('player2Score');
+        const gameMessageElement = document.getElementById('gameMessage');
+        const boost1Fill = document.getElementById('boost1Fill');
+        const boost2Fill = document.getElementById('boost2Fill');
+
+        // Configuration du jeu
+        const GAME_CONFIG = {
+            paddleWidth: 15,
+            paddleHeight: 100,
+            ballRadius: 8,
+            brickRows: 4,
+            brickCols: 8,
+            brickWidth: 60,
+            brickHeight: 20,
+            brickPadding: 5,
+            brickOffsetTop: 150,
+            maxScore: 10,
+            initialBallSpeed: 4,
+            maxBallSpeed: 12,
+            speedIncrease: 0.1,
+            boostDuration: 1500, // ms
+            boostCooldown: 3000, // ms
+            boostSpeedMultiplier: 1.8
+        };
+
+        // État du jeu
+        let gameState = {
+            running: false,
+            player1: {
+                score: 0,
+                y: canvas.height / 2 - GAME_CONFIG.paddleHeight / 2,
+                boostActive: false,
+                boostCooldown: 0
+            },
+            player2: {
+                score: 0,
+                y: canvas.height / 2 - GAME_CONFIG.paddleHeight / 2,
+                boostActive: false,
+                boostCooldown: 0
+            },
+            ball: {
+                x: canvas.width / 2,
+                y: canvas.height / 2,
+                dx: GAME_CONFIG.initialBallSpeed,
+                dy: GAME_CONFIG.initialBallSpeed
+            },
+            bricks: [],
+            keys: {}
+        };
+
+        // Initialisation des briques
+        function initBricks() {
+            gameState.bricks = [];
+            const brickAreaWidth = GAME_CONFIG.brickCols * (GAME_CONFIG.brickWidth + GAME_CONFIG.brickPadding) - GAME_CONFIG.brickPadding;
+            const brickAreaStartX = (canvas.width - brickAreaWidth) / 2;
+
+            for (let c = 0; c < GAME_CONFIG.brickCols; c++) {
+                gameState.bricks[c] = [];
+                for (let r = 0; r < GAME_CONFIG.brickRows; r++) {
+                    const brickX = brickAreaStartX + c * (GAME_CONFIG.brickWidth + GAME_CONFIG.brickPadding);
+                    const brickY = GAME_CONFIG.brickOffsetTop + r * (GAME_CONFIG.brickHeight + GAME_CONFIG.brickPadding);
+                    gameState.bricks[c][r] = { x: brickX, y: brickY, status: 1 };
+                }
+            }
+        }
+
+        // Dessiner les éléments du jeu
+        function draw() {
+            // Effacer le canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dessiner la ligne médiane
+            ctx.beginPath();
+            ctx.setLineDash([5, 15]);
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Dessiner les raquettes
+            ctx.fillStyle = '#0f0';
+            ctx.fillRect(10, gameState.player1.y, GAME_CONFIG.paddleWidth, GAME_CONFIG.paddleHeight);
+
+            ctx.fillStyle = '#0af';
+            ctx.fillRect(canvas.width - 10 - GAME_CONFIG.paddleWidth, gameState.player2.y, GAME_CONFIG.paddleWidth, GAME_CONFIG.paddleHeight);
+
+            // Dessiner la balle
+            ctx.beginPath();
+            ctx.arc(gameState.ball.x, gameState.ball.y, GAME_CONFIG.ballRadius, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.closePath();
+
+            // Dessiner les briques
+            for (let c = 0; c < GAME_CONFIG.brickCols; c++) {
+                for (let r = 0; r < GAME_CONFIG.brickRows; r++) {
+                    if (gameState.bricks[c][r].status === 1) {
+                        const brick = gameState.bricks[c][r];
+                        ctx.fillStyle = `hsl(${(c * 30 + r * 15) % 360}, 70%, 60%)`;
+                        ctx.fillRect(brick.x, brick.y, GAME_CONFIG.brickWidth, GAME_CONFIG.brickHeight);
+
+                        // Bordure des briques
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(brick.x, brick.y, GAME_CONFIG.brickWidth, GAME_CONFIG.brickHeight);
+                    }
+                }
+            }
+
+            // Effets visuels pour les boosts
+            if (gameState.player1.boostActive) {
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+                ctx.fillRect(0, 0, canvas.width / 2, canvas.height);
+            }
+
+            if (gameState.player2.boostActive) {
+                ctx.fillStyle = 'rgba(0, 170, 255, 0.2)';
+                ctx.fillRect(canvas.width / 2, 0, canvas.width / 2, canvas.height);
+            }
+        }
+
+        // Mise à jour de la logique du jeu
+        function update() {
+            if (!gameState.running) return;
+
+            // Déplacement des raquettes
+            const paddleSpeed = gameState.player1.boostActive ? 12 : 8;
+
+            if (gameState.keys['KeyZ'] && gameState.player1.y > 0) {
+                gameState.player1.y -= paddleSpeed;
+            }
+            if (gameState.keys['KeyS'] && gameState.player1.y < canvas.height - GAME_CONFIG.paddleHeight) {
+                gameState.player1.y += paddleSpeed;
+            }
+
+            if (gameState.keys['ArrowUp'] && gameState.player2.y > 0) {
+                gameState.player2.y -= paddleSpeed;
+            }
+            if (gameState.keys['ArrowDown'] && gameState.player2.y < canvas.height - GAME_CONFIG.paddleHeight) {
+                gameState.player2.y += paddleSpeed;
+            }
+
+            // Gestion des boosts
+            updateBoost(gameState.player1, boost1Fill);
+            updateBoost(gameState.player2, boost2Fill);
+
+            // Déplacement de la balle
+            gameState.ball.x += gameState.ball.dx;
+            gameState.ball.y += gameState.ball.dy;
+
+            // Collision avec les murs haut et bas
+            if (gameState.ball.y - GAME_CONFIG.ballRadius < 0 || gameState.ball.y + GAME_CONFIG.ballRadius > canvas.height) {
+                gameState.ball.dy = -gameState.ball.dy;
+            }
+
+            // Collision avec les raquettes
+            // Raquette gauche (Joueur 1)
+            if (
+                gameState.ball.x - GAME_CONFIG.ballRadius < 10 + GAME_CONFIG.paddleWidth &&
+                gameState.ball.x - GAME_CONFIG.ballRadius > 10 &&
+                gameState.ball.y > gameState.player1.y &&
+                gameState.ball.y < gameState.player1.y + GAME_CONFIG.paddleHeight
+            ) {
+                // Calculer l'angle de rebond en fonction de l'endroit où la balle touche la raquette
+                const hitPos = (gameState.ball.y - gameState.player1.y) / GAME_CONFIG.paddleHeight;
+                const angle = (hitPos - 0.5) * Math.PI / 2; // Angle entre -π/4 et π/4
+
+                // Vitesse actuelle
+                const speed = Math.sqrt(gameState.ball.dx * gameState.ball.dx + gameState.ball.dy * gameState.ball.dy);
+
+                // Nouvelle direction avec augmentation de vitesse
+                const newSpeed = Math.min(speed + GAME_CONFIG.speedIncrease, GAME_CONFIG.maxBallSpeed);
+                gameState.ball.dx = Math.cos(angle) * newSpeed;
+                gameState.ball.dy = Math.sin(angle) * newSpeed;
+
+                // Assurer que la balle parte vers la droite
+                gameState.ball.dx = Math.abs(gameState.ball.dx);
+
+                // Effet de boost si activé
+                if (gameState.player1.boostActive) {
+                    gameState.ball.dx *= GAME_CONFIG.boostSpeedMultiplier;
+                }
+            }
+
+            // Raquette droite (Joueur 2)
+            if (
+                gameState.ball.x + GAME_CONFIG.ballRadius > canvas.width - 10 - GAME_CONFIG.paddleWidth &&
+                gameState.ball.x + GAME_CONFIG.ballRadius < canvas.width - 10 &&
+                gameState.ball.y > gameState.player2.y &&
+                gameState.ball.y < gameState.player2.y + GAME_CONFIG.paddleHeight
+            ) {
+                // Calculer l'angle de rebond
+                const hitPos = (gameState.ball.y - gameState.player2.y) / GAME_CONFIG.paddleHeight;
+                const angle = (hitPos - 0.5) * Math.PI / 2;
+
+                // Vitesse actuelle
+                const speed = Math.sqrt(gameState.ball.dx * gameState.ball.dx + gameState.ball.dy * gameState.ball.dy);
+
+                // Nouvelle direction avec augmentation de vitesse
+                const newSpeed = Math.min(speed + GAME_CONFIG.speedIncrease, GAME_CONFIG.maxBallSpeed);
+                gameState.ball.dx = Math.cos(angle) * newSpeed;
+                gameState.ball.dy = Math.sin(angle) * newSpeed;
+
+                // Assurer que la balle parte vers la gauche
+                gameState.ball.dx = -Math.abs(gameState.ball.dx);
+
+                // Effet de boost si activé
+                if (gameState.player2.boostActive) {
+                    gameState.ball.dx *= GAME_CONFIG.boostSpeedMultiplier;
+                }
+            }
+
+            // Collision avec les briques
+            for (let c = 0; c < GAME_CONFIG.brickCols; c++) {
+                for (let r = 0; r < GAME_CONFIG.brickRows; r++) {
+                    const brick = gameState.bricks[c][r];
+                    if (brick.status === 1) {
+                        if (
+                            gameState.ball.x + GAME_CONFIG.ballRadius > brick.x &&
+                            gameState.ball.x - GAME_CONFIG.ballRadius < brick.x + GAME_CONFIG.brickWidth &&
+                            gameState.ball.y + GAME_CONFIG.ballRadius > brick.y &&
+                            gameState.ball.y - GAME_CONFIG.ballRadius < brick.y + GAME_CONFIG.brickHeight
+                        ) {
+                            // Détruire la brique
+                            brick.status = 0;
+
+                            // Augmenter le score du joueur qui a envoyé la balle
+                            if (gameState.ball.dx > 0) {
+                                // La balle allait vers la droite, donc le joueur 1 a marqué
+                                gameState.player1.score++;
+                                player1ScoreElement.textContent = gameState.player1.score;
+                            } else {
+                                // La balle allait vers la gauche, donc le joueur 2 a marqué
+                                gameState.player2.score++;
+                                player2ScoreElement.textContent = gameState.player2.score;
+                            }
+
+                            // Inverser la direction de la balle
+                            gameState.ball.dy = -gameState.ball.dy;
+
+                            // Augmenter légèrement la vitesse
+                            const speed = Math.sqrt(gameState.ball.dx * gameState.ball.dx + gameState.ball.dy * gameState.ball.dy);
+                            const newSpeed = Math.min(speed + GAME_CONFIG.speedIncrease, GAME_CONFIG.maxBallSpeed);
+                            const angle = Math.atan2(gameState.ball.dy, gameState.ball.dx);
+
+                            gameState.ball.dx = Math.cos(angle) * newSpeed;
+                            gameState.ball.dy = Math.sin(angle) * newSpeed;
+
+                            // Vérifier si toutes les briques sont détruites
+                            let allBricksDestroyed = true;
+                            for (let c2 = 0; c2 < GAME_CONFIG.brickCols; c2++) {
+                                for (let r2 = 0; r2 < GAME_CONFIG.brickRows; r2++) {
+                                    if (gameState.bricks[c2][r2].status === 1) {
+                                        allBricksDestroyed = false;
+                                        break;
+                                    }
+                                }
+                                if (!allBricksDestroyed) break;
+                            }
+
+                            if (allBricksDestroyed) {
+                                initBricks();
+                                resetBall();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Vérifier si un joueur a marqué
+            if (gameState.ball.x < 0) {
+                // Joueur 2 marque
+                gameState.player2.score++;
+                player2ScoreElement.textContent = gameState.player2.score;
+                resetBall();
+            } else if (gameState.ball.x > canvas.width) {
+                // Joueur 1 marque
+                gameState.player1.score++;
+                player1ScoreElement.textContent = gameState.player1.score;
+                resetBall();
+            }
+
+            // Vérifier la condition de victoire
+            if (gameState.player1.score >= GAME_CONFIG.maxScore || gameState.player2.score >= GAME_CONFIG.maxScore) {
+                endGame();
+            }
+        }
+
+        // Mise à jour des boosts
+        function updateBoost(player, boostFillElement) {
+            if (player.boostActive) {
+                player.boostCooldown -= 16; // ~60fps
+
+                if (player.boostCooldown <= 0) {
+                    player.boostActive = false;
+                    player.boostCooldown = GAME_CONFIG.boostCooldown;
+                }
+            } else if (player.boostCooldown < GAME_CONFIG.boostCooldown) {
+                player.boostCooldown += 16;
+            }
+
+            // Mettre à jour l'indicateur visuel
+            const fillAmount = 1 - (player.boostCooldown / GAME_CONFIG.boostCooldown);
+            boostFillElement.style.transform = `scaleX(${fillAmount})`;
+        }
+
+        // Réinitialiser la balle
+        function resetBall() {
+            gameState.ball.x = canvas.width / 2;
+            gameState.ball.y = canvas.height / 2;
+
+            // Direction aléatoire
+            const angle = (Math.random() * Math.PI / 2) - Math.PI / 4; // -45° à 45°
+            const speed = GAME_CONFIG.initialBallSpeed;
+
+            // Choisir aléatoirement vers quel joueur la balle part
+            if (Math.random() > 0.5) {
+                gameState.ball.dx = Math.cos(angle) * speed;
+            } else {
+                gameState.ball.dx = -Math.cos(angle) * speed;
+            }
+
+            gameState.ball.dy = Math.sin(angle) * speed;
+        }
+
+        // Gestion des touches
+        function handleKeyDown(e) {
+            gameState.keys[e.code] = true;
+
+            // Démarrer le jeu si ce n'est pas déjà fait
+            if (!gameState.running && (e.code === 'Space' || e.code === 'Enter')) {
+                startGame();
+            }
+
+            // Gestion des boosts
+            if (e.code === 'Space' && !gameState.player1.boostActive && gameState.player1.boostCooldown >= GAME_CONFIG.boostCooldown) {
+                gameState.player1.boostActive = true;
+                gameState.player1.boostCooldown = GAME_CONFIG.boostDuration;
+            }
+
+            if (e.code === 'Enter' && !gameState.player2.boostActive && gameState.player2.boostCooldown >= GAME_CONFIG.boostCooldown) {
+                gameState.player2.boostActive = true;
+                gameState.player2.boostCooldown = GAME_CONFIG.boostDuration;
+            }
+        }
+
+        function handleKeyUp(e) {
+            gameState.keys[e.code] = false;
+        }
+
+        // Démarrer le jeu
+        function startGame() {
+            gameState.running = true;
+            gameMessageElement.style.display = 'none';
+
+            // Réinitialiser les scores
+            gameState.player1.score = 0;
+            gameState.player2.score = 0;
+            player1ScoreElement.textContent = '0';
+            player2ScoreElement.textContent = '0';
+
+            // Réinitialiser les boosts
+            gameState.player1.boostCooldown = GAME_CONFIG.boostCooldown;
+            gameState.player2.boostCooldown = GAME_CONFIG.boostCooldown;
+
+            // Initialiser les briques
+            initBricks();
+
+            // Positionner la balle
+            resetBall();
+        }
+
+        // Terminer le jeu
+        function endGame() {
+            gameState.running = false;
+
+            // Déterminer le gagnant
+            let winner = '';
+            if (gameState.player1.score >= GAME_CONFIG.maxScore) {
+                winner = 'Joueur 1';
+            } else {
+                winner = 'Joueur 2';
+            }
+
+            // Afficher le message de victoire
+            gameMessageElement.textContent = `${winner} a gagné !`;
+            gameMessageElement.style.display = 'block';
+        }
+
+        // Boucle de jeu
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Initialisation
+        function init() {
+            // Écouteurs d'événements pour les touches
+            document.addEventListener('keydown', handleKeyDown);
+            document.addEventListener('keyup', handleKeyUp);
+
+            // Afficher le message de début
+            gameMessageElement.textContent = 'Appuyez sur ESPACE ou ENTREE pour commencer';
+            gameMessageElement.style.display = 'block';
+
+            // Initialiser les briques
+            initBricks();
+
+            // Démarrer la boucle de jeu
+            gameLoop();
+        }
+
+        // Démarrer le jeu
+        init();
+    </script>
+</body>
+
+</html>

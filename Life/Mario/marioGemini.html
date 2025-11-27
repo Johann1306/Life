@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Full HTML5 Mario Engine</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #121212;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        canvas {
+            background-color: #6b8cff;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            image-rendering: pixelated;
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="800" height="600"></canvas>
+
+<script>
+// ==========================================================================================
+// CONFIG & CONSTANTS
+// ==========================================================================================
+const CFG = {
+    GRAVITY: 0.6,
+    FRICTION: 0.8,
+    ACCELERATION: 1.5,
+    MAX_SPEED: 8,
+    JUMP_FORCE: -14,
+    BOUNCE_FORCE: -8,
+    CANVAS_W: 800,
+    CANVAS_H: 600,
+    TILE_SIZE: 40,
+    ENEMY_SPEED: 2,
+    COLOR_SKY: '#6b8cff',
+    COLOR_GROUND: '#6aa121',
+    COLOR_BRICK: '#b84e25',
+    COLOR_ENEMY: '#8b4513',
+    COLOR_COIN: '#ffd700'
+};
+
+// ==========================================================================================
+// CORE ENGINE
+// ==========================================================================================
+class Engine {
+    constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.lastTime = 0;
+        this.score = 0;
+        
+        this.input = new InputManager();
+        this.level = new LevelLoader();
+        this.camera = { x: 0, y: 0 };
+        this.renderer = new Renderer(this.ctx, this.camera);
+        
+        // Entity Managers
+        this.enemies = new EnemyManager();
+        this.items = new ItemManager();
+        
+        // Player init
+        this.player = new Player(100, 400);
+    }
+
+    start() {
+        this.resetLevel();
+        requestAnimationFrame(t => this.loop(t));
+    }
+
+    resetLevel() {
+        this.level.loadLevel(1);
+        this.enemies.loadFromLevel(this.level.enemySpawns);
+        this.items.loadFromLevel(this.level.itemSpawns);
+        this.player.respawn(100, 400);
+        this.camera.x = 0;
+    }
+
+    loop(timestamp) {
+        const deltaTime = Math.min((timestamp - this.lastTime) / 1000, 0.1);
+        this.lastTime = timestamp;
+
+        this.update(deltaTime);
+        this.render();
+
+        requestAnimationFrame(t => this.loop(t));
+    }
+
+    update(dt) {
+        // 1. Update Player Physics
+        this.player.update(dt, this.input, this.level.geometry);
+
+        // 2. Check Fall Death
+        if (this.player.y > CFG.CANVAS_H + 100) this.resetLevel();
+
+        // 3. Update Enemies & Interactions
+        this.enemies.update(dt, this.level.geometry);
+        this.checkEntityCollisions();
+
+        // 4. Update Items
+        const collected = this.items.update(dt, this.player);
+        if (collected) this.score += collected * 100;
+
+        // 5. Camera Logic
+        this.camera.x = this.player.x - CFG.CANVAS_W / 2 + this.player.w / 2;
+        if (this.camera.x < 0) this.camera.x = 0;
+        if (this.camera.x > this.level.width - CFG.CANVAS_W) this.camera.x = this.level.width - CFG.CANVAS_W;
+    }
+
+    checkEntityCollisions() {
+        // Player vs Enemies
+        const activeEnemies = this.enemies.entities;
+        for (let i = activeEnemies.length - 1; i >= 0; i--) {
+            const e = activeEnemies[i];
+            if (e.dead) continue;
+
+            if (this.aabb(this.player, e)) {
+                // Kill Logic: Player is falling AND Player bottom is above Enemy Center
+                const hitFromAbove = this.player.vy > 0 && (this.player.y + this.player.h) < (e.y + e.h * 0.8);
+
+                if (hitFromAbove) {
+                    e.die();
+                    this.player.vy = CFG.BOUNCE_FORCE; // Bounce
+                    this.score += 200;
+                } else {
+                    this.resetLevel(); // Player dies
+                }
+            }
+        }
+    }
+
+    aabb(r1, r2) {
+        return r1.x < r2.x + r2.w &&
+               r1.x + r1.w > r2.x &&
+               r1.y < r2.y + r2.h &&
+               r1.y + r1.h > r2.y;
+    }
+
+    render() {
+        this.renderer.clear();
+        this.renderer.pushState();
+        this.renderer.translate(-this.camera.x, 0);
+
+        // Draw World
+        this.level.geometry.forEach(rect => this.renderer.drawBlock(rect));
+        
+        // Draw Entities
+        this.items.draw(this.renderer);
+        this.enemies.draw(this.renderer);
+        this.player.draw(this.renderer);
+
+        this.renderer.popState();
+        
+        // UI Overlay
+        this.renderer.drawUI(this.score);
+    }
+}
+
+// ==========================================================================================
+// INPUT MANAGER
+// ==========================================================================================
+class InputManager {
+    constructor() {
+        this.keys = {};
+        window.addEventListener('keydown', e => this.keys[e.code] = true);
+        window.addEventListener('keyup', e => this.keys[e.code] = false);
+    }
+    isDown(code) { return !!this.keys[code]; }
+}
+
+// ==========================================================================================
+// ENTITY BASE CLASS
+// ==========================================================================================
+class Entity {
+    constructor(x, y, w, h) {
+        this.x = x; 
+        this.y = y; 
+        this.w = w; 
+        this.h = h;
+        this.vx = 0; 
+        this.vy = 0;
+        this.grounded = false;
+    }
+
+    applyPhysics(worldGeo) {
+        this.grounded = false;
+        
+        // X Axis
+        this.x += this.vx;
+        let colX = this.checkWorldCollision(worldGeo);
+        if (colX) {
+            if (this.vx > 0) this.x = colX.x - this.w;
+            else if (this.vx < 0) this.x = colX.x + colX.w;
+            this.vx = 0;
+            this.onWallHit(); // Hook for AI
+        }
+
+        // Y Axis
+        this.y += this.vy;
+        let colY = this.checkWorldCollision(worldGeo);
+        if (colY) {
+            if (this.vy > 0) {
+                this.y = colY.y - this.h;
+                this.grounded = true;
+            } else if (this.vy < 0) {
+                this.y = colY.y + colY.h;
+            }
+            this.vy = 0;
+        }
+    }
+
+    checkWorldCollision(geo) {
+        for (let block of geo) {
+            if (this.x < block.x + block.w && this.x + this.w > block.x &&
+                this.y < block.y + block.h && this.y + this.h > block.y) {
+                return block;
+            }
+        }
+        return null;
+    }
+
+    onWallHit() { /* Override in Enemy */ }
+}
+
+// ==========================================================================================
+// PLAYER CLASS
+// ==========================================================================================
+class Player extends Entity {
+    constructor(x, y) {
+        super(x, y, CFG.TILE_SIZE * 0.8, CFG.TILE_SIZE * 0.9); // Slightly smaller hitbox
+        this.facingRight = true;
+    }
+
+    respawn(x, y) {
+        this.x = x; this.y = y;
+        this.vx = 0; this.vy = 0;
+    }
+
+    update(dt, input, geo) {
+        // Input
+        if (input.isDown('ArrowRight')) { this.vx += CFG.ACCELERATION; this.facingRight = true; }
+        if (input.isDown('ArrowLeft')) { this.vx -= CFG.ACCELERATION; this.facingRight = false; }
+
+        // Friction
+        this.vx *= CFG.FRICTION;
+        this.vy += CFG.GRAVITY;
+
+        // Clamp Speed
+        if (Math.abs(this.vx) < 0.1) this.vx = 0;
+        if (this.vx > CFG.MAX_SPEED) this.vx = CFG.MAX_SPEED;
+        if (this.vx < -CFG.MAX_SPEED) this.vx = -CFG.MAX_SPEED;
+
+        // Jump
+        if (input.isDown('Space') && this.grounded) {
+            this.vy = CFG.JUMP_FORCE;
+            this.grounded = false;
+        }
+
+        this.applyPhysics(geo);
+    }
+
+    draw(renderer) {
+        const ctx = renderer.ctx;
+        const x = Math.floor(this.x);
+        const y = Math.floor(this.y);
+        
+        // Mario Visuals (Simplified)
+        ctx.fillStyle = '#ff0000'; // Shirt
+        ctx.fillRect(x, y, this.w, this.h);
+        
+        ctx.fillStyle = '#0000aa'; // Overalls
+        ctx.fillRect(x, y + this.h/2, this.w, this.h/2);
+        
+        // Face direction
+        ctx.fillStyle = '#ffccaa'; // Skin
+        ctx.fillRect(this.facingRight ? x + this.w - 8 : x, y + 5, 8, 8);
+    }
+}
+
+// ==========================================================================================
+// ENEMY SYSTEM
+// ==========================================================================================
+class Enemy extends Entity {
+    constructor(x, y) {
+        super(x, y, CFG.TILE_SIZE, CFG.TILE_SIZE);
+        this.dir = -1; // -1 left, 1 right
+        this.dead = false;
+        this.deathTimer = 0;
+    }
+
+    update(dt, geo) {
+        if (this.dead) {
+            this.deathTimer += dt;
+            return;
+        }
+
+        this.vx = this.dir * CFG.ENEMY_SPEED;
+        this.vy += CFG.GRAVITY;
+        
+        this.applyPhysics(geo);
+    }
+
+    onWallHit() {
+        this.dir *= -1; // Patrol Logic
+    }
+
+    die() {
+        this.dead = true;
+        // Flatten effect
+        this.h = this.h / 2;
+        this.y += this.h; 
+    }
+
+    draw(renderer) {
+        if (this.deathTimer > 0.5) return; // Remove after 0.5s
+
+        const ctx = renderer.ctx;
+        ctx.fillStyle = CFG.COLOR_ENEMY;
+        ctx.fillRect(this.x, this.y, this.w, this.h);
+        
+        // Eyes
+        if (!this.dead) {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(this.x + 5, this.y + 10, 8, 8);
+            ctx.fillRect(this.x + 25, this.y + 10, 8, 8);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(this.x + 7, this.y + 12, 4, 4);
+            ctx.fillRect(this.x + 27, this.y + 12, 4, 4);
+        }
+    }
+}
+
+class EnemyManager {
+    constructor() {
+        this.entities = [];
+    }
+
+    loadFromLevel(spawns) {
+        this.entities = spawns.map(s => new Enemy(s.x, s.y));
+    }
+
+    update(dt, geo) {
+        this.entities.forEach(e => e.update(dt, geo));
+        // Clean up old dead bodies
+        this.entities = this.entities.filter(e => e.deathTimer < 1.0);
+    }
+
+    draw(renderer) {
+        this.entities.forEach(e => e.draw(renderer));
+    }
+}
+
+// ==========================================================================================
+// ITEM SYSTEM (Coins)
+// ==========================================================================================
+class Coin {
+    constructor(x, y) {
+        this.x = x; this.y = y;
+        this.w = 30; this.h = 30;
+        this.baseY = y;
+        this.timer = 0;
+        this.collected = false;
+    }
+
+    update(dt) {
+        this.timer += dt * 5;
+        this.y = this.baseY + Math.sin(this.timer) * 5; // Floating
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = CFG.COLOR_COIN;
+        ctx.beginPath();
+        ctx.arc(this.x + 15, this.y + 15, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#d4b000';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Shine
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(this.x + 12, this.y + 10, 4, 8);
+    }
+}
+
+class ItemManager {
+    constructor() { this.items = []; }
+    
+    loadFromLevel(spawns) {
+        this.items = spawns.map(s => new Coin(s.x, s.y));
+    }
+
+    update(dt, player) {
+        let collectedCount = 0;
+        this.items.forEach(item => item.update(dt));
+        
+        // Collision with player
+        this.items = this.items.filter(item => {
+            const hit = item.x < player.x + player.w &&
+                        item.x + item.w > player.x &&
+                        item.y < player.y + player.h &&
+                        item.y + item.h > player.y;
+            if (hit) collectedCount++;
+            return !hit;
+        });
+        
+        return collectedCount;
+    }
+
+    draw(renderer) {
+        this.items.forEach(item => item.draw(renderer.ctx));
+    }
+}
+
+// ==========================================================================================
+// WORLD & LEVEL LOADER
+// ==========================================================================================
+class LevelLoader {
+    constructor() {
+        this.geometry = [];
+        this.enemySpawns = [];
+        this.itemSpawns = [];
+        this.width = 0;
+    }
+
+    loadLevel(id) {
+        this.geometry = [];
+        this.enemySpawns = [];
+        this.itemSpawns = [];
+        
+        const ts = CFG.TILE_SIZE;
+        const floorY = CFG.CANVAS_H - ts;
+
+        // --- Geometry Building ---
+        // Start area
+        this.addRect(0, floorY, 800, ts, 'ground'); 
+        
+        // Pipe-like structure
+        this.addRect(600, floorY - ts, ts * 2, ts, 'brick');
+        this.addRect(900, floorY - ts * 2, ts * 2, ts * 2, 'brick');
+        this.addRect(900, floorY, 300, ts, 'ground'); // Under pipe
+        
+        // Pit gap
+        this.addRect(1400, floorY, 600, ts, 'ground'); 
+        
+        // Floating platforms
+        this.addRect(1500, floorY - ts * 4, ts * 3, ts, 'brick');
+        this.addRect(1700, floorY - ts * 7, ts * 3, ts, 'brick');
+
+        // Stairs
+        for(let i=0; i<8; i++) {
+            this.addRect(2200 + (i*ts), floorY - (i*ts), ts, (i+1)*ts, 'brick');
+        }
+        this.addRect(2200, floorY, 1000, ts, 'ground'); // Base under stairs
+
+        // Finish area
+        this.addRect(3200, floorY, 600, ts, 'ground');
+
+        this.width = 3800;
+
+        // --- Entity Spawning ---
+        this.enemySpawns.push({x: 500, y: floorY - ts});
+        this.enemySpawns.push({x: 1000, y: floorY - ts});
+        this.enemySpawns.push({x: 1600, y: floorY - ts * 5});
+        this.enemySpawns.push({x: 2500, y: floorY - ts});
+
+        // --- Item Spawning ---
+        this.itemSpawns.push({x: 350, y: floorY - ts*3});
+        this.itemSpawns.push({x: 400, y: floorY - ts*3});
+        this.itemSpawns.push({x: 450, y: floorY - ts*3});
+        this.itemSpawns.push({x: 1520, y: floorY - ts*6});
+        this.itemSpawns.push({x: 1560, y: floorY - ts*6});
+        this.itemSpawns.push({x: 1600, y: floorY - ts*6});
+    }
+
+    addRect(x, y, w, h, type) {
+        this.geometry.push({x, y, w, h, type});
+    }
+}
+
+// ==========================================================================================
+// RENDERER
+// ==========================================================================================
+class Renderer {
+    constructor(ctx, camera) {
+        this.ctx = ctx;
+        this.camera = camera;
+    }
+
+    clear() {
+        this.ctx.fillStyle = CFG.COLOR_SKY;
+        this.ctx.fillRect(0, 0, CFG.CANVAS_W, CFG.CANVAS_H);
+    }
+
+    pushState() { this.ctx.save(); }
+    popState() { this.ctx.restore(); }
+    translate(x, y) { this.ctx.translate(Math.floor(x), Math.floor(y)); }
+
+    drawBlock(rect) {
+        this.ctx.fillStyle = rect.type === 'ground' ? CFG.COLOR_GROUND : CFG.COLOR_BRICK;
+        this.ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        
+        // Inner bevel effect
+        this.ctx.strokeStyle = "rgba(0,0,0,0.1)";
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+        
+        // Texture detail (dots)
+        if (rect.type === 'brick') {
+            this.ctx.fillStyle = 'rgba(0,0,0,0.1)';
+            this.ctx.fillRect(rect.x + 5, rect.y + 5, rect.w - 10, rect.h - 10);
+        }
+    }
+
+    drawUI(score) {
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = 'bold 20px Courier New';
+        this.ctx.strokeStyle = '#000000';
+        this.ctx.lineWidth = 3;
+        this.ctx.strokeText("MARIO HTML5", 20, 30);
+        this.ctx.fillText("MARIO HTML5", 20, 30);
+        
+        const scoreText = "SCORE: " + score.toString().padStart(6, '0');
+        this.ctx.strokeText(scoreText, 20, 60);
+        this.ctx.fillText(scoreText, 20, 60);
+    }
+}
+
+// ==========================================================================================
+// BOOTSTRAP
+// ==========================================================================================
+window.onload = () => {
+    const game = new Engine();
+    game.start();
+};
+
+</script>
+</body>
+</html>

@@ -1,0 +1,1793 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hub de Jeux - Comparaison IA</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        :root {
+            --primary: #6a11cb;
+            --secondary: #2575fc;
+            --accent: #ff2d75;
+            --dark: #121212;
+            --light: #f8f9fa;
+            --gray: #2d2d2d;
+            --card-bg: rgba(30, 30, 40, 0.8);
+            --sidebar-width: 280px;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--dark), #1a1a2e);
+            color: var(--light);
+            min-height: 100vh;
+            overflow-x: hidden;
+            display: flex;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: rgba(20, 20, 30, 0.9);
+            height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+            padding: 2rem 1rem;
+            overflow-y: auto;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .logo h1 {
+            font-size: 1.8rem;
+            background: linear-gradient(to right, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .logo p {
+            color: #a0a0c0;
+            font-size: 0.9rem;
+        }
+
+        .menu-category {
+            margin-bottom: 1.5rem;
+        }
+
+        .menu-title {
+            font-size: 1rem;
+            color: #7a7a9e;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.8rem;
+            padding-left: 0.5rem;
+        }
+
+        .menu-items {
+            list-style: none;
+        }
+
+        .menu-item {
+            margin-bottom: 0.5rem;
+        }
+
+        .menu-item a {
+            display: flex;
+            align-items: center;
+            padding: 0.8rem 1rem;
+            color: #c0c0e0;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .menu-item a:hover {
+            background: rgba(106, 17, 203, 0.2);
+            color: white;
+        }
+
+        .menu-item a.active {
+            background: rgba(106, 17, 203, 0.3);
+            color: white;
+            box-shadow: 0 0 10px rgba(106, 17, 203, 0.5);
+        }
+
+        .menu-item i {
+            margin-right: 0.8rem;
+            width: 20px;
+            text-align: center;
+        }
+
+        .menu-item .badge {
+            position: absolute;
+            right: 1rem;
+            background: var(--accent);
+            color: white;
+            border-radius: 10px;
+            padding: 0.2rem 0.5rem;
+            font-size: 0.7rem;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: var(--sidebar-width);
+            padding: 2rem;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .page-title h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(to right, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-title p {
+            color: #a0a0c0;
+        }
+
+        .search-bar {
+            position: relative;
+            width: 300px;
+        }
+
+        .search-bar input {
+            width: 100%;
+            padding: 0.8rem 1.5rem;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50px;
+            color: var(--light);
+            font-size: 1rem;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .search-bar input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 15px rgba(106, 17, 203, 0.5);
+        }
+
+        .search-bar i {
+            position: absolute;
+            right: 1.5rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #a0a0c0;
+        }
+
+        /* IA Selector */
+        .ia-selector {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .ia-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #a0a0c0;
+            padding: 0.7rem 1.5rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .ia-btn.active,
+        .ia-btn:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .ia-btn i {
+            font-size: 1.2rem;
+        }
+
+        /* Games Grid */
+        .games-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .game-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            transition: all 0.4s ease;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .game-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 35px rgba(106, 17, 203, 0.4);
+            border-color: rgba(106, 17, 203, 0.3);
+        }
+
+        .game-preview {
+            height: 180px;
+            position: relative;
+            overflow: hidden;
+            background: #000;
+        }
+
+        .game-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            pointer-events: none;
+            filter: brightness(0.7);
+            transition: filter 0.3s ease;
+        }
+
+        .game-card:hover .game-iframe {
+            filter: brightness(1);
+        }
+
+        .game-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.7));
+            display: flex;
+            align-items: flex-end;
+            padding: 1.5rem;
+            opacity: 1;
+            transition: opacity 0.3s ease;
+        }
+
+        .game-card:hover .game-overlay {
+            opacity: 0;
+        }
+
+        .play-button {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--accent);
+            color: white;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            opacity: 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(255, 45, 117, 0.4);
+            cursor: pointer;
+        }
+
+        .game-card:hover .play-button {
+            opacity: 1;
+        }
+
+        .play-button:hover {
+            background: #ff1a66;
+            transform: translate(-50%, -50%) scale(1.1);
+        }
+
+        .game-info {
+            padding: 1.5rem;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .game-title {
+            font-size: 1.3rem;
+            margin-bottom: 0.5rem;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .ia-badge {
+            background: var(--primary);
+            color: white;
+            padding: 0.3rem 0.7rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+        }
+
+        .game-description {
+            color: #a0a0c0;
+            margin-bottom: 1rem;
+            flex-grow: 1;
+            line-height: 1.5;
+            font-size: 0.9rem;
+        }
+
+        .game-meta {
+            display: flex;
+            justify-content: space-between;
+            color: #7a7a9e;
+            font-size: 0.9rem;
+            margin-top: auto;
+        }
+
+        .game-tags {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .tag {
+            background: rgba(106, 17, 203, 0.2);
+            color: #b28aff;
+            padding: 0.3rem 0.7rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 1000px;
+            max-height: 90vh;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            padding: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            color: white;
+        }
+
+        .close-button {
+            background: none;
+            border: none;
+            color: #a0a0c0;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+
+        .close-button:hover {
+            color: var(--accent);
+        }
+
+        .modal-body {
+            flex-grow: 1;
+            overflow: hidden;
+        }
+
+        .modal-iframe {
+            width: 100%;
+            height: 100%;
+            min-height: 500px;
+            border: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .sidebar {
+                width: 250px;
+            }
+
+            .main-content {
+                margin-left: 250px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+
+            .sidebar.active {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .search-bar {
+                width: 100%;
+            }
+
+            .games-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .menu-toggle {
+                display: block;
+                position: fixed;
+                top: 1rem;
+                left: 1rem;
+                z-index: 101;
+                background: var(--primary);
+                color: white;
+                border: none;
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                font-size: 1.2rem;
+                cursor: pointer;
+                box-shadow: 0 0 10px rgba(106, 17, 203, 0.5);
+            }
+        }
+
+        .menu-toggle {
+            display: none;
+        }
+
+        /* Animation d'entrée */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .game-card {
+            animation: fadeInUp 0.5s ease forwards;
+            opacity: 0;
+        }
+
+        .game-card:nth-child(1) {
+            animation-delay: 0.1s;
+        }
+
+        .game-card:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .game-card:nth-child(3) {
+            animation-delay: 0.3s;
+        }
+
+        .game-card:nth-child(4) {
+            animation-delay: 0.4s;
+        }
+
+        .game-card:nth-child(5) {
+            animation-delay: 0.5s;
+        }
+
+        .game-card:nth-child(6) {
+            animation-delay: 0.6s;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Menu Toggle pour mobile -->
+    <button class="menu-toggle" id="menuToggle">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="logo">
+            <h1>GameHub IA</h1>
+            <p>Comparez les jeux générés par IA</p>
+        </div>
+
+        <div class="menu-category">
+            <h3 class="menu-title">Catégories de Jeux</h3>
+            <ul class="menu-items">
+                <li class="menu-item">
+                    <a href="#" class="active" data-category="all">
+                        <i class="fas fa-gamepad"></i>
+                        Tous les jeux
+                        <span class="badge">78</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-category="Arkanoid">
+                        <i class="fas fa-table-tennis"></i>
+                        Arkanoid
+                        <span class="badge">6</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-category="Combat">
+                        <i class="fas fa-fist-raised"></i>
+                        Combat
+                        <span class="badge">6</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-category="Commando">
+                        <i class="fas fa-running"></i>
+                        Commando
+                        <span class="badge">6</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-category="Foot">
+                        <i class="fas fa-futbol"></i>
+                        Foot
+                        <span class="badge">6</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-category="Lemmings">
+                        <i class="fas fa-users"></i>
+                        Lemmings
+                        <span class="badge">6</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-category="Mario">
+                        <i class="fas fa-mushroom"></i>
+                        Mario
+                        <span class="badge">6</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-category="Minecraft">
+                        <i class="fas fa-cube"></i>
+                        Minecraft
+                        <span class="badge">6</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-category="Race">
+                        <i class="fas fa-flag-checkered"></i>
+                        Race
+                        <span class="badge">6</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-category="Snake">
+                        <i class="fas fa-snake"></i>
+                        Snake
+                        <span class="badge">6</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-category="SpaceShooter">
+                        <i class="fas fa-space-shuttle"></i>
+                        SpaceShooter
+                        <span class="badge">6</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-category="Tennis">
+                        <i class="fas fa-table-tennis"></i>
+                        Tennis
+                        <span class="badge">6</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-category="Terraria">
+                        <i class="fas fa-mountain"></i>
+                        Terraria
+                        <span class="badge">6</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="menu-category">
+            <h3 class="menu-title">Filtres IA</h3>
+            <ul class="menu-items">
+                <li class="menu-item">
+                    <a href="#" data-ia="all">
+                        <i class="fas fa-robot"></i>
+                        Toutes les IA
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-ia="claude">
+                        <i class="fas fa-brain"></i>
+                        Claude
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-ia="copilot">
+                        <i class="fas fa-wind"></i>
+                        Copilot
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-ia="deepseek">
+                        <i class="fas fa-search"></i>
+                        Deepseek
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-ia="gemini">
+                        <i class="fas fa-gem"></i>
+                        Gemini
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-ia="gpt">
+                        <i class="fas fa-comment"></i>
+                        GPT
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a href="#" data-ia="mistral">
+                        <i class="fas fa-cloud"></i>
+                        Mistral
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="header">
+            <div class="page-title">
+                <h1 id="pageHeading">Tous les jeux</h1>
+                <p id="pageSubtitle">Comparaison des versions générées par différentes IA</p>
+            </div>
+            <div class="search-bar">
+                <input type="text" id="searchInput" placeholder="Rechercher un jeu...">
+                <i class="fas fa-search"></i>
+            </div>
+        </div>
+
+        <div class="ia-selector">
+            <button class="ia-btn active" data-ia="all">
+                <i class="fas fa-robot"></i>
+                Toutes les IA
+            </button>
+            <button class="ia-btn" data-ia="claude">
+                <i class="fas fa-brain"></i>
+                Claude
+            </button>
+            <button class="ia-btn" data-ia="copilot">
+                <i class="fas fa-wind"></i>
+                Copilot
+            </button>
+            <button class="ia-btn" data-ia="deepseek">
+                <i class="fas fa-search"></i>
+                Deepseek
+            </button>
+            <button class="ia-btn" data-ia="gemini">
+                <i class="fas fa-gem"></i>
+                Gemini
+            </button>
+            <button class="ia-btn" data-ia="gpt">
+                <i class="fas fa-comment"></i>
+                GPT
+            </button>
+            <button class="ia-btn" data-ia="mistral">
+                <i class="fas fa-cloud"></i>
+                Mistral
+            </button>
+        </div>
+
+        <div class="games-grid" id="gamesGrid">
+            <!-- Les cartes de jeux seront générées dynamiquement -->
+        </div>
+    </div>
+
+    <!-- Modal pour afficher le jeu en plein écran -->
+    <div class="modal" id="gameModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="modalGameTitle">Titre du jeu</h2>
+                <button class="close-button" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <iframe class="modal-iframe" id="modalIframe" src="" frameborder="0"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Données des jeux - Structure basée sur vos répertoires
+        const games = [
+            // Arkanoid
+            {
+                id: 1,
+                title: "Arkanoid",
+                description: "Jeu de casse-briques classique avec des power-ups et des niveaux de difficulté croissante.",
+                file: "Life/Arkanoid/arkanoidClaude.html",
+                category: "Arkanoid",
+                ia: "claude",
+                tags: ["Casse-briques", "Classique", "Arcade"],
+                players: "1 joueur",
+                duration: "10-15 min"
+            },
+            {
+                id: 2,
+                title: "Arkanoid",
+                description: "Version Copilot du célèbre jeu de casse-briques avec des améliorations graphiques.",
+                file: "Life/Arkanoid/arkanoidCopilot.html",
+                category: "Arkanoid",
+                ia: "copilot",
+                tags: ["Casse-briques", "Classique", "Arcade"],
+                players: "1 joueur",
+                duration: "10-15 min"
+            },
+            {
+                id: 3,
+                title: "Arkanoid",
+                description: "Implémentation Deepseek avec des mécaniques de jeu innovantes et des effets visuels.",
+                file: "Life/Arkanoid/arkanoidDeepseek.html",
+                category: "Arkanoid",
+                ia: "deepseek",
+                tags: ["Casse-briques", "Classique", "Arcade"],
+                players: "1 joueur",
+                duration: "10-15 min"
+            },
+            {
+                id: 4,
+                title: "Arkanoid",
+                description: "Version Gemini avec des niveaux créatifs et une physique de balle réaliste.",
+                file: "Life/Arkanoid/arkanoidGemini.html",
+                category: "Arkanoid",
+                ia: "gemini",
+                tags: ["Casse-briques", "Classique", "Arcade"],
+                players: "1 joueur",
+                duration: "10-15 min"
+            },
+            {
+                id: 5,
+                title: "Arkanoid",
+                description: "Implémentation GPT avec des power-ups uniques et un système de score compétitif.",
+                file: "Life/Arkanoid/arkanoidGPT.html",
+                category: "Arkanoid",
+                ia: "gpt",
+                tags: ["Casse-briques", "Classique", "Arcade"],
+                players: "1 joueur",
+                duration: "10-15 min"
+            },
+            {
+                id: 6,
+                title: "Arkanoid",
+                description: "Version Mistral avec des briques spéciales et des effets sonores immersifs.",
+                file: "Life/Arkanoid/arkanoidMistral.html",
+                category: "Arkanoid",
+                ia: "mistral",
+                tags: ["Casse-briques", "Classique", "Arcade"],
+                players: "1 joueur",
+                duration: "10-15 min"
+            },
+
+            // Combat
+            {
+                id: 7,
+                title: "Combat",
+                description: "Jeu de combat classique avec différents personnages et arènes.",
+                file: "Life/Combat/combatClaude.html",
+                category: "Combat",
+                ia: "claude",
+                tags: ["Combat", "VS", "Arcade"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 8,
+                title: "Combat",
+                description: "Version Copilot avec des combos spéciaux et des graphismes améliorés.",
+                file: "Life/Combat/combatCopilot.html",
+                category: "Combat",
+                ia: "copilot",
+                tags: ["Combat", "VS", "Arcade"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 9,
+                title: "Combat",
+                description: "Implémentation Deepseek avec des personnages uniques et des capacités spéciales.",
+                file: "Life/Combat/combatDeepseek.html",
+                category: "Combat",
+                ia: "deepseek",
+                tags: ["Combat", "VS", "Arcade"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 10,
+                title: "Combat",
+                description: "Version Gemini avec des animations fluides et des effets de combat réalistes.",
+                file: "Life/Combat/combatGemini.html",
+                category: "Combat",
+                ia: "gemini",
+                tags: ["Combat", "VS", "Arcade"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 11,
+                title: "Combat",
+                description: "Implémentation GPT avec un système de combat stratégique et des modes variés.",
+                file: "Life/Combat/combatGPT.html",
+                category: "Combat",
+                ia: "gpt",
+                tags: ["Combat", "VS", "Arcade"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 12,
+                title: "Combat",
+                description: "Version Mistral avec des arènes dynamiques et des conditions de victoire variées.",
+                file: "Life/Combat/combatMistral.html",
+                category: "Combat",
+                ia: "mistral",
+                tags: ["Combat", "VS", "Arcade"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+
+            // Commando
+            {
+                id: 13,
+                title: "Commando",
+                description: "Jeu de tir à défilement horizontal avec des missions variées et des ennemis multiples.",
+                file: "Life/Commando/commandoClaude.html",
+                category: "Commando",
+                ia: "claude",
+                tags: ["Action", "Tir", "Arcade"],
+                players: "1 joueur",
+                duration: "15-20 min"
+            },
+            {
+                id: 14,
+                title: "Commando",
+                description: "Version Copilot avec des armes améliorées et des environnements destructibles.",
+                file: "Life/Commando/commandoCopilot.html",
+                category: "Commando",
+                ia: "copilot",
+                tags: ["Action", "Tir", "Arcade"],
+                players: "1 joueur",
+                duration: "15-20 min"
+            },
+            {
+                id: 15,
+                title: "Commando",
+                description: "Implémentation Deepseek avec des missions secrètes et des boss imposants.",
+                file: "Life/Commando/commandoDeepseek.html",
+                category: "Commando",
+                ia: "deepseek",
+                tags: ["Action", "Tir", "Arcade"],
+                players: "1 joueur",
+                duration: "15-20 min"
+            },
+            {
+                id: 16,
+                title: "Commando",
+                description: "Version Gemini avec une IA ennemie intelligente et des objectifs variés.",
+                file: "Life/Commando/commandoGemini.html",
+                category: "Commando",
+                ia: "gemini",
+                tags: ["Action", "Tir", "Arcade"],
+                players: "1 joueur",
+                duration: "15-20 min"
+            },
+            {
+                id: 17,
+                title: "Commando",
+                description: "Implémentation GPT avec un système de progression et des améliorations de personnage.",
+                file: "Life/Commando/commandoGPT.html",
+                category: "Commando",
+                ia: "gpt",
+                tags: ["Action", "Tir", "Arcade"],
+                players: "1 joueur",
+                duration: "15-20 min"
+            },
+            {
+                id: 18,
+                title: "Commando",
+                description: "Version Mistral avec des missions chronométrées et des défis bonus.",
+                file: "Life/Commando/commandoMistral.html",
+                category: "Commando",
+                ia: "mistral",
+                tags: ["Action", "Tir", "Arcade"],
+                players: "1 joueur",
+                duration: "15-20 min"
+            },
+
+            // Foot
+            {
+                id: 19,
+                title: "Foot",
+                description: "Jeu de football rapide avec des contrôles simples et des matchs intenses.",
+                file: "Life/Foot/footClaude.html",
+                category: "Foot",
+                ia: "claude",
+                tags: ["Sport", "Football", "Compétition"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 20,
+                title: "Foot",
+                description: "Version Copilot avec des équipes personnalisables et des stades variés.",
+                file: "Life/Foot/footCopilot.html",
+                category: "Foot",
+                ia: "copilot",
+                tags: ["Sport", "Football", "Compétition"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 21,
+                title: "Foot",
+                description: "Implémentation Deepseek avec des compétences spéciales et des tirs spectaculaires.",
+                file: "Life/Foot/footDeepseek.html",
+                category: "Foot",
+                ia: "deepseek",
+                tags: ["Sport", "Football", "Compétition"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 22,
+                title: "Foot",
+                description: "Version Gemini avec une physique de balle réaliste et des animations fluides.",
+                file: "Life/Foot/footGemini.html",
+                category: "Foot",
+                ia: "gemini",
+                tags: ["Sport", "Football", "Compétition"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 23,
+                title: "Foot",
+                description: "Implémentation GPT avec un mode championnat et des statistiques détaillées.",
+                file: "Life/Foot/footGPT.html",
+                category: "Foot",
+                ia: "gpt",
+                tags: ["Sport", "Football", "Compétition"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 24,
+                title: "Foot",
+                description: "Version Mistral avec des conditions météo variables et des tactiques avancées.",
+                file: "Life/Foot/footMistral.html",
+                category: "Foot",
+                ia: "mistral",
+                tags: ["Sport", "Football", "Compétition"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+
+            // Lemmings
+            {
+                id: 25,
+                title: "Lemmings",
+                description: "Jeu de puzzle où vous guidez des lemings à travers des niveaux périlleux.",
+                file: "Life/Lemmings/lemmingsClaude.html",
+                category: "Lemmings",
+                ia: "claude",
+                tags: ["Puzzle", "Stratégie", "Classique"],
+                players: "1 joueur",
+                duration: "20-30 min"
+            },
+            {
+                id: 26,
+                title: "Lemmings",
+                description: "Version Copilot avec de nouveaux types de lemings et des capacités spéciales.",
+                file: "Life/Lemmings/lemmingsCopilot.html",
+                category: "Lemmings",
+                ia: "copilot",
+                tags: ["Puzzle", "Stratégie", "Classique"],
+                players: "1 joueur",
+                duration: "20-30 min"
+            },
+            {
+                id: 27,
+                title: "Lemmings",
+                description: "Implémentation Deepseek avec des environnements interactifs et des pièges créatifs.",
+                file: "Life/Lemmings/lemmingsDeepseek.html",
+                category: "Lemmings",
+                ia: "deepseek",
+                tags: ["Puzzle", "Stratégie", "Classique"],
+                players: "1 joueur",
+                duration: "20-30 min"
+            },
+            {
+                id: 28,
+                title: "Lemmings",
+                description: "Version Gemini avec des énigmes complexes et un éditeur de niveaux intégré.",
+                file: "Life/Lemmings/lemmingsGemini.html",
+                category: "Lemmings",
+                ia: "gemini",
+                tags: ["Puzzle", "Stratégie", "Classique"],
+                players: "1 joueur",
+                duration: "20-30 min"
+            },
+            {
+                id: 29,
+                title: "Lemmings",
+                description: "Implémentation GPT avec des objectifs multiples et des défis chronométrés.",
+                file: "Life/Lemmings/lemmingsGPT.html",
+                category: "Lemmings",
+                ia: "gpt",
+                tags: ["Puzzle", "Stratégie", "Classique"],
+                players: "1 joueur",
+                duration: "20-30 min"
+            },
+            {
+                id: 30,
+                title: "Lemmings",
+                description: "Version Mistral avec des mécaniques de jeu innovantes et des effets visuels colorés.",
+                file: "Life/Lemmings/lemmingsMistral.html",
+                category: "Lemmings",
+                ia: "mistral",
+                tags: ["Puzzle", "Stratégie", "Classique"],
+                players: "1 joueur",
+                duration: "20-30 min"
+            },
+
+            // Mario
+            {
+                id: 31,
+                title: "Mario",
+                description: "Jeu de plateforme classique inspiré de Super Mario avec des sauts et des power-ups.",
+                file: "Life/Mario/marioClaude.html",
+                category: "Mario",
+                ia: "claude",
+                tags: ["Platformer", "Classique", "Aventure"],
+                players: "1 joueur",
+                duration: "20-30 min"
+            },
+            {
+                id: 32,
+                title: "Mario",
+                description: "Version Copilot avec des niveaux redessinés et de nouveaux ennemis.",
+                file: "Life/Mario/marioCopilot.html",
+                category: "Mario",
+                ia: "copilot",
+                tags: ["Platformer", "Classique", "Aventure"],
+                players: "1 joueur",
+                duration: "20-30 min"
+            },
+            {
+                id: 33,
+                title: "Mario",
+                description: "Implémentation Deepseek avec des mécaniques de jeu uniques et des secrets bien cachés.",
+                file: "Life/Mario/marioDeepseek.html",
+                category: "Mario",
+                ia: "deepseek",
+                tags: ["Platformer", "Classique", "Aventure"],
+                players: "1 joueur",
+                duration: "20-30 min"
+            },
+            {
+                id: 34,
+                title: "Mario",
+                description: "Version Gemini avec une physique de saut réaliste et des environnements détaillés.",
+                file: "Life/Mario/marioGemini.html",
+                category: "Mario",
+                ia: "gemini",
+                tags: ["Platformer", "Classique", "Aventure"],
+                players: "1 joueur",
+                duration: "20-30 min"
+            },
+            {
+                id: 35,
+                title: "Mario",
+                description: "Implémentation GPT avec des boss épiques et un système de vies amélioré.",
+                file: "Life/Mario/marioGPT.html",
+                category: "Mario",
+                ia: "gpt",
+                tags: ["Platformer", "Classique", "Aventure"],
+                players: "1 joueur",
+                duration: "20-30 min"
+            },
+            {
+                id: 36,
+                title: "Mario",
+                description: "Version Mistral avec des power-ups originaux et des niveaux à thème varié.",
+                file: "Life/Mario/marioMistral.html",
+                category: "Mario",
+                ia: "mistral",
+                tags: ["Platformer", "Classique", "Aventure"],
+                players: "1 joueur",
+                duration: "20-30 min"
+            },
+
+            // Minecraft
+            {
+                id: 37,
+                title: "Minecraft",
+                description: "Jeu de construction et d'aventure dans un monde cubique infini.",
+                file: "Life/Minecraft/minecraftClaude.html",
+                category: "Minecraft",
+                ia: "claude",
+                tags: ["Construction", "Aventure", "Sandbox"],
+                players: "1 joueur",
+                duration: "30-60 min"
+            },
+            {
+                id: 38,
+                title: "Minecraft",
+                description: "Version Copilot avec des biomes étendus et des créatures uniques.",
+                file: "Life/Minecraft/minecraftCopilot.html",
+                category: "Minecraft",
+                ia: "copilot",
+                tags: ["Construction", "Aventure", "Sandbox"],
+                players: "1 joueur",
+                duration: "30-60 min"
+            },
+            {
+                id: 39,
+                title: "Minecraft",
+                description: "Implémentation Deepseek avec un système d'artisanat avancé et des quêtes.",
+                file: "Life/Minecraft/minecraftDeepseek.html",
+                category: "Minecraft",
+                ia: "deepseek",
+                tags: ["Construction", "Aventure", "Sandbox"],
+                players: "1 joueur",
+                duration: "30-60 min"
+            },
+            {
+                id: 40,
+                title: "Minecraft",
+                description: "Version Gemini avec des mécaniques de survie réalistes et un cycle jour/nuit dynamique.",
+                file: "Life/Minecraft/minecraftGemini.html",
+                category: "Minecraft",
+                ia: "gemini",
+                tags: ["Construction", "Aventure", "Sandbox"],
+                players: "1 joueur",
+                duration: "30-60 min"
+            },
+            {
+                id: 41,
+                title: "Minecraft",
+                description: "Implémentation GPT avec des structures générées procéduralement et des donjons.",
+                file: "Life/Minecraft/minecraftGPT.html",
+                category: "Minecraft",
+                ia: "gpt",
+                tags: ["Construction", "Aventure", "Sandbox"],
+                players: "1 joueur",
+                duration: "30-60 min"
+            },
+            {
+                id: 42,
+                title: "Minecraft",
+                description: "Version Mistral avec un système de minage amélioré et des ressources rares.",
+                file: "Life/Minecraft/minecraftMistral.html",
+                category: "Minecraft",
+                ia: "mistral",
+                tags: ["Construction", "Aventure", "Sandbox"],
+                players: "1 joueur",
+                duration: "30-60 min"
+            },
+
+            // Race
+            {
+                id: 43,
+                title: "Race",
+                description: "Jeu de course rapide avec différents circuits et véhicules.",
+                file: "Life/Race/raceClaude.html",
+                category: "Race",
+                ia: "claude",
+                tags: ["Course", "Vitesse", "Arcade"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 44,
+                title: "Race",
+                description: "Version Copilot avec des voitures personnalisables et des circuits détaillés.",
+                file: "Life/Race/raceCopilot.html",
+                category: "Race",
+                ia: "copilot",
+                tags: ["Course", "Vitesse", "Arcade"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 45,
+                title: "Race",
+                description: "Implémentation Deepseek avec une physique de conduite réaliste et des dérapages.",
+                file: "Life/Race/raceDeepseek.html",
+                category: "Race",
+                ia: "deepseek",
+                tags: ["Course", "Vitesse", "Arcade"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 46,
+                title: "Race",
+                description: "Version Gemini avec des conditions météo variables et des effets visuels.",
+                file: "Life/Race/raceGemini.html",
+                category: "Race",
+                ia: "gemini",
+                tags: ["Course", "Vitesse", "Arcade"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 47,
+                title: "Race",
+                description: "Implémentation GPT avec un mode championnat et des améliorations de véhicules.",
+                file: "Life/Race/raceGPT.html",
+                category: "Race",
+                ia: "gpt",
+                tags: ["Course", "Vitesse", "Arcade"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 48,
+                title: "Race",
+                description: "Version Mistral avec des circuits secrets et des défis contre-la-montre.",
+                file: "Life/Race/raceMistral.html",
+                category: "Race",
+                ia: "mistral",
+                tags: ["Course", "Vitesse", "Arcade"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+
+            // Snake
+            {
+                id: 49,
+                title: "Snake",
+                description: "Jeu du serpent classique où vous mangez des fruits pour grandir.",
+                file: "Life/Snake/snakeClaude.html",
+                category: "Snake",
+                ia: "claude",
+                tags: ["Classique", "Snake", "Arcade"],
+                players: "1 joueur",
+                duration: "5-10 min"
+            },
+            {
+                id: 50,
+                title: "Snake",
+                description: "Version Copilot avec des power-ups et des obstacles variés.",
+                file: "Life/Snake/snakeCopilot.html",
+                category: "Snake",
+                ia: "copilot",
+                tags: ["Classique", "Snake", "Arcade"],
+                players: "1 joueur",
+                duration: "5-10 min"
+            },
+            {
+                id: 51,
+                title: "Snake",
+                description: "Implémentation Deepseek avec des modes de jeu alternatifs et des défis quotidiens.",
+                file: "Life/Snake/snakeDeepseek.html",
+                category: "Snake",
+                ia: "deepseek",
+                tags: ["Classique", "Snake", "Arcade"],
+                players: "1 joueur",
+                duration: "5-10 min"
+            },
+            {
+                id: 52,
+                title: "Snake",
+                description: "Version Gemini avec des skins personnalisables et des tableaux de score en ligne.",
+                file: "Life/Snake/snakeGemini.html",
+                category: "Snake",
+                ia: "gemini",
+                tags: ["Classique", "Snake", "Arcade"],
+                players: "1 joueur",
+                duration: "5-10 min"
+            },
+            {
+                id: 53,
+                title: "Snake",
+                description: "Implémentation GPT avec des environnements changeants et des ennemis mobiles.",
+                file: "Life/Snake/snakeGPT.html",
+                category: "Snake",
+                ia: "gpt",
+                tags: ["Classique", "Snake", "Arcade"],
+                players: "1 joueur",
+                duration: "5-10 min"
+            },
+            {
+                id: 54,
+                title: "Snake",
+                description: "Version Mistral avec des mécaniques de jeu innovantes et des effets visuels.",
+                file: "Life/Snake/snakeMistral.html",
+                category: "Snake",
+                ia: "mistral",
+                tags: ["Classique", "Snake", "Arcade"],
+                players: "1 joueur",
+                duration: "5-10 min"
+            },
+
+            // SpaceShooter
+            {
+                id: 55,
+                title: "Space Shooter",
+                description: "Jeu de shoot 'em up spatial avec des vagues d'ennemis et des boss.",
+                file: "Life/SpaceShooter/spaceShooterClaude.html",
+                category: "SpaceShooter",
+                ia: "claude",
+                tags: ["Shooter", "Espace", "Arcade"],
+                players: "1 joueur",
+                duration: "15-20 min"
+            },
+            {
+                id: 56,
+                title: "Space Shooter",
+                description: "Version Copilot avec des vaisseaux personnalisables et des armes spéciales.",
+                file: "Life/SpaceShooter/spaceShooterCopilot.html",
+                category: "SpaceShooter",
+                ia: "copilot",
+                tags: ["Shooter", "Espace", "Arcade"],
+                players: "1 joueur",
+                duration: "15-20 min"
+            },
+            {
+                id: 57,
+                title: "Space Shooter",
+                description: "Implémentation Deepseek avec des environnements variés et des ennemis intelligents.",
+                file: "Life/SpaceShooter/spaceShooterDeepseek.html",
+                category: "SpaceShooter",
+                ia: "deepseek",
+                tags: ["Shooter", "Espace", "Arcade"],
+                players: "1 joueur",
+                duration: "15-20 min"
+            },
+            {
+                id: 58,
+                title: "Space Shooter",
+                description: "Version Gemini avec des effets visuels époustouflants et une bande-son immersive.",
+                file: "Life/SpaceShooter/spaceShooterGemini.html",
+                category: "SpaceShooter",
+                ia: "gemini",
+                tags: ["Shooter", "Espace", "Arcade"],
+                players: "1 joueur",
+                duration: "15-20 min"
+            },
+            {
+                id: 59,
+                title: "Space Shooter",
+                description: "Implémentation GPT avec un système de progression et des vaisseaux améliorables.",
+                file: "Life/SpaceShooter/spaceShooterGPT.html",
+                category: "SpaceShooter",
+                ia: "gpt",
+                tags: ["Shooter", "Espace", "Arcade"],
+                players: "1 joueur",
+                duration: "15-20 min"
+            },
+            {
+                id: 60,
+                title: "Space Shooter",
+                description: "Version Mistral avec des modes de jeu alternatifs et des défis coopératifs.",
+                file: "Life/SpaceShooter/spaceShooterMistral.html",
+                category: "SpaceShooter",
+                ia: "mistral",
+                tags: ["Shooter", "Espace", "Arcade"],
+                players: "1 joueur",
+                duration: "15-20 min"
+            },
+
+            // Tennis
+            {
+                id: 61,
+                title: "Tennis",
+                description: "Jeu de tennis rapide avec des contrôles simples et des matchs intenses.",
+                file: "Life/Tennis/tennisClaude.html",
+                category: "Tennis",
+                ia: "claude",
+                tags: ["Sport", "Tennis", "Compétition"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 62,
+                title: "Tennis",
+                description: "Version Copilot avec des terrains variés et des coups spéciaux.",
+                file: "Life/Tennis/tennisCopilot.html",
+                category: "Tennis",
+                ia: "copilot",
+                tags: ["Sport", "Tennis", "Compétition"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 63,
+                title: "Tennis",
+                description: "Implémentation Deepseek avec une physique de balle réaliste et des animations fluides.",
+                file: "Life/Tennis/tennisDeepseek.html",
+                category: "Tennis",
+                ia: "deepseek",
+                tags: ["Sport", "Tennis", "Compétition"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 64,
+                title: "Tennis",
+                description: "Version Gemini avec des personnages personnalisables et des tournois.",
+                file: "Life/Tennis/tennisGemini.html",
+                category: "Tennis",
+                ia: "gemini",
+                tags: ["Sport", "Tennis", "Compétition"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 65,
+                title: "Tennis",
+                description: "Implémentation GPT avec des statistiques détaillées et un mode carrière.",
+                file: "Life/Tennis/tennisGPT.html",
+                category: "Tennis",
+                ia: "gpt",
+                tags: ["Sport", "Tennis", "Compétition"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+            {
+                id: 66,
+                title: "Tennis",
+                description: "Version Mistral avec des conditions météo variables et des surfaces de jeu différentes.",
+                file: "Life/Tennis/tennisMistral.html",
+                category: "Tennis",
+                ia: "mistral",
+                tags: ["Sport", "Tennis", "Compétition"],
+                players: "1-2 joueurs",
+                duration: "5-10 min"
+            },
+
+            // Terraria
+            {
+                id: 67,
+                title: "Terraria",
+                description: "Jeu d'aventure et d'exploration dans un monde 2D généré procéduralement.",
+                file: "Life/Terraria/terrariaClaude.html",
+                category: "Terraria",
+                ia: "claude",
+                tags: ["Aventure", "Exploration", "Sandbox"],
+                players: "1 joueur",
+                duration: "30-60 min"
+            },
+            {
+                id: 68,
+                title: "Terraria",
+                description: "Version Copilot avec des biomes étendus et des créatures uniques.",
+                file: "Life/Terraria/terrariaCopilot.html",
+                category: "Terraria",
+                ia: "copilot",
+                tags: ["Aventure", "Exploration", "Sandbox"],
+                players: "1 joueur",
+                duration: "30-60 min"
+            },
+            {
+                id: 69,
+                title: "Terraria",
+                description: "Implémentation Deepseek avec un système d'artisanat avancé et des boss épiques.",
+                file: "Life/Terraria/terrariaDeepseek.html",
+                category: "Terraria",
+                ia: "deepseek",
+                tags: ["Aventure", "Exploration", "Sandbox"],
+                players: "1 joueur",
+                duration: "30-60 min"
+            },
+            {
+                id: 70,
+                title: "Terraria",
+                description: "Version Gemini avec des événements dynamiques et des quêtes variées.",
+                file: "Life/Terraria/terrariaGemini.html",
+                category: "Terraria",
+                ia: "gemini",
+                tags: ["Aventure", "Exploration", "Sandbox"],
+                players: "1 joueur",
+                duration: "30-60 min"
+            },
+            {
+                id: 71,
+                title: "Terraria",
+                description: "Implémentation GPT avec des structures générées et des donjons mystérieux.",
+                file: "Life/Terraria/terrariaGPT.html",
+                category: "Terraria",
+                ia: "gpt",
+                tags: ["Aventure", "Exploration", "Sandbox"],
+                players: "1 joueur",
+                duration: "30-60 min"
+            },
+            {
+                id: 72,
+                title: "Terraria",
+                description: "Version Mistral avec un système de construction avancé et des ressources rares.",
+                file: "Life/Terraria/terrariaMistral.html",
+                category: "Terraria",
+                ia: "mistral",
+                tags: ["Aventure", "Exploration", "Sandbox"],
+                players: "1 joueur",
+                duration: "30-60 min"
+            }
+        ];
+
+
+        // Références aux éléments DOM
+        const gamesGrid = document.getElementById('gamesGrid');
+        const searchInput = document.getElementById('searchInput');
+        const menuItems = document.querySelectorAll('.menu-item a');
+        const iaButtons = document.querySelectorAll('.ia-btn');
+        const gameModal = document.getElementById('gameModal');
+        const modalIframe = document.getElementById('modalIframe');
+        const modalGameTitle = document.getElementById('modalGameTitle');
+        const closeModal = document.getElementById('closeModal');
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.getElementById('sidebar');
+        const pageHeading = document.getElementById('pageHeading');
+        const pageSubtitle = document.getElementById('pageSubtitle');
+
+        // Variables d'état
+        let currentCategory = 'all';
+        let currentIA = 'all';
+        let searchQuery = '';
+
+        // Générer les cartes de jeux
+        function renderGames() {
+            gamesGrid.innerHTML = '';
+
+            const filteredGames = games.filter(game => {
+                const categoryMatch = currentCategory === 'all' || game.category === currentCategory;
+                const iaMatch = currentIA === 'all' || game.ia === currentIA;
+                const searchMatch = searchQuery === '' ||
+                    game.title.toLowerCase().includes(searchQuery) ||
+                    game.description.toLowerCase().includes(searchQuery) ||
+                    game.tags.some(tag => tag.toLowerCase().includes(searchQuery));
+
+                return categoryMatch && iaMatch && searchMatch;
+            });
+
+            if (filteredGames.length === 0) {
+                gamesGrid.innerHTML = `
+                    <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; color: #7a7a9e;">
+                        <i class="fas fa-gamepad" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+                        <h3>Aucun jeu trouvé</h3>
+                        <p>Essayez de modifier vos filtres ou votre recherche</p>
+                    </div>
+                `;
+                return;
+            }
+
+            filteredGames.forEach(game => {
+                const gameCard = document.createElement('div');
+                gameCard.className = 'game-card';
+
+                gameCard.innerHTML = `
+                    <div class="game-preview">
+                        <iframe class="game-iframe" src="${game.file}" scrolling="no"></iframe>
+                        <div class="game-overlay">
+                            <h3 class="game-title">${game.title}</h3>
+                        </div>
+                        <div class="play-button">
+                            <i class="fas fa-play"></i>
+                        </div>
+                    </div>
+                    <div class="game-info">
+                        <div class="game-title">
+                            ${game.title}
+                            <span class="ia-badge">${game.ia.charAt(0).toUpperCase() + game.ia.slice(1)}</span>
+                        </div>
+                        <p class="game-description">${game.description}</p>
+                        <div class="game-tags">
+                            ${game.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+                        </div>
+                        <div class="game-meta">
+                            <span><i class="fas fa-users"></i> ${game.players}</span>
+                            <span><i class="fas fa-clock"></i> ${game.duration}</span>
+                        </div>
+                    </div>
+                `;
+
+                // Ajouter l'événement pour ouvrir le jeu en modal
+                const playButton = gameCard.querySelector('.play-button');
+                playButton.addEventListener('click', () => openGameModal(game));
+
+                gamesGrid.appendChild(gameCard);
+            });
+        }
+
+        // Ouvrir le jeu en modal
+        function openGameModal(game) {
+            modalIframe.src = game.file;
+            modalGameTitle.textContent = `${game.title} - ${game.ia.charAt(0).toUpperCase() + game.ia.slice(1)}`;
+            gameModal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        // Fermer la modal
+        function closeGameModal() {
+            gameModal.style.display = 'none';
+            modalIframe.src = '';
+            document.body.style.overflow = 'auto';
+        }
+
+        // Mettre à jour les titres de page
+        function updatePageTitles() {
+            if (currentCategory === 'all') {
+                pageHeading.textContent = 'Tous les jeux';
+                pageSubtitle.textContent = 'Comparaison des versions générées par différentes IA';
+            } else {
+                pageHeading.textContent = currentCategory;
+                pageSubtitle.textContent = `Versions ${currentCategory} générées par différentes IA`;
+            }
+        }
+
+        // Initialisation
+        document.addEventListener('DOMContentLoaded', () => {
+            // Afficher tous les jeux au chargement
+            renderGames();
+            updatePageTitles();
+
+            // Gestion des catégories dans le menu
+            menuItems.forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.preventDefault();
+
+                    // Retirer la classe active de tous les éléments
+                    menuItems.forEach(i => i.classList.remove('active'));
+
+                    // Ajouter la classe active à l'élément cliqué
+                    item.classList.add('active');
+
+                    // Mettre à jour la catégorie courante
+                    if (item.dataset.category) {
+                        currentCategory = item.dataset.category;
+                        updatePageTitles();
+                    } else if (item.dataset.ia) {
+                        currentIA = item.dataset.ia;
+
+                        // Mettre à jour les boutons IA
+                        iaButtons.forEach(btn => {
+                            if (btn.dataset.ia === currentIA) {
+                                btn.classList.add('active');
+                            } else {
+                                btn.classList.remove('active');
+                            }
+                        });
+                    }
+
+                    // Re-rendre les jeux
+                    renderGames();
+
+                    // Fermer le sidebar sur mobile
+                    if (window.innerWidth <= 768) {
+                        sidebar.classList.remove('active');
+                    }
+                });
+            });
+
+            // Gestion des boutons IA
+            iaButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    // Retirer la classe active de tous les boutons
+                    iaButtons.forEach(btn => btn.classList.remove('active'));
+
+                    // Ajouter la classe active au bouton cliqué
+                    button.classList.add('active');
+
+                    // Mettre à jour l'IA courante
+                    currentIA = button.dataset.ia;
+
+                    // Mettre à jour le menu latéral
+                    menuItems.forEach(item => {
+                        if (item.dataset.ia === currentIA) {
+                            item.classList.add('active');
+                        } else if (item.dataset.ia && item.dataset.ia !== currentIA) {
+                            item.classList.remove('active');
+                        }
+                    });
+
+                    // Re-rendre les jeux
+                    renderGames();
+                });
+            });
+
+            // Gestion de la recherche
+            searchInput.addEventListener('input', () => {
+                searchQuery = searchInput.value.trim().toLowerCase();
+                renderGames();
+            });
+
+            // Gestion de la modal
+            closeModal.addEventListener('click', closeGameModal);
+
+            // Fermer la modal en cliquant à l'extérieur
+            gameModal.addEventListener('click', (e) => {
+                if (e.target === gameModal) {
+                    closeGameModal();
+                }
+            });
+
+            // Fermer la modal avec la touche Échap
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && gameModal.style.display === 'flex') {
+                    closeGameModal();
+                }
+            });
+
+            // Gestion du menu toggle sur mobile
+            menuToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('active');
+            });
+        });
+    </script>
+</body>
+
+</html>

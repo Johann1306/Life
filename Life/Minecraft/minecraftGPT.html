@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mini-Minecraft (HTML/JS - Three.js)</title>
+  <style>
+    html,body{height:100%;margin:0;overflow:hidden;background:#5fb0ff}
+    #hud{position:absolute;left:12px;top:12px;color:#fff;font-family:Helvetica,Arial,sans-serif}
+    #instructions{position:absolute;left:12px;bottom:12px;color:#fff;max-width:320px;font-size:13px}
+    #inventory{display:flex;gap:6px;margin-top:8px}
+    .slot{width:36px;height:36px;border:2px solid rgba(255,255,255,0.25);display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.15);cursor:pointer}
+    .slot.active{outline:3px solid #ffd868}
+    canvas{display:block}
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div>Mini‑Minecraft — WASD pour bouger, E pour sauter</div>
+    <div id="inventory"></div>
+  </div>
+  <div id="instructions">Clic gauche: casser | Clic droit: placer | Molette: changer bloc | R: réinitialiser</div>
+
+  <!-- Three.js depuis CDN -->
+  <script src="https://unpkg.com/three@0.153.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.153.0/examples/js/controls/PointerLockControls.js"></script>
+  <script>
+  // Mini-voxel engine with basic features: monde de cubes, placer/casser, inventaire, collision simple.
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+  const renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.shadowMap.enabled = true;
+  document.body.appendChild(renderer.domElement);
+
+  // Lumière
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x8888ff, 0.8);
+  scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+  dir.position.set(5,10,7); dir.castShadow=true; scene.add(dir);
+
+  // Ground / chunks: we'll generate a flat grid of cubes
+  const CHUNK_SIZE = 16; // largeur
+  const HEIGHT = 6; // hauteur de terrain initial
+  const BLOCK_SIZE = 1;
+
+  // Materials (simple colored materials)
+  const blockTypes = [
+    {id:0,name:'Air',mat:null},
+    {id:1,name:'Dirt',color:0x8b5a2b},
+    {id:2,name:'Grass',color:0x3cb043},
+    {id:3,name:'Stone',color:0x888888},
+    {id:4,name:'Wood',color:0x7b4f2f}
+  ];
+  blockTypes.forEach(b=>{ if(b.color) b.mat = new THREE.MeshLambertMaterial({color:b.color}); });
+
+  // Simple voxel storage using a Map keyed by 'x,y,z'
+  const voxels = new Map();
+  function key(x,y,z){return `${x},${y},${z}`}
+
+  // Create a cube mesh pooling to improve performance
+  const cubeGeom = new THREE.BoxGeometry(BLOCK_SIZE,BLOCK_SIZE,BLOCK_SIZE);
+
+  // Group to contain cubes
+  const worldGroup = new THREE.Group();
+  scene.add(worldGroup);
+
+  // Generate simple terrain: flat with small variation
+  for(let x=-CHUNK_SIZE/2;x<CHUNK_SIZE/2;x++){
+    for(let z=-CHUNK_SIZE/2;z<CHUNK_SIZE/2;z++){
+      const h = HEIGHT + Math.floor((Math.random()-0.5)*2);
+      for(let y=0;y<h;y++){
+        const t = (y==h-1)?2:1; // top grass, below dirt
+        addVoxel(x,y,z,t,false);
+      }
+    }
+  }
+
+  // Add a few stone and wood blocks
+  addVoxel(2,HEIGHT,2,3,false);
+  addVoxel(-3,HEIGHT,1,4,false);
+
+  function addVoxel(x,y,z,type,addToMap=true){
+    if(type===0) return;
+    const k = key(x,y,z);
+    if(voxels.has(k)) return; // déjà
+    const mat = blockTypes[type].mat;
+    const mesh = new THREE.Mesh(cubeGeom, mat);
+    mesh.position.set(x*BLOCK_SIZE + BLOCK_SIZE/2, y*BLOCK_SIZE + BLOCK_SIZE/2, z*BLOCK_SIZE + BLOCK_SIZE/2);
+    mesh.castShadow = true; mesh.receiveShadow=true;
+    mesh.userData = {x,y,z,type};
+    worldGroup.add(mesh);
+    if(addToMap) voxels.set(k, mesh);
+    else voxels.set(k, mesh);
+  }
+
+  function removeVoxel(x,y,z){
+    const k=key(x,y,z);
+    const m = voxels.get(k);
+    if(!m) return;
+    worldGroup.remove(m);
+    m.geometry.dispose();
+    if(m.material) m.material.dispose();
+    voxels.delete(k);
+  }
+
+  // Raycasting for block interaction
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  function getBlockUnderCursor(){
+    raycaster.setFromCamera(new THREE.Vector2(0,0), camera); // center of screen
+    const intersects = raycaster.intersectObjects(worldGroup.children);
+    if(intersects.length===0) return null;
+    return intersects[0];
+  }
+
+  // Player (simple physics)
+  const player = {x:0,y:HEIGHT+2,z:5,velocityY:0,onGround:false};
+  camera.position.set(player.x, player.y, player.z);
+
+  // Controls: pointer lock
+  const controls = new THREE.PointerLockControls(camera, document.body);
+  document.body.addEventListener('click', ()=>{ controls.lock(); });
+
+  // Movement
+  const keys = {};
+  addEventListener('keydown', e=>{ keys[e.code]=true; if(e.code==='KeyR') location.reload(); });
+  addEventListener('keyup', e=>{ keys[e.code]=false; });
+
+  // Inventory
+  let selectedIndex = 1; // default dirt
+  const invEl = document.getElementById('inventory');
+  function renderInventory(){
+    invEl.innerHTML='';
+    for(let i=1;i<blockTypes.length;i++){
+      const s = document.createElement('div');
+      s.className='slot' + (i===selectedIndex? ' active':'');
+      s.innerText = blockTypes[i].name[0];
+      s.title = blockTypes[i].name;
+      s.onclick = ()=>{ selectedIndex=i; renderInventory(); }
+      invEl.appendChild(s);
+    }
+  }
+  renderInventory();
+
+  // Mouse for placing / removing
+  let placeMode = true; // left remove, right place
+  window.addEventListener('mousedown', (e)=>{
+    if(!controls.isLocked) return;
+    const hit = getBlockUnderCursor();
+    if(!hit) return;
+    const p = hit.point;
+    const normal = hit.face.normal;
+    const hx = Math.floor(hit.object.userData.x);
+    const hy = Math.floor(hit.object.userData.y);
+    const hz = Math.floor(hit.object.userData.z);
+    if(e.button===0){ // gauche: casser
+      removeVoxel(hit.object.userData.x, hit.object.userData.y, hit.object.userData.z);
+    } else if(e.button===2){ // droit: placer
+      const nx = hit.object.userData.x + normal.x;
+      const ny = hit.object.userData.y + normal.y;
+      const nz = hit.object.userData.z + normal.z;
+      addVoxel(nx,ny,nz,selectedIndex);
+    }
+  });
+  // Prevent context menu
+  window.addEventListener('contextmenu', e=>e.preventDefault());
+
+  // Mouse wheel to change selected block
+  window.addEventListener('wheel', (e)=>{
+    if(e.deltaY>0) selectedIndex = Math.min(selectedIndex+1, blockTypes.length-1);
+    else selectedIndex = Math.max(1, selectedIndex-1);
+    renderInventory();
+  });
+
+  // Resize
+  addEventListener('resize', ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+  // Simple collision detection with voxels (axis-aligned)
+  function isFree(x,y,z){
+    return !voxels.has(key(Math.floor(x),Math.floor(y),Math.floor(z)));
+  }
+
+  // Animation loop
+  const clock = new THREE.Clock();
+  function animate(){
+    const dt = Math.min(clock.getDelta(), 0.05);
+
+    // Movement inputs
+    const speed = 5; // units per second
+    let forward = 0, right = 0;
+    if(keys['KeyW']) forward += 1;
+    if(keys['KeyS']) forward -= 1;
+    if(keys['KeyA']) right -= 1;
+    if(keys['KeyD']) right += 1;
+
+    // compute direction relative to camera yaw
+    const dirVec = new THREE.Vector3();
+    controls.getDirection(dirVec); // returns forward vector
+    // forward vector lies in XZ plane? We'll keep Y out
+    const yaw = Math.atan2(dirVec.x, dirVec.z);
+    const dx = Math.sin(yaw)*forward + Math.cos(yaw+Math.PI/2)*right;
+    const dz = Math.cos(yaw)*forward - Math.sin(yaw+Math.PI/2)*right;
+
+    // apply horizontal movement with basic collision
+    const nx = player.x + dx * speed * dt;
+    const nz = player.z + dz * speed * dt;
+    // check simple collision at player's feet height
+    if(isFree(nx, Math.floor(player.y), nz)) { player.x = nx; player.z = nz; }
+
+    // Gravity
+    player.velocityY -= 9.8 * dt; // gravity
+    player.y += player.velocityY * dt;
+    // ground collision
+    if(player.y <= 1.5){ player.y = 1.5; player.velocityY = 0; player.onGround = true; }
+    else player.onGround = false;
+
+    // Jump
+    if(keys['Space'] && player.onGround){ player.velocityY = 6; player.onGround=false; }
+
+    camera.position.set(player.x, player.y, player.z);
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+  }
+  animate();
+
+  // Simple helper: addVoxel wrapper to accept non-integer and convert
+  function addVoxel(x,y,z,type,addToMap=true){
+    x=Math.floor(x); y=Math.floor(y); z=Math.floor(z);
+    const k=key(x,y,z);
+    if(voxels.has(k)) return;
+    const mat = blockTypes[type].mat.clone();
+    const mesh = new THREE.Mesh(cubeGeom, mat);
+    mesh.position.set(x*BLOCK_SIZE + BLOCK_SIZE/2, y*BLOCK_SIZE + BLOCK_SIZE/2, z*BLOCK_SIZE + BLOCK_SIZE/2);
+    mesh.userData = {x,y,z,type};
+    worldGroup.add(mesh);
+    voxels.set(k, mesh);
+  }
+  // Overwrite previous definition of removeVoxel to be robust
+  function removeVoxel(x,y,z){
+    x=Math.floor(x); y=Math.floor(y); z=Math.floor(z);
+    const k=key(x,y,z);
+    const m = voxels.get(k);
+    if(!m) return;
+    worldGroup.remove(m);
+    if(m.geometry) m.geometry.dispose();
+    if(m.material) m.material.dispose();
+    voxels.delete(k);
+  }
+
+  // Because we redefined addVoxel/removeVoxel later, we need initial terrain filled again
+  // (We'll clear and re-generate)
+  function resetWorld(){
+    // remove all
+    worldGroup.children.forEach(c=>{ if(c.geometry) c.geometry.dispose(); if(c.material) c.material.dispose(); });
+    worldGroup.clear(); voxels.clear();
+    for(let x=-CHUNK_SIZE/2;x<CHUNK_SIZE/2;x++){
+      for(let z=-CHUNK_SIZE/2;z<CHUNK_SIZE/2;z++){
+        const h = HEIGHT + Math.floor((Math.random()-0.5)*2);
+        for(let y=0;y<h;y++){
+          const t = (y==h-1)?2:1;
+          addVoxel(x,y,z,t);
+        }
+      }
+    }
+    addVoxel(2,HEIGHT,2,3);
+    addVoxel(-3,HEIGHT,1,4);
+  }
+
+  // initial reset (to override earlier terrain which used earlier addVoxel impl)
+  resetWorld();
+
+  // Simple on-screen help: focus pointerlock
+  controls.addEventListener('lock', ()=>{ document.getElementById('instructions').style.display='none'; });
+  controls.addEventListener('unlock', ()=>{ document.getElementById('instructions').style.display='block'; });
+
+  // Prevent memory leak: when page unload
+  addEventListener('beforeunload', ()=>{ renderer.dispose(); });
+
+  </script>
+</body>
+</html>

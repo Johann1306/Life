@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stickman Fighter 2P</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Arial', sans-serif;
+        }
+
+        #gameCanvas {
+            border: 4px solid #fff;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            background: linear-gradient(180deg, #87CEEB 0%, #E0F6FF 100%);
+        }
+
+        .controls {
+            margin-top: 20px;
+            color: white;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 800px;
+        }
+
+        .controls h3 {
+            margin-bottom: 10px;
+        }
+
+        .player-controls {
+            display: inline-block;
+            margin: 0 30px;
+            text-align: left;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div class="controls">
+        <h3>🎮 CONTRÔLES 🎮</h3>
+        <div class="player-controls">
+            <strong>🔴 Joueur 1 (Rouge)</strong><br>
+            Q/D: Déplacements | Z: Saut | ESPACE: Attaque
+        </div>
+        <div class="player-controls">
+            <strong>🔵 Joueur 2 (Bleu)</strong><br>
+            ←/→: Déplacements | ↑: Saut | ENTRÉE: Attaque
+        </div>
+        <p style="margin-top: 15px;">Appuyez sur <strong>R</strong> pour recommencer après une victoire</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Configuration du jeu
+        const GROUND_Y = 500;
+        const GRAVITY = 0.6;
+        const JUMP_FORCE = -15;
+        const MOVE_SPEED = 5;
+        const ATTACK_DAMAGE = 10;
+        const KNOCKBACK = 15;
+
+        // État des touches
+        const keys = {};
+
+        // Joueur class
+        class Player {
+            constructor(x, color, controls) {
+                this.x = x;
+                this.y = GROUND_Y;
+                this.width = 40;
+                this.height = 80;
+                this.color = color;
+                this.controls = controls;
+                this.hp = 100;
+                this.velocityY = 0;
+                this.velocityX = 0;
+                this.isJumping = false;
+                this.isAttacking = false;
+                this.attackCooldown = 0;
+                this.facingRight = color === 'red' ? true : false;
+            }
+
+            update() {
+                // Déplacement horizontal
+                if (keys[this.controls.left]) {
+                    this.velocityX = -MOVE_SPEED;
+                    this.facingRight = false;
+                } else if (keys[this.controls.right]) {
+                    this.velocityX = MOVE_SPEED;
+                    this.facingRight = true;
+                } else {
+                    this.velocityX *= 0.8; // Friction
+                }
+
+                this.x += this.velocityX;
+
+                // Limites du canvas
+                if (this.x < 0) this.x = 0;
+                if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
+
+                // Saut
+                if (keys[this.controls.jump] && !this.isJumping) {
+                    this.velocityY = JUMP_FORCE;
+                    this.isJumping = true;
+                }
+
+                // Gravité
+                this.velocityY += GRAVITY;
+                this.y += this.velocityY;
+
+                // Sol
+                if (this.y >= GROUND_Y) {
+                    this.y = GROUND_Y;
+                    this.velocityY = 0;
+                    this.isJumping = false;
+                }
+
+                // Attaque
+                if (keys[this.controls.attack] && this.attackCooldown === 0 && !this.isAttacking) {
+                    this.isAttacking = true;
+                    this.attackCooldown = 30;
+                }
+
+                if (this.attackCooldown > 0) {
+                    this.attackCooldown--;
+                }
+
+                if (this.attackCooldown === 0) {
+                    this.isAttacking = false;
+                }
+            }
+
+            draw() {
+                // Corps (stickman style)
+                ctx.strokeStyle = this.color;
+                ctx.fillStyle = this.color;
+                ctx.lineWidth = 4;
+
+                const centerX = this.x + this.width / 2;
+                const headY = this.y + 15;
+                const bodyStartY = this.y + 25;
+                const bodyEndY = this.y + 50;
+
+                // Tête
+                ctx.beginPath();
+                ctx.arc(centerX, headY, 12, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.stroke();
+
+                // Corps
+                ctx.beginPath();
+                ctx.moveTo(centerX, bodyStartY);
+                ctx.lineTo(centerX, bodyEndY);
+                ctx.stroke();
+
+                // Bras
+                const armY = this.y + 35;
+                const armLength = 20;
+
+                if (this.isAttacking) {
+                    // Bras d'attaque étendu
+                    const punchX = this.facingRight ? centerX + armLength + 10 : centerX - armLength - 10;
+                    ctx.beginPath();
+                    ctx.moveTo(centerX, armY);
+                    ctx.lineTo(punchX, armY);
+                    ctx.stroke();
+
+                    // Poing
+                    ctx.beginPath();
+                    ctx.arc(punchX, armY, 6, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Autre bras
+                    const otherArmX = this.facingRight ? centerX - 10 : centerX + 10;
+                    ctx.beginPath();
+                    ctx.moveTo(centerX, armY);
+                    ctx.lineTo(otherArmX, armY + 10);
+                    ctx.stroke();
+                } else {
+                    // Bras normaux
+                    ctx.beginPath();
+                    ctx.moveTo(centerX, armY);
+                    ctx.lineTo(centerX - 15, armY + 15);
+                    ctx.moveTo(centerX, armY);
+                    ctx.lineTo(centerX + 15, armY + 15);
+                    ctx.stroke();
+                }
+
+                // Jambes
+                const legStartY = bodyEndY;
+                const legEndY = this.y + this.height;
+                ctx.beginPath();
+                ctx.moveTo(centerX, legStartY);
+                ctx.lineTo(centerX - 12, legEndY);
+                ctx.moveTo(centerX, legStartY);
+                ctx.lineTo(centerX + 12, legEndY);
+                ctx.stroke();
+            }
+
+            getAttackBox() {
+                if (!this.isAttacking) return null;
+
+                const attackRange = 40;
+                return {
+                    x: this.facingRight ? this.x + this.width : this.x - attackRange,
+                    y: this.y + 20,
+                    width: attackRange,
+                    height: 30
+                };
+            }
+        }
+
+        // Initialisation des joueurs
+        let player1 = new Player(100, '#FF3333', {
+            left: 'q',
+            right: 'd',
+            jump: 'z',
+            attack: ' '
+        });
+
+        let player2 = new Player(650, '#3366FF', {
+            left: 'ArrowLeft',
+            right: 'ArrowRight',
+            jump: 'ArrowUp',
+            attack: 'Enter'
+        });
+
+        let gameOver = false;
+        let winner = null;
+
+        // Gestion des événements clavier
+        window.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+            keys[e.key] = true;
+
+            if (e.key.toLowerCase() === 'r' && gameOver) {
+                resetGame();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+            keys[e.key] = false;
+        });
+
+        function checkCollision(attacker, defender) {
+            const attackBox = attacker.getAttackBox();
+            if (!attackBox) return false;
+
+            const defenderBox = {
+                x: defender.x,
+                y: defender.y,
+                width: defender.width,
+                height: defender.height
+            };
+
+            return attackBox.x < defenderBox.x + defenderBox.width &&
+                attackBox.x + attackBox.width > defenderBox.x &&
+                attackBox.y < defenderBox.y + defenderBox.height &&
+                attackBox.y + attackBox.height > defenderBox.y;
+        }
+
+        function drawHealthBar(player, x, y) {
+            const barWidth = 200;
+            const barHeight = 30;
+
+            // Fond
+            ctx.fillStyle = '#333';
+            ctx.fillRect(x, y, barWidth, barHeight);
+
+            // Barre de vie
+            const hpWidth = (player.hp / 100) * barWidth;
+            ctx.fillStyle = player.hp > 60 ? '#4CAF50' : player.hp > 30 ? '#FFA500' : '#F44336';
+            ctx.fillRect(x, y, hpWidth, barHeight);
+
+            // Bordure
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, barWidth, barHeight);
+
+            // Texte HP
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${Math.max(0, player.hp)} HP`, x + barWidth / 2, y + 20);
+        }
+
+        function drawGround() {
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(0, GROUND_Y + 80, canvas.width, canvas.height - GROUND_Y - 80);
+
+            ctx.fillStyle = '#228B22';
+            ctx.fillRect(0, GROUND_Y + 80, canvas.width, 5);
+        }
+
+        function drawWinner() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = winner === player1 ? '#FF3333' : '#3366FF';
+            ctx.font = 'bold 60px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`🏆 ${winner === player1 ? 'ROUGE' : 'BLEU'} GAGNE! 🏆`, canvas.width / 2, canvas.height / 2 - 40);
+
+            ctx.fillStyle = '#fff';
+            ctx.font = '30px Arial';
+            ctx.fillText('Appuyez sur R pour recommencer', canvas.width / 2, canvas.height / 2 + 40);
+        }
+
+        function resetGame() {
+            player1 = new Player(100, '#FF3333', player1.controls);
+            player2 = new Player(650, '#3366FF', player2.controls);
+            gameOver = false;
+            winner = null;
+        }
+
+        function gameLoop() {
+            // Effacer le canvas
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawGround();
+
+            if (!gameOver) {
+                // Mise à jour
+                player1.update();
+                player2.update();
+
+                // Vérification des attaques
+                if (checkCollision(player1, player2) && player1.attackCooldown === 30) {
+                    player2.hp -= ATTACK_DAMAGE;
+                    player2.velocityX = player1.facingRight ? KNOCKBACK : -KNOCKBACK;
+                }
+
+                if (checkCollision(player2, player1) && player2.attackCooldown === 30) {
+                    player1.hp -= ATTACK_DAMAGE;
+                    player1.velocityX = player2.facingRight ? KNOCKBACK : -KNOCKBACK;
+                }
+
+                // Vérification de la victoire
+                if (player1.hp <= 0) {
+                    gameOver = true;
+                    winner = player2;
+                } else if (player2.hp <= 0) {
+                    gameOver = true;
+                    winner = player1;
+                }
+            }
+
+            // Dessin
+            player1.draw();
+            player2.draw();
+
+            // Barres de vie
+            drawHealthBar(player1, 50, 30);
+            drawHealthBar(player2, 550, 30);
+
+            // Noms des joueurs
+            ctx.fillStyle = player1.color;
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('JOUEUR 1', 150, 20);
+
+            ctx.fillStyle = player2.color;
+            ctx.fillText('JOUEUR 2', 650, 20);
+
+            if (gameOver) {
+                drawWinner();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Arkanoid 1v1 - Local (Z/S vs ↑/↓)</title>
+    <style>
+        :root {
+            --bg: #0b1220;
+            --panel: #0f1724;
+            --green: #27c76f;
+            --blue: #3aa0ff;
+            --muted: #9aa6b2;
+            --brick1: #ffb86b;
+            --brick2: #ff6b9c;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            background: linear-gradient(180deg, var(--bg), #08101a);
+            font-family: Inter, system-ui, Segoe UI, Arial;
+        }
+
+        #container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            color: white;
+        }
+
+        header {
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px
+        }
+
+        h1 {
+            font-size: 16px;
+            margin: 0;
+            font-weight: 600
+        }
+
+        .controls {
+            font-size: 13px;
+            color: var(--muted)
+        }
+
+        canvas {
+            display: block;
+            background: linear-gradient(180deg, #07101822, #08202b44);
+            margin: auto;
+            border: 2px solid rgba(255, 255, 255, 0.04);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+            border-radius: 8px
+        }
+
+        #hud {
+            display: flex;
+            gap: 12px;
+            align-items: center
+        }
+
+        .stat {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start
+        }
+
+        .stat b {
+            font-size: 14px
+        }
+
+        #overlay {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none
+        }
+
+        .panel {
+            background: linear-gradient(180deg, rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.02));
+            padding: 14px;
+            border-radius: 10px;
+            backdrop-filter: blur(6px)
+        }
+
+        .btn {
+            background: #111827;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            cursor: pointer;
+            color: var(--muted)
+        }
+
+        .cooldown {
+            width: 110px;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 6px;
+            overflow: hidden
+        }
+
+        .coolbar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--green), var(--blue))
+        }
+
+        #footer {
+            padding: 8px 14px;
+            color: var(--muted);
+            font-size: 12px
+        }
+
+        /* responsive canvas */
+        .canvas-wrap {
+            position: relative;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px
+        }
+
+        /* small help text */
+        .kbd {
+            font-size: 12px;
+            color: var(--muted)
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container">
+        <header>
+            <div>
+                <h1>Arkanoid 1v1 — Local (Z/S vs ↑/↓)</h1>
+                <div class="controls kbd">J1: Z/S + Espace (Boost rapide). J2: ↑/↓ + Entrée (Mini-extension/Shield).
+                </div>
+            </div>
+            <div id="hud">
+                <div class="stat" id="scoreLeft"><span style="color:var(--green)">Joueur 1 (Gauche)</span><b>Score: 0 —
+                        Vies: 3</b></div>
+                <div class="stat" id="scoreRight"><span style="color:var(--blue)">Joueur 2 (Droite)</span><b>Score: 0 —
+                        Vies: 3</b></div>
+                <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+                    <div style="display:flex;gap:6px;align-items:center">
+                        <div class="cooldown" title="Cooldown Spécial J1">
+                            <div id="cdLeft" class="coolbar"></div>
+                        </div>
+                        <div class="cooldown" title="Cooldown Spécial J2">
+                            <div id="cdRight" class="coolbar"
+                                style="background:linear-gradient(90deg,var(--blue),#6bd2ff)"></div>
+                        </div>
+                    </div>
+                    <div style="font-size:12px;color:var(--muted);text-align:right">Objectif: 10 points ou éliminer les
+                        vies adverses</div>
+                </div>
+            </div>
+        </header>
+
+        <div class="canvas-wrap">
+            <canvas id="game" width="1100" height="600"></canvas>
+            <div id="overlay"></div>
+        </div>
+
+        <div id="footer">
+            Astuce: La balle gagne légèrement en vitesse après chaque rebond — le jeu devient rapidement intense. Pause:
+            "P". Reset: "R".
+        </div>
+    </div>
+
+    <script>
+        (() => {
+            // Canvas setup
+            const canvas = document.getElementById('game');
+            const ctx = canvas.getContext('2d');
+            const W = canvas.width, H = canvas.height;
+
+            // Game parameters
+            const PADDLE_H = 100;
+            const PADDLE_W = 14;
+            const PADDING = 20;
+            const BALL_R = 8;
+            const BRICK_ROWS = 4;
+            const BRICK_COLS = 6;
+            const BRICK_W = 46;
+            const BRICK_H = 20;
+            const TARGET_SCORE = 10;
+
+            // State
+            let running = true;
+            let paused = false;
+            let winner = null;
+
+            const players = {
+                left: {
+                    y: H / 2 - PADDLE_H / 2,
+                    color: '#27c76f',
+                    score: 0,
+                    lives: 3,
+                    up: false, down: false,
+                    specialReady: true,
+                    specialCooldown: 4000, // ms
+                    specialActive: false,
+                    specialTimer: 0
+                },
+                right: {
+                    y: H / 2 - PADDLE_H / 2,
+                    color: '#3aa0ff',
+                    score: 0,
+                    lives: 3,
+                    up: false, down: false,
+                    specialReady: true,
+                    specialCooldown: 6000, // ms (slightly longer)
+                    specialActive: false,
+                    specialTimer: 0
+                }
+            };
+
+            // Asymmetric specials:
+            // left: dash boost (paddle speed boost + short "push" if hits)
+            // right: shield/extension (paddle height increases temporarily)
+            const SPECIAL_DURATION = 700; // ms for active effect
+
+            // Paddles movement
+            const BASE_PADDLE_SPEED = 6;
+            let lastTime = performance.now();
+
+            // Ball
+            const ball = {
+                x: W / 2, y: H / 2,
+                vx: 5 * (Math.random() > 0.5 ? 1 : -1),
+                vy: (Math.random() * 6 - 3),
+                r: BALL_R
+            };
+            let totalBounces = 0;
+
+            // Bricks in center - grid centered vertically and horizontally in center area
+            const bricks = [];
+            function resetBricks() {
+                bricks.length = 0;
+                const centerX = W / 2;
+                const gap = 6;
+                const totalW = BRICK_COLS * BRICK_W + (BRICK_COLS - 1) * gap;
+                const startX = centerX - totalW / 2;
+                const startY = H / 2 - (BRICK_ROWS * BRICK_H + (BRICK_ROWS - 1) * gap) / 2;
+                for (let r = 0; r < BRICK_ROWS; r++) {
+                    for (let c = 0; c < BRICK_COLS; c++) {
+                        bricks.push({
+                            x: startX + c * (BRICK_W + gap),
+                            y: startY + r * (BRICK_H + gap),
+                            w: BRICK_W,
+                            h: BRICK_H,
+                            hp: 1,
+                            color: (r % 2) ? '#ff6b9c' : '#ffb86b'
+                        });
+                    }
+                }
+            }
+
+            resetBricks();
+
+            // Input handling robust for AZERTY (Z/S), also support ZQSD mention: treat both 'z' and 'Z', and 's'
+            const keys = {};
+            function keyDown(e) {
+                const k = e.key;
+                // Prevent default for arrows/space/enter to keep browser from scrolling
+                if (['ArrowUp', 'ArrowDown', ' ', 'Enter'].includes(k)) e.preventDefault();
+
+                // Player left controls: Z (haut), S (bas) - accept 'z' and 'Z'
+                if (k === 'z' || k === 'Z' || k === 'Z' /* uppercase */) players.left.up = true;
+                if (k === 's' || k === 'S') players.left.down = true;
+
+                // Also accept 'q' for left on AZERTY? The user asked to handle ZQSD robustly: include fallback for 'q' as left (commonly used for left movement in AZERTY)
+                if (k === 'q' || k === 'Q') players.left.up = true; // fallback
+
+                // Player right controls
+                if (k === 'ArrowUp') players.right.up = true;
+                if (k === 'ArrowDown') players.right.down = true;
+
+                // Specials
+                if (k === ' ') { // Space
+                    triggerSpecial('left');
+                }
+                if (k === 'Enter') {
+                    triggerSpecial('right');
+                }
+
+                // Pause/Reset
+                if (k === 'p' || k === 'P') paused = !paused;
+                if (k === 'r' || k === 'R') resetGame();
+            }
+            function keyUp(e) {
+                const k = e.key;
+                if (k === 'z' || k === 'Z' || k === 'q' || k === 'Q') players.left.up = false;
+                if (k === 's' || k === 'S') players.left.down = false;
+                if (k === 'ArrowUp') players.right.up = false;
+                if (k === 'ArrowDown') players.right.down = false;
+            }
+            window.addEventListener('keydown', keyDown);
+            window.addEventListener('keyup', keyUp);
+
+            // Special triggers
+            function triggerSpecial(side) {
+                const p = players[side];
+                if (!p.specialReady) return;
+                p.specialReady = false;
+                p.specialActive = true;
+                p.specialTimer = SPECIAL_DURATION;
+                // Start cooldown after activation
+                setTimeout(() => { // set cooldown completion
+                    const cd = p.specialCooldown;
+                    setTimeout(() => { p.specialReady = true; }, cd - SPECIAL_DURATION);
+                }, 0);
+                // Visual / audio could be added
+            }
+
+            // Helper: paddle rectangles
+            function paddleRect(side) {
+                const x = (side === 'left') ? PADDING : W - PADDING - PADDLE_W;
+                const y = players[side].y;
+                const h = players[side].specialActive && side === 'right' ? PADDLE_H * 1.6 : PADDLE_H;
+                return { x, y, w: PADDLE_W, h };
+            }
+
+            // Collision helpers
+            function rectCircleColliding(rect, circle) {
+                const distX = Math.abs(circle.x - rect.x - rect.w / 2);
+                const distY = Math.abs(circle.y - rect.y - rect.h / 2);
+                if (distX > (rect.w / 2 + circle.r)) return false;
+                if (distY > (rect.h / 2 + circle.r)) return false;
+                if (distX <= (rect.w / 2)) return true;
+                if (distY <= (rect.h / 2)) return true;
+                const dx = distX - rect.w / 2;
+                const dy = distY - rect.h / 2;
+                return (dx * dx + dy * dy <= circle.r * circle.r);
+            }
+
+            // Reset ball (center) with slight randomization and push toward last scorer or random
+            function resetBall(toward = 'left') {
+                ball.x = W / 2;
+                ball.y = H / 2;
+                const speed = 5;
+                const dir = (Math.random() > 0.5) ? 1 : -1;
+                ball.vx = Math.sign(dir) * (speed + Math.random() * 1.5) * (toward === 'left' ? -1 : 1);
+                ball.vy = (Math.random() * 6 - 3);
+                totalBounces = 0;
+            }
+
+            function awardPoints(side, points = 1) {
+                players[side].score += points;
+                updateHUD();
+                checkWin();
+            }
+            function loseLife(side) {
+                players[side].lives -= 1;
+                updateHUD();
+                if (players[side].lives <= 0) {
+                    const other = side === 'left' ? 'right' : 'left';
+                    winner = other;
+                    running = false;
+                    showOverlay(`${other === 'left' ? 'Joueur 1 (Gauche)' : 'Joueur 2 (Droite)'} gagne !`);
+                }
+            }
+
+            function checkWin() {
+                if (players.left.score >= TARGET_SCORE) { winner = 'left'; running = false; showOverlay('Joueur 1 (Gauche) gagne !'); }
+                if (players.right.score >= TARGET_SCORE) { winner = 'right'; running = false; showOverlay('Joueur 2 (Droite) gagne !'); }
+            }
+
+            function updateHUD() {
+                document.getElementById('scoreLeft').innerHTML = `<span style="color:${players.left.color}">Joueur 1 (Gauche)</span><b>Score: ${players.left.score} — Vies: ${players.left.lives}</b>`;
+                document.getElementById('scoreRight').innerHTML = `<span style="color:${players.right.color}">Joueur 2 (Droite)</span><b>Score: ${players.right.score} — Vies: ${players.right.lives}</b>`;
+            }
+
+            // Overlay
+            function showOverlay(text) {
+                const o = document.getElementById('overlay');
+                o.style.pointerEvents = 'auto';
+                o.innerHTML = `<div class="panel" style="text-align:center">
+      <h2 style="margin:0 0 8px 0">${text}</h2>
+      <div style="display:flex;gap:8px;justify-content:center">
+        <button class="btn" id="btnRestart">Rejouer (R)</button>
+        <button class="btn" id="btnContinue">Continuer</button>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:8px">P: Pause / R: Reset</div>
+    </div>`;
+                document.getElementById('btnRestart').onclick = () => resetGame();
+                document.getElementById('btnContinue').onclick = () => {
+                    running = true; paused = false; winner = null;
+                    document.getElementById('overlay').innerHTML = ''; document.getElementById('overlay').style.pointerEvents = 'none';
+                    resetGame();
+                };
+            }
+
+            // Core update loop
+            function update(dt) {
+                if (!running || paused) return;
+
+                // Update special timers
+                ['left', 'right'].forEach(side => {
+                    const p = players[side];
+                    if (p.specialActive) {
+                        p.specialTimer -= dt;
+                        if (p.specialTimer <= 0) {
+                            p.specialActive = false;
+                        }
+                    }
+                });
+
+                // Paddles movement - left and right
+                const leftSpeed = BASE_PADDLE_SPEED * (players.left.specialActive ? 2.2 : 1);
+                const rightSpeed = BASE_PADDLE_SPEED * (1.0); // right special is extension not speed
+                if (players.left.up) players.left.y -= leftSpeed;
+                if (players.left.down) players.left.y += leftSpeed;
+                if (players.right.up) players.right.y -= rightSpeed;
+                if (players.right.down) players.right.y += rightSpeed;
+
+                // Clamp paddles
+                players.left.y = Math.max(8, Math.min(H - (players.left.specialActive ? PADDLE_H * 1.6 : PADDLE_H) - 8, players.left.y));
+                players.right.y = Math.max(8, Math.min(H - (players.right.specialActive ? PADDLE_H * 1.6 : PADDLE_H) - 8, players.right.y));
+
+                // Move ball
+                ball.x += ball.vx;
+                ball.y += ball.vy;
+
+                // Wall collision (top/bottom)
+                if (ball.y - ball.r <= 0) {
+                    ball.y = ball.r;
+                    ball.vy = -ball.vy;
+                    accelerateBall();
+                    totalBounces++;
+                } else if (ball.y + ball.r >= H) {
+                    ball.y = H - ball.r;
+                    ball.vy = -ball.vy;
+                    accelerateBall();
+                    totalBounces++;
+                }
+
+                // Left paddle collision
+                const leftRect = paddleRect('left');
+                if (rectCircleColliding(leftRect, ball) && ball.vx < 0) {
+                    // reflect
+                    ball.x = leftRect.x + leftRect.w + ball.r + 0.5;
+                    ball.vx = -ball.vx;
+                    // add spin depending on where it hit
+                    const relativeY = (ball.y - (leftRect.y + (leftRect.h / 2)));
+                    ball.vy += relativeY * 0.08;
+                    accelerateBall();
+                    totalBounces++;
+                    // if left had dash active, add extra push to the ball to the right
+                    if (players.left.specialActive) {
+                        ball.vx = Math.abs(ball.vx) + 2;
+                    }
+                    // mark last hitter
+                    ball.lastHitter = 'left';
+                }
+
+                // Right paddle collision
+                const rightRect = paddleRect('right');
+                if (rectCircleColliding(rightRect, ball) && ball.vx > 0) {
+                    ball.x = rightRect.x - ball.r - 0.5;
+                    ball.vx = -ball.vx;
+                    const relativeY = (ball.y - (rightRect.y + (rightRect.h / 2)));
+                    ball.vy += relativeY * 0.08;
+                    accelerateBall();
+                    totalBounces++;
+                    // if right had shield active, slightly slow the ball to help defense
+                    if (players.right.specialActive) {
+                        ball.vx = -Math.sign(ball.vx) * Math.max(Math.abs(ball.vx) * 0.9, 3);
+                    }
+                    ball.lastHitter = 'right';
+                }
+
+                // Check if ball passes behind left paddle (x < 0)
+                if (ball.x - ball.r < 0) {
+                    // right gains point or left loses life
+                    // if right was last to touch ball recently, award point to right; otherwise consider as miss by left
+                    const scorer = (ball.lastHitter === 'right') ? 'right' : 'right';
+                    awardPoints(scorer, 1);
+                    loseLife('left');
+                    resetBall('right');
+                }
+                // passes behind right paddle
+                if (ball.x + ball.r > W) {
+                    const scorer = (ball.lastHitter === 'left') ? 'left' : 'left';
+                    awardPoints(scorer, 1);
+                    loseLife('right');
+                    resetBall('left');
+                }
+
+                // Ball hits bricks
+                for (let i = bricks.length - 1; i >= 0; i--) {
+                    const b = bricks[i];
+                    if (b && circleRectCollision(ball, b)) {
+                        // simple collision response: invert vx or vy depending where it hit
+                        // compute overlap
+                        const overlapX = (ball.x - (b.x + b.w / 2));
+                        const overlapY = (ball.y - (b.y + b.h / 2));
+                        if (Math.abs(overlapX) > Math.abs(overlapY)) {
+                            ball.vx = -ball.vx;
+                        } else {
+                            ball.vy = -ball.vy;
+                        }
+                        accelerateBall();
+                        totalBounces++;
+
+                        // award point to last hitter (if exists) otherwise to side from which ball came
+                        const who = ball.lastHitter || (ball.vx > 0 ? 'left' : 'right');
+                        awardPoints(who, 1);
+
+                        // remove brick
+                        bricks.splice(i, 1);
+                        break; // avoid multiple collisions in same frame
+                    }
+                }
+
+                // If all bricks cleared -> respawn small formation and grant bonus
+                if (bricks.length === 0) {
+                    // respawn and reward both players a point
+                    resetBricks();
+                    players.left.score += 1;
+                    players.right.score += 1;
+                    updateHUD();
+                    checkWin();
+                }
+
+                // Update cooldown bars visuals
+                updateCooldownBars();
+            }
+
+            // Accelerate ball slightly after bounces
+            function accelerateBall() {
+                const accel = 1.035; // slight increase
+                const maxSpeed = 18;
+                ball.vx *= accel;
+                ball.vy *= accel;
+                // clamp
+                const speed = Math.hypot(ball.vx, ball.vy);
+                if (speed > maxSpeed) {
+                    const factor = maxSpeed / speed;
+                    ball.vx *= factor;
+                    ball.vy *= factor;
+                }
+            }
+
+            function circleRectCollision(circ, rect) {
+                // rect: x,y,w,h
+                const distX = Math.abs(circ.x - rect.x - rect.w / 2);
+                const distY = Math.abs(circ.y - rect.y - rect.h / 2);
+                if (distX > (rect.w / 2 + circ.r)) return false;
+                if (distY > (rect.h / 2 + circ.r)) return false;
+                if (distX <= (rect.w / 2)) return true;
+                if (distY <= (rect.h / 2)) return true;
+                const dx = distX - rect.w / 2;
+                const dy = distY - rect.h / 2;
+                return (dx * dx + dy * dy <= circ.r * circ.r);
+            }
+
+            // Cooldown bars update
+            function updateCooldownBars() {
+                ['left', 'right'].forEach(side => {
+                    const bar = document.getElementById(side === 'left' ? 'cdLeft' : 'cdRight');
+                    const p = players[side];
+                    // compute fraction: if ready -> 1, if active -> 1, else reduce with cooldown progress
+                    // We approximate cooldown by checking last active time — simpler: if not ready, show a progress that moves from 0->100 during cooldown time after activation start
+                    // We'll store a timestamp on activation
+                    if (!p._lastSpecialTime) p._lastSpecialTime = 0;
+                    let frac = p.specialReady ? 1 : 0;
+                    if (!p.specialReady) {
+                        const elapsed = performance.now() - p._lastSpecialTime;
+                        frac = Math.min(1, Math.max(0, elapsed / p.specialCooldown));
+                    }
+                    if (p.specialActive) frac = 1;
+                    bar.style.width = `${frac * 100}%`;
+                });
+            }
+
+            // ensure we mark _lastSpecialTime on trigger
+            const originalTriggerSpecial = triggerSpecial;
+            triggerSpecial = function (side) {
+                const p = players[side];
+                if (!p.specialReady) return;
+                p._lastSpecialTime = performance.now();
+                originalTriggerSpecial(side);
+            };
+
+            // Render
+            function render() {
+                // Clear
+                ctx.clearRect(0, 0, W, H);
+
+                // draw middle dividing line
+                ctx.save();
+                ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([6, 8]);
+                ctx.beginPath();
+                ctx.moveTo(W / 2, 12);
+                ctx.lineTo(W / 2, H - 12);
+                ctx.stroke();
+                ctx.restore();
+
+                // Draw bricks
+                bricks.forEach(b => {
+                    ctx.fillStyle = b.color;
+                    roundRect(ctx, b.x, b.y, b.w, b.h, 5, true, false);
+                    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+                    ctx.strokeRect(b.x, b.y, b.w, b.h);
+                });
+
+                // Draw paddles
+                drawPaddle('left');
+                drawPaddle('right');
+
+                // Ball
+                ctx.beginPath();
+                ctx.fillStyle = '#fff';
+                ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+                ctx.fill();
+                // small motion trail
+                ctx.globalAlpha = 0.08;
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(ball.x - ball.vx * 1.6, ball.y - ball.vy * 1.6, ball.r * 1.4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                // Scores in middle top (redundant)
+                ctx.fillStyle = 'rgba(255,255,255,0.06)';
+                ctx.fillRect(W / 2 - 140, 8, 280, 36);
+                ctx.fillStyle = '#fff';
+                ctx.font = '14px system-ui,Segoe UI,Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(`J1 ${players.left.score} — Briques: ${bricks.length} — J2 ${players.right.score}`, W / 2, 32);
+            }
+
+            function drawPaddle(side) {
+                const p = players[side];
+                const r = paddleRect(side);
+                const padX = r.x, padY = r.y, padW = r.w, padH = (p.specialActive && side === 'right') ? PADDLE_H * 1.6 : PADDLE_H;
+                // background
+                ctx.save();
+                // gradient
+                const g = ctx.createLinearGradient(padX, padY, padX + padW, padY + padH);
+                g.addColorStop(0, side === 'left' ? shade(p.color, -10) : shade(p.color, -10));
+                g.addColorStop(1, side === 'left' ? shade(p.color, 10) : shade(p.color, 10));
+                ctx.fillStyle = g;
+                roundRect(ctx, padX, padY, padW, padH, 8, true, false);
+                // outline
+                ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(padX, padY, padW, padH);
+                // glow
+                ctx.shadowColor = side === 'left' ? p.color : '#6bd2ff';
+                ctx.shadowBlur = 16;
+                ctx.fillStyle = 'rgba(255,255,255,0.02)';
+                roundRect(ctx, padX, padY, padW, padH, 8, true, false);
+                ctx.restore();
+
+                // small indicator for special readiness
+                if (!p.specialReady) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+                    ctx.fillRect(padX, padY + padH - 6, padW, 4);
+                }
+            }
+
+            // Utility: rounded rect
+            function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+                if (typeof r === 'undefined') r = 5;
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.arcTo(x + w, y, x + w, y + h, r);
+                ctx.arcTo(x + w, y + h, x, y + h, r);
+                ctx.arcTo(x, y + h, x, y, r);
+                ctx.arcTo(x, y, x + w, y, r);
+                ctx.closePath();
+                if (fill) ctx.fill();
+                if (stroke) ctx.stroke();
+            }
+
+            // small color shade helper
+            function shade(hex, percent) {
+                // hex like #rrggbb
+                const f = hex.slice(1);
+                const t = percent < 0 ? 0 : 255;
+                const p = Math.abs(percent) / 100;
+                const R = parseInt(f.substring(0, 2), 16);
+                const G = parseInt(f.substring(2, 4), 16);
+                const B = parseInt(f.substring(4, 6), 16);
+                const newR = Math.round((t - R) * p) + R;
+                const newG = Math.round((t - G) * p) + G;
+                const newB = Math.round((t - B) * p) + B;
+                return `rgb(${newR},${newG},${newB})`;
+            }
+
+            // Game reset
+            function resetGame() {
+                players.left.score = 0;
+                players.right.score = 0;
+                players.left.lives = players.right.lives = 3;
+                players.left.y = players.right.y = H / 2 - PADDLE_H / 2;
+                players.left.specialReady = players.right.specialReady = true;
+                players.left.specialActive = players.right.specialActive = false;
+                resetBricks();
+                updateHUD();
+                resetBall();
+                winner = null;
+                running = true;
+                paused = false;
+                document.getElementById('overlay').innerHTML = '';
+                document.getElementById('overlay').style.pointerEvents = 'none';
+            }
+
+            // Main loop
+            function loop(now) {
+                const dt = now - lastTime;
+                lastTime = now;
+                update(dt);
+                render();
+                requestAnimationFrame(loop);
+            }
+
+            // start
+            updateHUD();
+            requestAnimationFrame(loop);
+
+            // start ball from center after tiny delay
+            setTimeout(() => resetBall(), 300);
+
+            // small helper to update cooldown readiness (simulate)
+            setInterval(() => {
+                // ensure specialReady true after cooldown automatically handled by triggerSpecial wrapper
+                // but here we just cap widths
+                updateCooldownBars();
+            }, 100);
+
+            // Expose some controls for dev (optional)
+            window.__game = { players, ball, bricks, resetGame };
+
+        })();
+    </script>
+</body>
+
+</html>

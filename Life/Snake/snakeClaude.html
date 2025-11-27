@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Multijoueur Néon</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a0a2e 100%);
+            font-family: 'Courier New', monospace;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            background: linear-gradient(90deg, #00ff88, #00ddff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        }
+
+        #scoreBoard {
+            display: flex;
+            justify-content: space-around;
+            width: 600px;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+        }
+
+        .score {
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-weight: bold;
+            text-shadow: 0 0 10px currentColor;
+        }
+
+        .player1-score {
+            color: #00ff88;
+            border: 2px solid #00ff88;
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.5);
+        }
+
+        .player2-score {
+            color: #00ddff;
+            border: 2px solid #00ddff;
+            box-shadow: 0 0 15px rgba(0, 221, 255, 0.5);
+        }
+
+        #canvas {
+            border: 3px solid #444;
+            box-shadow: 0 0 30px rgba(0, 255, 200, 0.3),
+                inset 0 0 50px rgba(0, 0, 0, 0.5);
+            background: #0f0f0f;
+            border-radius: 5px;
+        }
+
+        #gameOver {
+            margin-top: 20px;
+            font-size: 1.5rem;
+            min-height: 60px;
+        }
+
+        .game-over-text {
+            color: #ff0066;
+            text-shadow: 0 0 20px #ff0066;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .winner-text {
+            font-size: 1.8rem;
+            margin-top: 10px;
+        }
+
+        .controls {
+            margin-top: 20px;
+            font-size: 0.9rem;
+            color: #888;
+            line-height: 1.6;
+        }
+
+        .controls span {
+            color: #00ff88;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="gameContainer">
+        <h1>⚡ Snake Néon ⚡</h1>
+        <div id="scoreBoard">
+            <div class="score player1-score">Joueur 1: <span id="score1">0</span></div>
+            <div class="score player2-score">Joueur 2: <span id="score2">0</span></div>
+        </div>
+        <canvas id="canvas" width="600" height="600"></canvas>
+        <div id="gameOver"></div>
+        <div class="controls">
+            <span>Joueur 1 (Vert):</span> ZQSD | <span>Joueur 2 (Bleu):</span> Flèches<br>
+            Appuyez sur <span>ESPACE</span> pour recommencer
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const score1El = document.getElementById('score1');
+        const score2El = document.getElementById('score2');
+        const gameOverEl = document.getElementById('gameOver');
+
+        const gridSize = 20;
+        const tileCount = canvas.width / gridSize;
+
+        let gameRunning = false;
+        let animationId;
+
+        class Snake {
+            constructor(x, y, color, controls) {
+                this.body = [{ x, y }];
+                this.dx = 0;
+                this.dy = 0;
+                this.color = color;
+                this.controls = controls;
+                this.score = 0;
+                this.alive = true;
+                this.nextDirection = { dx: 0, dy: 0 };
+            }
+
+            draw() {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+
+                this.body.forEach((segment, index) => {
+                    const gradient = ctx.createRadialGradient(
+                        segment.x * gridSize + gridSize / 2,
+                        segment.y * gridSize + gridSize / 2,
+                        0,
+                        segment.x * gridSize + gridSize / 2,
+                        segment.y * gridSize + gridSize / 2,
+                        gridSize
+                    );
+
+                    if (index === 0) {
+                        gradient.addColorStop(0, this.color);
+                        gradient.addColorStop(1, this.adjustBrightness(this.color, -30));
+                    } else {
+                        gradient.addColorStop(0, this.adjustBrightness(this.color, -20));
+                        gradient.addColorStop(1, this.adjustBrightness(this.color, -50));
+                    }
+
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(
+                        segment.x * gridSize + 1,
+                        segment.y * gridSize + 1,
+                        gridSize - 2,
+                        gridSize - 2
+                    );
+                });
+
+                ctx.shadowBlur = 0;
+            }
+
+            adjustBrightness(color, percent) {
+                const num = parseInt(color.replace('#', ''), 16);
+                const amt = Math.round(2.55 * percent);
+                const R = (num >> 16) + amt;
+                const G = (num >> 8 & 0x00FF) + amt;
+                const B = (num & 0x0000FF) + amt;
+                return '#' + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 +
+                    (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 +
+                    (B < 255 ? B < 1 ? 0 : B : 255))
+                    .toString(16).slice(1);
+            }
+
+            move() {
+                if (!this.alive) return;
+
+                this.dx = this.nextDirection.dx;
+                this.dy = this.nextDirection.dy;
+
+                if (this.dx === 0 && this.dy === 0) return;
+
+                const head = {
+                    x: this.body[0].x + this.dx,
+                    y: this.body[0].y + this.dy
+                };
+
+                this.body.unshift(head);
+                this.body.pop();
+            }
+
+            grow() {
+                const tail = this.body[this.body.length - 1];
+                this.body.push({ ...tail });
+                this.score++;
+            }
+
+            checkCollision(otherSnake) {
+                const head = this.body[0];
+
+                if (head.x < 0 || head.x >= tileCount ||
+                    head.y < 0 || head.y >= tileCount) {
+                    this.alive = false;
+                    return;
+                }
+
+                for (let i = 1; i < this.body.length; i++) {
+                    if (head.x === this.body[i].x && head.y === this.body[i].y) {
+                        this.alive = false;
+                        return;
+                    }
+                }
+
+                if (otherSnake.alive) {
+                    for (let segment of otherSnake.body) {
+                        if (head.x === segment.x && head.y === segment.y) {
+                            this.alive = false;
+                            return;
+                        }
+                    }
+                }
+            }
+
+            setDirection(dx, dy) {
+                if (this.dx === -dx && this.dy === -dy) return;
+                if (this.dx === 0 && this.dy === 0) {
+                    this.nextDirection = { dx, dy };
+                    return;
+                }
+                if (dx !== 0 && this.dx !== 0) return;
+                if (dy !== 0 && this.dy !== 0) return;
+
+                this.nextDirection = { dx, dy };
+            }
+        }
+
+        class Apple {
+            constructor() {
+                this.respawn();
+            }
+
+            respawn() {
+                this.x = Math.floor(Math.random() * tileCount);
+                this.y = Math.floor(Math.random() * tileCount);
+            }
+
+            draw() {
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#ff0044';
+
+                const gradient = ctx.createRadialGradient(
+                    this.x * gridSize + gridSize / 2,
+                    this.y * gridSize + gridSize / 2,
+                    0,
+                    this.x * gridSize + gridSize / 2,
+                    this.y * gridSize + gridSize / 2,
+                    gridSize / 2
+                );
+                gradient.addColorStop(0, '#ff3366');
+                gradient.addColorStop(1, '#cc0033');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(
+                    this.x * gridSize + gridSize / 2,
+                    this.y * gridSize + gridSize / 2,
+                    gridSize / 2 - 2,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+                ctx.shadowBlur = 0;
+            }
+
+            checkCollision(snake) {
+                const head = snake.body[0];
+                if (head.x === this.x && head.y === this.y) {
+                    snake.grow();
+                    this.respawn();
+                    while (this.isOnSnake(player1) || this.isOnSnake(player2)) {
+                        this.respawn();
+                    }
+                }
+            }
+
+            isOnSnake(snake) {
+                return snake.body.some(segment =>
+                    segment.x === this.x && segment.y === this.y
+                );
+            }
+        }
+
+        let player1 = new Snake(10, 15, '#00ff88', {
+            up: 'KeyZ',
+            left: 'KeyQ',
+            down: 'KeyS',
+            right: 'KeyD'
+        });
+
+        let player2 = new Snake(20, 15, '#00ddff', {
+            up: 'ArrowUp',
+            left: 'ArrowLeft',
+            down: 'ArrowDown',
+            right: 'ArrowRight'
+        });
+
+        let apple = new Apple();
+
+        function drawGrid() {
+            ctx.strokeStyle = '#1a1a1a';
+            ctx.lineWidth = 1;
+
+            for (let i = 0; i <= tileCount; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * gridSize, 0);
+                ctx.lineTo(i * gridSize, canvas.height);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(0, i * gridSize);
+                ctx.lineTo(canvas.width, i * gridSize);
+                ctx.stroke();
+            }
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            ctx.fillStyle = '#0f0f0f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawGrid();
+
+            player1.move();
+            player2.move();
+
+            player1.checkCollision(player2);
+            player2.checkCollision(player1);
+
+            apple.checkCollision(player1);
+            apple.checkCollision(player2);
+
+            apple.draw();
+            player1.draw();
+            player2.draw();
+
+            score1El.textContent = player1.score;
+            score2El.textContent = player2.score;
+
+            if (!player1.alive || !player2.alive) {
+                endGame();
+                return;
+            }
+
+            animationId = requestAnimationFrame(update);
+        }
+
+        function endGame() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+
+            let message = '<div class="game-over-text">GAME OVER</div>';
+
+            if (!player1.alive && !player2.alive) {
+                message += '<div class="winner-text">ÉGALITÉ!</div>';
+            } else if (!player1.alive) {
+                message += '<div class="winner-text" style="color: #00ddff; text-shadow: 0 0 20px #00ddff;">🏆 JOUEUR 2 GAGNE! 🏆</div>';
+            } else {
+                message += '<div class="winner-text" style="color: #00ff88; text-shadow: 0 0 20px #00ff88;">🏆 JOUEUR 1 GAGNE! 🏆</div>';
+            }
+
+            gameOverEl.innerHTML = message;
+        }
+
+        function startGame() {
+            gameRunning = true;
+            gameOverEl.innerHTML = '';
+
+            player1 = new Snake(10, 15, '#00ff88', player1.controls);
+            player2 = new Snake(20, 15, '#00ddff', player2.controls);
+            apple = new Apple();
+
+            score1El.textContent = '0';
+            score2El.textContent = '0';
+
+            update();
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (!gameRunning) {
+                    startGame();
+                }
+                return;
+            }
+
+            if (!gameRunning) return;
+
+            switch (e.code) {
+                case player1.controls.up:
+                    e.preventDefault();
+                    player1.setDirection(0, -1);
+                    break;
+                case player1.controls.down:
+                    e.preventDefault();
+                    player1.setDirection(0, 1);
+                    break;
+                case player1.controls.left:
+                    e.preventDefault();
+                    player1.setDirection(-1, 0);
+                    break;
+                case player1.controls.right:
+                    e.preventDefault();
+                    player1.setDirection(1, 0);
+                    break;
+                case player2.controls.up:
+                    e.preventDefault();
+                    player2.setDirection(0, -1);
+                    break;
+                case player2.controls.down:
+                    e.preventDefault();
+                    player2.setDirection(0, 1);
+                    break;
+                case player2.controls.left:
+                    e.preventDefault();
+                    player2.setDirection(-1, 0);
+                    break;
+                case player2.controls.right:
+                    e.preventDefault();
+                    player2.setDirection(1, 0);
+                    break;
+            }
+        });
+
+        setInterval(() => {
+            if (gameRunning) {
+                update();
+            }
+        }, 100);
+
+        drawGrid();
+        apple.draw();
+        player1.draw();
+        player2.draw();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Arkanoid Multijoueur</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #222;
+        }
+
+        canvas {
+            background: #000;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+    <script>
+        // Obtenez le contexte du canvas
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Variables de jeu
+        const paddleWidth = 15;
+        const paddleHeight = 100;
+        const ballRadius = 10;
+        const brickRowCount = 3;
+        const brickColumnCount = 5;
+        const brickWidth = 75;
+        const brickHeight = 20;
+        const brickPadding = 10;
+        const brickOffsetTop = 60;
+        const brickOffsetLeft = (canvas.width - (brickColumnCount * (brickWidth + brickPadding))) / 2;
+
+        let score = [0, 0];
+        let lives = [3, 3];
+        let gameRunning = true;
+
+        // Raquettes
+        const paddle1 = {
+            x: 10,
+            y: canvas.height / 2 - paddleHeight / 2,
+            width: paddleWidth,
+            height: paddleHeight,
+            color: '#00FF00',
+            speed: 8,
+            specialCooldown: 0,
+            normalHeight: paddleHeight
+        };
+
+        const paddle2 = {
+            x: canvas.width - paddleWidth - 10,
+            y: canvas.height / 2 - paddleHeight / 2,
+            width: paddleWidth,
+            height: paddleHeight,
+            color: '#0000FF',
+            speed: 8,
+            specialCooldown: 0,
+            normalHeight: paddleHeight
+        };
+
+        // Balle
+        const ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: ballRadius,
+            speedX: 5,
+            speedY: 5,
+            color: '#FFF'
+        };
+
+        // Briques
+        const bricks = [];
+        for (let c = 0; c < brickColumnCount; c++) {
+            bricks[c] = [];
+            for (let r = 0; r < brickRowCount; r++) {
+                bricks[c][r] = { x: 0, y: 0, status: 1 };
+            }
+        }
+
+        // Dessiner les briques
+        function drawBricks() {
+            for (let c = 0; c < brickColumnCount; c++) {
+                for (let r = 0; r < brickRowCount; r++) {
+                    if (bricks[c][r].status === 1) {
+                        const brickX = c * (brickWidth + brickPadding) + brickOffsetLeft;
+                        const brickY = r * (brickHeight + brickPadding) + brickOffsetTop;
+                        bricks[c][r].x = brickX;
+                        bricks[c][r].y = brickY;
+                        ctx.beginPath();
+                        ctx.rect(brickX, brickY, brickWidth, brickHeight);
+                        ctx.fillStyle = '#FF0000';
+                        ctx.fill();
+                        ctx.closePath();
+                    }
+                }
+            }
+        }
+
+        // Dessiner les raquettes
+        function drawPaddles() {
+            // Raquette 1
+            ctx.beginPath();
+            ctx.rect(paddle1.x, paddle1.y, paddle1.width, paddle1.height);
+            ctx.fillStyle = paddle1.color;
+            ctx.fill();
+            ctx.closePath();
+
+            // Raquette 2
+            ctx.beginPath();
+            ctx.rect(paddle2.x, paddle2.y, paddle2.width, paddle2.height);
+            ctx.fillStyle = paddle2.color;
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        // Dessiner la balle
+        function drawBall() {
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = ball.color;
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        // Dessiner le score et les vies
+        function drawScore() {
+            ctx.font = '24px Arial';
+            ctx.fillStyle = '#FFF';
+            ctx.fillText(`Player 1: ${score[0]}  Player 2: ${score[1]}`, canvas.width / 2 - 100, 30);
+            ctx.fillText(`Lives P1: ${lives[0]}  Lives P2: ${lives[1]}`, canvas.width / 2 - 100, 60);
+        }
+
+        // Mettre à jour le jeu
+        function update() {
+            // Déplacer la balle
+            ball.x += ball.speedX;
+            ball.y += ball.speedY;
+
+            // Collisions avec les murs haut et bas
+            if (ball.y + ball.radius > canvas.height || ball.y - ball.radius < 0) {
+                ball.speedY = -ball.speedY;
+            }
+
+            // Collisions avec les raquettes
+            if (ball.x - ball.radius < paddle1.x + paddle1.width && ball.y > paddle1.y && ball.y < paddle1.y + paddle1.height) {
+                ball.speedX = -ball.speedX;
+                // Augmenter légèrement la vitesse
+                ball.speedX *= 1.05;
+                ball.speedY *= 1.05;
+            }
+
+            if (ball.x + ball.radius > paddle2.x && ball.y > paddle2.y && ball.y < paddle2.y + paddle2.height) {
+                ball.speedX = -ball.speedX;
+                // Augmenter légèrement la vitesse
+                ball.speedX *= 1.05;
+                ball.speedY *= 1.05;
+            }
+
+            // Collisions avec les briques
+            for (let c = 0; c < brickColumnCount; c++) {
+                for (let r = 0; r < brickRowCount; r++) {
+                    const brick = bricks[c][r];
+                    if (brick.status === 1) {
+                        if (ball.x + ball.radius > brick.x && ball.x - ball.radius < brick.x + brickWidth &&
+                            ball.y + ball.radius > brick.y && ball.y - ball.radius < brick.y + brickHeight) {
+                            ball.speedX = -ball.speedX;
+                            ball.speedY = -ball.speedY;
+                            brick.status = 0;
+                            // Augmenter le score
+                            if (ball.speedX < 0) {
+                                score[0]++;
+                            } else {
+                                score[1]++;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Vérifier si la balle est sortie
+            if (ball.x + ball.radius > canvas.width) {
+                lives[0]--;
+                resetBall();
+            } else if (ball.x - ball.radius < 0) {
+                lives[1]--;
+                resetBall();
+            }
+
+            // Vérifier les conditions de victoire
+            if (score[0] >= 10) {
+                alert('Player 1 wins!');
+                gameRunning = false;
+            } else if (score[1] >= 10) {
+                alert('Player 2 wins!');
+                gameRunning = false;
+            }
+
+            if (lives[0] <= 0) {
+                alert('Player 2 wins!');
+                gameRunning = false;
+            } else if (lives[1] <= 0) {
+                alert('Player 1 wins!');
+                gameRunning = false;
+            }
+
+            // Réduire le cooldown des actions spéciales
+            if (paddle1.specialCooldown > 0) {
+                paddle1.specialCooldown--;
+                if (paddle1.specialCooldown === 0) {
+                    paddle1.height = paddle1.normalHeight;
+                }
+            }
+
+            if (paddle2.specialCooldown > 0) {
+                paddle2.specialCooldown--;
+                if (paddle2.specialCooldown === 0) {
+                    paddle2.height = paddle2.normalHeight;
+                }
+            }
+        }
+
+        // Réinitialiser la balle
+        function resetBall() {
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height / 2;
+            ball.speedX = 5;
+            ball.speedY = 5;
+        }
+
+        // Gestion des entrées
+        document.addEventListener('keydown', (e) => {
+            // Joueur 1
+            if (e.key === 'z' && paddle1.y > 0) {
+                paddle1.y -= paddle1.speed;
+            } else if (e.key === 's' && paddle1.y < canvas.height - paddle1.height) {
+                paddle1.y += paddle1.speed;
+            } else if (e.key === ' ' && paddle1.specialCooldown === 0) {
+                paddle1.height *= 2;
+                paddle1.specialCooldown = 100; // 100 frames de cooldown
+            }
+
+            // Joueur 2
+            if (e.key === 'ArrowUp' && paddle2.y > 0) {
+                paddle2.y -= paddle2.speed;
+            } else if (e.key === 'ArrowDown' && paddle2.y < canvas.height - paddle2.height) {
+                paddle2.y += paddle2.speed;
+            } else if (e.key === 'Enter' && paddle2.specialCooldown === 0) {
+                paddle2.height *= 2;
+                paddle2.specialCooldown = 100; // 100 frames de cooldown
+            }
+        });
+
+        // Boucle de jeu
+        function gameLoop() {
+            if (gameRunning) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawBricks();
+                drawPaddles();
+                drawBall();
+                drawScore();
+                update();
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // Démarrer le jeu
+        gameLoop();
+    </script>
+</body>
+
+</html>
