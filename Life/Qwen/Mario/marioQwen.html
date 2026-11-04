@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mario 2D - Qwen Edition</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Press Start 2P', 'Courier New', monospace;
+            color: white;
+            overflow: hidden;
+        }
+        #gameContainer {
+            position: relative;
+            border: 4px solid #333;
+            border-radius: 8px;
+            box-shadow: 0 0 50px rgba(255, 255, 0, 0.3);
+        }
+        #gameCanvas {
+            display: block;
+            background: #5c94fc;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 100;
+        }
+        .hidden { display: none !important; }
+        #startScreen {
+            background: linear-gradient(135deg, rgba(92, 148, 252, 0.9), rgba(102, 125, 252, 0.8));
+        }
+        .title {
+            font-size: 48px;
+            text-shadow: 4px 4px 0 #000, -2px -2px 0 #ff0000;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .subtitle {
+            font-size: 16px;
+            color: #ffd700;
+            margin-bottom: 40px;
+            text-shadow: 2px 2px 0 #000;
+        }
+        .controls {
+            font-size: 12px;
+            color: #fff;
+            text-align: center;
+            line-height: 1.8;
+            text-shadow: 1px 1px 0 #000;
+            margin-bottom: 30px;
+            font-size: 11px;
+        }
+        .btn {
+            padding: 20px 60px;
+            font-size: 24px;
+            background: linear-gradient(180deg, #ff0000 0%, #990000 100%);
+            border: 4px solid #fff;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 20px;
+            text-shadow: 2px 2px 0 #000;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(255, 255, 0, 0.5);
+        }
+        .btn:active { transform: scale(0.95); }
+        #hud {
+            position: absolute;
+            top: 10px; left: 10px; right: 10px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            z-index: 50;
+        }
+        .hud-panel {
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            text-shadow: 1px 1px 0 #000;
+            border: 2px solid #333;
+        }
+        .hud-left { display: flex; gap: 10px; }
+        #gameOverScreen, #winScreen { display: none; }
+        .result-title {
+            font-size: 48px;
+            text-shadow: 4px 4px 0 #000;
+            margin-bottom: 20px;
+        }
+        .result-score {
+            font-size: 24px;
+            color: #ffd700;
+            margin: 10px 0;
+        }
+        #invincibilityIndicator {
+            position: absolute;
+            top: 10px; left: 10px;
+            width: 40px; height: 40px;
+            background: rgba(255, 255, 0, 0.5);
+            border-radius: 50%;
+            display: none;
+            animation: pulse 0.5s infinite alternate;
+        }
+        @keyframes pulse {
+            from { opacity: 0.5; }
+            to { opacity: 1; }
+        }
+        #debugInfo {
+            position: absolute;
+            bottom: 10px; left: 10px;
+            font-size: 10px;
+            color: #666;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="startScreen" class="overlay">
+            <div class="title">MARIO 2D</div>
+            <div class="subtitle">Qwen Edition - 8-Bit Adventure</div>
+            <div class="controls">
+                WASD ou Flèches : Déplacement<br>
+                Espace ou Clic : Saut<br>
+                Objectif : Attrapez la <span style="color:#00ff00">★</span> verte !<br>
+                Évitez les <span style="color:#ff0000">Goombas</span> 🔴<br>
+                Attrapez les <span style="color:#ffff00">?</span> pour des bonus<br>
+                ■ = Mort • ■ = Invincible
+            </div>
+            <button class="btn" onclick="game.start()">COMMENCER</button>
+        </div>
+        <div id="hud" class="hidden">
+            <div class="hud-left">
+                <div class="hud-panel">SCORE: <span id="scoreDisplay">0</span></div>
+                <div class="hud-panel">TEMPS: <span id="timeDisplay">00:00</span></div>
+            </div>
+            <div class="hud-panel" id="coinDisplay">PIÈCES: 0</div>
+            <div style="flex:1"></div>
+            <div class="hud-panel" id="levelDisplay">Niveau 1-1</div>
+            <div id="invincibilityIndicator"></div>
+        </div>
+        <div id="gameOverScreen" class="overlay">
+            <div class="result-title">GAME OVER</div>
+            <div class="result-score">Score: <span id="finalScore">0</span></div>
+            <div class="result-score">Pièces: <span id="finalCoins">0</span></div>
+            <button class="btn" onclick="game.restart()">REJOUER</button>
+        </div>
+        <div id="winScreen" class="overlay">
+            <div class="result-title" style="color:#00ff00">VICTOIRE !</div>
+            <div class="result-score">Score: <span id="winScore">0</span></div>
+            <div class="result-score">Pièces: <span id="winCoins">0</span></div>
+            <button class="btn" onclick="game.restart()">REJOUER</button>
+        </div>
+        <div id="debugInfo"></div>
+    </div>
+
+    <script>
+        // ============================================
+        // CONSTANTS
+        // ============================================
+        const TILE_SIZE = 16;
+        const WORLD_WIDTH = 50;
+        const WORLD_HEIGHT = 15;
+        const GRAVITY = 900;
+        const JUMP_FORCE = 500;
+        const MAX_SPEED = 300;
+        const FRICTION = 0.6;
+        const AIR_RESISTANCE = 0.2;
+        const TERMINAL_VELOCITY = 1500;
+        const INVINCIBILITY_DURATION = 120; // frames (~2s at 60fps)
+
+        // ============================================
+        // SPRITES (Generated with canvas)
+        // ============================================
+        const SPRITES = {
+            mario: null,
+            goomba: null,
+            brick: null,
+            qblock: null,
+            coin: null,
+            star: null,
+            ground: null,
+            question: null
+        };
+
+        function generateSprites() {
+            const ctx = createCtx();
+            const tiles = {};
+
+            // Ground tile
+            tiles.ground = renderTile(ctx, [
+                [0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0],
+                [3,3,3,3,3,3,3,3],
+                [3,3,0,0,0,0,3,3],
+                [3,3,0,0,0,0,3,3],
+                [3,3,3,3,3,3,3,3],
+                [3,3,3,3,3,3,3,3],
+                [3,3,3,3,3,3,3,3]
+            ], { color: '#6b8cff', highlight: '#8ba3ff' });
+
+            // Brick block
+            tiles.brick = renderTile(ctx, [
+                [0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0],
+                [0,1,0,1,0,1,0,1],
+                [1,1,1,1,1,1,1,1],
+                [1,0,1,0,1,0,1,0],
+                [0,1,0,1,0,1,0,1],
+                [0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0]
+            ], { color: '#a05030', highlight: '#b06040' });
+
+            // Question block
+            tiles.question = renderTile(ctx, [
+                [0,0,0,0,0,0,0,0],
+                [0,1,0,1,0,1,0,1],
+                [0,2,0,2,0,2,0,2],
+                [0,3,0,3,0,3,0,3],
+                [0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0]
+            ], { color: '#ff0000', highlight: '#ffff00', animated: true });
+
+            // Ground block
+            tiles.ground = renderTile(ctx, [
+                [0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0],
+                [4,4,4,4,4,4,4,4],
+                [4,4,0,0,0,0,4,4],
+                [4,4,4,4,4,4,4,4],
+                [4,4,4,4,4,4,4,4]
+            ], { color: '#5c94fc', highlight: '#7ba2fd' });
+
+            // Empty
+            tiles.empty = { pixels: [], color: 'transparent' };
+
+            return tiles;
+        }
+
+        function renderTile(ctx, pattern, props = {}) {
+            const tile = {
+                pixels: [],
+                color: props.color,
+                highlight: props.highlight,
+                animated: props.animated
+            };
+
+            for (let y = 0; y < pattern.length; y++) {
+                for (let x = 0; x < pattern[y].length; x++) {
+                    const val = pattern[y][x];
+                    if (val !== 0) {
+                        const px = val === 1 ? 1 :
+                                  val === 2 ? 2 :
+                                  val === 3 ? 3 :
+                                  val === 4 ? 4 : 0;
+                        tile.pixels.push({ x, y, px });
+                    }
+                }
+            }
+
+            if (tile.pixels.length > 0) {
+                const canvas = document.createElement('canvas');
+                canvas.width = TILE_SIZE;
+                canvas.height = TILE_SIZE;
+                const ctxCanvas = canvas.getContext('2d');
+                ctxCanvas.fillStyle = tile.color;
+                ctxCanvas.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+                if (tile.highlight) {
+                    ctxCanvas.fillStyle = tile.highlight;
+                    ctxCanvas.fillRect(2, 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                }
+                return {
+                    pixels: tile.pixels,
+                    color: tile.color,
+                    highlight: tile.highlight,
+                    animated: tile.animated,
+                    canvas: canvas
+                };
+            }
+            return tile;
+        }
+
+        function createCtx() {
+            const canvas = document.createElement('canvas');
+            canvas.width = TILE_SIZE;
+            canvas.height = TILE_SIZE;
+            return canvas.getContext('2d');
+        }
+
+        // ============================================
+        // AUDIO MANAGER (Web Audio API)
+        // ============================================
+        class AudioManager {
+            constructor() {
+                this.ctx = null;
+                this.masterGain = null;
+                this.musicGain = null;
+                this.initialized = false;
+            }
+
+            init() {
+                if (this.initialized) return;
+                try {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    this.masterGain = this.ctx.createGain();
+                    this.masterGain.gain.value = 0.5;
+                    this.musicGain = this.ctx.createGain();
+                    this.musicGain.gain.value = 0.3;
+                    this.masterGain.connect(this.ctx.destination);
+                    this.musicGain.connect(this.masterGain);
+                    this.initialized = true;
+                } catch (e) {
+                    console.log('Audio not supported');
+                    this.initialized = true;
+                }
+            }
+
+            createOscillator(type = 'sine', frequency = 440) {
+                if (!this.ctx) return null;
+                const osc = this.ctx.createOscillator();
+                osc.type = type;
+                osc.frequency.value = frequency;
+                return osc;
+            }
+
+            createGain() {
+                if (!this.ctx) return null;
+                const gain = this.ctx.createGain();
+                gain.gain.value = 1;
+                return gain;
+            }
+
+            playJump() {
+                if (!this.initialized || !this.ctx) return;
+                const osc = this.createOscillator('sine', 440);
+                const gain = this.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+                osc.stop(this.ctx.currentTime + 0.1);
+            }
+
+            playJumpHigh() {
+                if (!this.initialized || !this.ctx) return;
+                const osc = this.createOscillator('sine', 440);
+                const gain = this.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+                osc.stop(this.ctx.currentTime + 0.2);
+            }
+
+            playStomp() {
+                if (!this.initialized || !this.ctx) return;
+                const osc = this.createOscillator('square', 150);
+                const gain = this.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
+                osc.stop(this.ctx.currentTime + 0.3);
+            }
+
+            playBumpBlock() {
+                if (!this.initialized || !this.ctx) return;
+                const osc = this.createOscillator('sawtooth', 100);
+                const gain = this.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+                osc.stop(this.ctx.currentTime + 0.15);
+            }
+
+            playCoin() {
+                if (!this.initialized || !this.ctx) return;
+                const osc = this.createOscillator('sine', 1200);
+                const gain = this.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
+                osc.stop(this.ctx.currentTime + 0.3);
+            }
+
+            playGoombaDie() {
+                if (!this.initialized || !this.ctx) return;
+                const osc = this.createOscillator('sawtooth', 200);
+                const gain = this.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
+                osc.frequency.exponentialRampToValueAtTime(50, this.ctx.currentTime + 0.5);
+                osc.stop(this.ctx.currentTime + 0.5);
+            }
+
+            playBrickBreak() {
+                if (!this.initialized || !this.ctx) return;
+                const osc = this.createOscillator('square', 300);
+                const gain = this.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+                osc.stop(this.ctx.currentTime + 0.1);
+            }
+
+            playVictoryMusic() {
+                if (!this.initialized || !this.ctx) return;
+                const notes = [523.25, 659.25, 783.99, 1046.50, 783.99, 659.25, 523.25, 392.00];
+                notes.forEach((freq, i) => {
+                    setTimeout(() => {
+                        if (!this.ctx) return;
+                        const osc = this.createOscillator('sine', freq);
+                        const gain = this.createGain();
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start();
+                        gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
+                        osc.stop(this.ctx.currentTime + 0.5);
+                    }, i * 200);
+                });
+            }
+
+            playDefeatMusic() {
+                if (!this.initialized || !this.ctx) return;
+                const notes = [392.00, 349.23, 329.63, 293.66, 261.63, 233.08, 196.00];
+                notes.forEach((freq, i) => {
+                    setTimeout(() => {
+                        if (!this.ctx) return;
+                        const osc = this.createOscillator('sawtooth', freq);
+                        const gain = this.createGain();
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start();
+                        gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 1.0);
+                        osc.stop(this.ctx.currentTime + 1.0);
+                    }, i * 300);
+                });
+            }
+
+            setVolume(vol) {
+                if (this.masterGain) this.masterGain.gain.value = vol;
+            }
+
+            setMusicVolume(vol) {
+                if (this.musicGain) this.musicGain.gain.value = vol;
+            }
+
+            toggleMusic(enabled) {
+                if (this.musicGain) {
+                    this.musicGain.gain.value = enabled ? 0.3 : 0;
+                }
+            }
+        }
+
+        // ============================================
+        // PHYSICS ENGINE
+        // ============================================
+        class Tile {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.width = TILE_SIZE;
+                this.height = TILE_SIZE;
+                this.aabb = { x: this.x, y: this.y, width: this.width, height: this.height };
+            }
+
+            isSolid() {
+                return this.type !== 0;
+            }
+        }
+
+        class Entity {
+            constructor(x, y, width, height) {
+                this.x = x;
+                this.y = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.width = width;
+                this.height = height;
+                this.aabb = { x: this.x, y: this.y, width: this.width, height: this.height };
+                this.grounded = false;
+                this.onGroundTimer = 0;
+                this.canJump = true;
+                this.inAir = false;
+                this.falling = false;
+                this.lastX = this.x;
+                this.lastY = this.y;
+                this.lastVx = 0;
+                this.lastVy = 0;
+                this.jumpCooldownTimer = 0;
+                this.lastJumpTime = 0;
+                this.invincible = false;
+                this.invincibleTimer = 0;
+                this.facingRight = true;
+                this.input = null;
+            }
+
+            setInput(input) {
+                this.input = input;
+            }
+
+            update(dt, tiles, input) {
+                // Jump cooldown
+                if (this.jumpCooldownTimer > 0) {
+                    this.jumpCooldownTimer -= dt * 1000;
+                    this.canJump = false;
+                } else {
+                    this.canJump = true;
+                }
+
+                // Horizontal movement
+                if (input.left) {
+                    this.vx -= 800 * dt;
+                    this.facingRight = false;
+                }
+                if (input.right) {
+                    this.vx += 800 * dt;
+                    this.facingRight = true;
+                }
+
+                // Apply friction
+                if (this.grounded) {
+                    this.vx *= FRICTION;
+                } else {
+                    this.vx *= AIR_RESISTANCE;
+                }
+
+                // Max speed
+                if (Math.abs(this.vx) > MAX_SPEED) {
+                    this.vx = Math.sign(this.vx) * MAX_SPEED;
+                }
+
+                // Vertical movement (gravity)
+                this.vy += GRAVITY * dt;
+
+                // Terminal velocity
+                if (this.vy > TERMINAL_VELOCITY) this.vy = TERMINAL_VELOCITY;
+                if (this.vy < -TERMINAL_VELOCITY) this.vy = -TERMINAL_VELOCITY;
+
+                // Apply horizontal movement with collision
+                this.applyHorizontalMovement(tiles);
+
+                // Apply vertical movement with collision
+                this.applyVerticalMovement(tiles);
+
+                // Jump
+                if (this.grounded && input.jump) {
+                    this.vy = -JUMP_FORCE;
+                    this.grounded = false;
+                    this.inAir = true;
+                    this.jumpCooldownTimer = 150;
+                    this.lastJumpTime = performance.now();
+                    input.jump = false; // Prevent multi-jump
+                }
+
+                // Update invincibility
+                if (this.invincible) {
+                    this.invincibleTimer--;
+                    if (this.invincibleTimer <= 0) {
+                        this.invincible = false;
+                    }
+                }
+            }
+
+            applyHorizontalMovement(tiles) {
+                // COORDONNEES EN TUILES (unified system)
+                const nextX = this.x + this.vx;
+                const tileX = Math.floor(nextX);
+                const tileY = Math.floor(this.y);
+
+                if (tileY >= 0 && tileY < WORLD_HEIGHT && tileX >= 0 && tileX < WORLD_WIDTH) {
+                    const tileType = tiles[tileY][tileX];
+                    if (tileType === 1 || tileType === 2 || tileType === 3 || tileType === 4) {
+                        // Wall collision - COORDONNEES EN TUILES
+                        if (this.vx > 0) {
+                            this.x = tileX - this.width;
+                            this.vx = 0;
+                        } else if (this.vx < 0) {
+                            this.x = tileX + 1;
+                            this.vx = 0;
+                        }
+                    }
+                }
+            }
+
+            applyVerticalMovement(tiles) {
+                // COORDONNEES EN TUILES (unified system)
+                const nextY = this.y + this.vy;
+                const tileX = Math.floor(this.x);
+                const tileY = Math.floor(nextY);
+
+                if (tileY >= 0 && tileY < WORLD_HEIGHT && tileX >= 0 && tileX < WORLD_WIDTH) {
+                    const tileType = tiles[tileY][tileX];
+                    if (tileType === 1 || tileType === 2 || tileType === 3 || tileType === 4) {
+                        // Floor collision - COORDONNEES EN TUILES
+                        if (this.vy > 0) {
+                            this.y = tileY - this.height;
+                            this.vy = 0;
+                            this.grounded = true;
+                            this.inAir = false;
+                        }
+                        // Ceiling collision
+                        else if (this.vy < 0) {
+                            this.y = tileY + 1;
+                            this.vy = 0;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ============================================
+        // GAME ENGINE
+        // ============================================
+        class Game {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.tiles = generateSprites();
+                this.lastTime = 0;
+                this.state = 'start';
+                this.input = {
+                    keys: {},
+                    left: false,
+                    right: false,
+                    jump: false,
+                    up: false,
+                    down: false
+                };
+                this.audioManager = null;
+                this.level = Array(20).fill(null).map(() => Array(WORLD_WIDTH).fill(0));
+                this.setupInput();
+                this.loadLevel();
+                this.initPhysics();
+            }
+
+            setupInput() {
+                // Système d'input unifié pour Mario
+                this.keys = {
+                    left: false,
+                    right: false,
+                    jump: false,
+                    up: false,
+                    down: false
+                };
+
+                // Bindings clavier
+                document.addEventListener('keydown', (e) => {
+                    const code = e.code;
+
+                    // Empêcher le scroll pour certaines touches
+                    if (['Space', 'ArrowUp', 'ArrowDown'].includes(code)) {
+                        e.preventDefault();
+                    }
+
+                    // Mapping des touches vers les propriétés d'input
+                    if (code === 'KeyA' || code === 'ArrowLeft' || code === 'KeyZ') {
+                        this.keys.left = true;
+                    } else if (code === 'KeyD' || code === 'ArrowRight' || code === 'KeyQ') {
+                        this.keys.right = true;
+                    } else if (code === 'Space' || code === 'ArrowUp' || code === 'KeyW') {
+                        this.keys.jump = true;
+                    }
+                });
+
+                document.addEventListener('keyup', (e) => {
+                    const code = e.code;
+
+                    if (code === 'KeyA' || code === 'ArrowLeft' || code === 'KeyZ') {
+                        this.keys.left = false;
+                    } else if (code === 'KeyD' || code === 'ArrowRight' || code === 'KeyQ') {
+                        this.keys.right = false;
+                    } else if (code === 'Space' || code === 'ArrowUp' || code === 'KeyW') {
+                        this.keys.jump = false;
+                    }
+                });
+            }
+
+            async start() {
+                try {
+                    this.audioManager = new AudioManager();
+                    this.audioManager.init();
+                } catch (e) {
+                    console.log('Audio not supported');
+                }
+
+                document.getElementById('startScreen').classList.add('hidden');
+                document.getElementById('hud').classList.remove('hidden');
+                this.state = 'playing';
+                this.gameLoop(0);
+            }
+
+            showStartScreen() {
+                if (this.state === 'playing') {
+                    this.state = 'start';
+                    document.getElementById('startScreen').classList.remove('hidden');
+                    document.getElementById('hud').classList.add('hidden');
+                }
+            }
+
+            restart() {
+                if (!this.audioManager) {
+                    this.audioManager = new AudioManager();
+                    this.audioManager.init();
+                }
+                this.loadLevel();
+                this.initPhysics();
+                document.getElementById('gameOverScreen').classList.add('hidden');
+                document.getElementById('winScreen').classList.add('hidden');
+                document.getElementById('startScreen').classList.add('hidden');
+                document.getElementById('hud').classList.remove('hidden');
+                this.state = 'playing';
+                this.gameLoop(0);
+            }
+
+            loadLevel() {
+                // Initialize level grid (20 rows x 50 columns) - COORDONNEES EN TUILES
+                this.level = Array(20).fill(null).map(() => Array(WORLD_WIDTH).fill(0));
+
+                // Add ground at bottom (row 19 = 304 pixels)
+                for (let x = 0; x < WORLD_WIDTH; x++) {
+                    this.level[19][x] = 1;
+                }
+
+                // Add platforms
+                this.level[18][4] = 1; this.level[18][5] = 1; this.level[18][6] = 1;
+                this.level[18][7] = 1; this.level[18][8] = 1; this.level[18][9] = 1;
+                this.level[18][10] = 1; this.level[18][11] = 1; this.level[18][12] = 1;
+
+                this.level[16][0] = 2; this.level[16][1] = 2; this.level[16][2] = 2;
+                this.level[16][3] = 2; this.level[16][4] = 2; this.level[16][5] = 2;
+                this.level[16][6] = 2; this.level[16][7] = 2; this.level[16][8] = 2;
+                this.level[16][9] = 2; this.level[16][10] = 2;
+
+                this.level[16][24] = 4; this.level[16][25] = 4; this.level[16][26] = 4;
+                this.level[16][27] = 4;
+
+                this.level[13][38] = 1; this.level[13][39] = 1; this.level[13][40] = 1;
+
+                this.level[11][0] = 2; this.level[11][1] = 2; this.level[11][2] = 2;
+                this.level[11][3] = 2; this.level[11][4] = 3; this.level[11][5] = 3;
+                this.level[11][6] = 3;
+
+                this.level[8][10] = 2; this.level[8][11] = 2; this.level[8][12] = 3;
+                this.level[8][13] = 3; this.level[8][14] = 2; this.level[8][15] = 2;
+
+                this.level[8][28] = 2; this.level[8][29] = 2; this.level[8][30] = 3;
+                this.level[8][31] = 3; this.level[8][32] = 2; this.level[8][33] = 2;
+
+                this.level[7][44] = 2; this.level[7][45] = 2; this.level[7][46] = 3;
+                this.level[7][47] = 3; this.level[7][48] = 4; this.level[7][49] = 4;
+
+                this.level[6][38] = 2; this.level[6][39] = 3; this.level[6][40] = 2;
+
+                // Player start (in TILE coordinates - unified system)
+                this.player = {
+                    x: 2,      // TILE coordinate (32 pixels)
+                    y: 11,      // TILE coordinate (176 pixels)
+                    vx: 0,
+                    vy: 0,
+                    width: 1,   // 1 tile = 16 pixels
+                    height: 1,   // 1 tile = 16 pixels
+                    grounded: false,
+                    facingRight: true,
+                    invincible: false,
+                    invincibleTimer: 0,
+                    score: 0,
+                    coins: 0
+                };
+
+                // Entities
+                this.goombas = [];
+                this.brickStacks = [];
+                this.questionBlocks = [];
+                this.coins = [];
+                this.stars = [];
+                this.flames = [];
+                this.deathEffects = [];
+
+                this.goombaTimer = 0;
+
+                // Collectibles
+                this.collectibles = {
+                    coins: [],
+                    stars: [],
+                    questionBlocks: []
+                };
+
+                this.loadCollectibles();
+            }
+
+            loadCollectibles() {
+                // Coins on ground (in TILE coordinates - unified system)
+                for (let i = 0; i < 30; i++) {
+                    this.collectibles.coins.push({
+                        x: Math.floor(Math.random() * WORLD_WIDTH),
+                        y: 19,
+                        collected: false
+                    });
+                }
+
+                // Stars on platforms (in TILE coordinates - unified system)
+                this.collectibles.stars = [
+                    { x: 4, y: 13, collected: false, active: true },
+                    { x: 45, y: 14, collected: false, active: true },
+                    { x: 42, y: 10, collected: false, active: false }
+                ];
+
+                this.collectibles.questionBlocks = [
+                    { x: 5, y: 6, active: true, timer: 0 },
+                    { x: 47, y: 13, active: true, timer: 0 },
+                    { x: 2, y: 3, active: false, timer: 0 },
+                    { x: 48, y: 2, active: false, timer: 0 }
+                ];
+            }
+
+            spawnGoombas() {
+                if (this.goombaTimer > 600) {
+                    this.goombas.push({
+                        x: WORLD_WIDTH - 1,
+                        y: 19,
+                        vx: -0.2,
+                        vy: 0,
+                        width: 1,
+                        height: 1,
+                        dead: false,
+                        type: Math.random() < 0.5 ? 'normal' : 'quick'
+                    });
+                    this.goombaTimer = 0;
+                }
+                this.goombaTimer++;
+            }
+
+            updateGoombas() {
+                let filteredGoombas = this.goombas.filter(g => !g.dead);
+
+                filteredGoombas.forEach(g => {
+                    g.vy += GRAVITY;
+                    if (g.vy > TERMINAL_VELOCITY) g.vy = TERMINAL_VELOCITY;
+
+                    // Collision with ground (use tile coordinates)
+                    const goombaBottom = g.y + g.height;
+                    if (this.isSolid(g.x + g.width / 2, goombaBottom)) {
+                        g.y = goombaBottom - g.height;
+                        g.vy = 0;
+                    }
+
+                    // Player collision (use tile coordinates)
+                    const playerPixelX = this.player.x;
+                    const playerPixelY = this.player.y;
+                    const goombaPixelX = g.x;
+                    const goombaPixelY = g.y;
+
+                    if (!this.player.invincible &&
+                        playerPixelX < goombaPixelX + g.width &&
+                        playerPixelX + this.player.width > goombaPixelX &&
+                        playerPixelY < goombaPixelY + g.height &&
+                        playerPixelY + this.player.height > goombaPixelY) {
+
+                        if (this.player.vy > 0 && playerPixelY < goombaPixelY) {
+                            // Mario jumped on goomba
+                            g.dead = true;
+                            this.addScore(500);
+                            this.playSound('stomp');
+                            this.spawnCoin(g.x, g.y - 1, true);
+                        } else {
+                            // Goomba kills player
+                            this.die();
+                        }
+                    }
+
+                    // Goomba movement
+                    if (g.vx !== 0) {
+                        const nextX = g.x + g.vx;
+                        if (this.isSolid(nextX, g.y) && !this.isSolid(g.x, g.y)) {
+                            g.x = nextX;
+                        } else if (this.isSolid(nextX, g.y) && this.isSolid(g.x, g.y)) {
+                            g.vx = -g.vx;
+                            g.x += g.vx;
+                        }
+                    }
+                });
+
+                this.goombas = filteredGoombas;
+            }
+
+            isSolid(x, y) {
+                // COORDONNEES EN TUILES (unified system)
+                const gx = Math.floor(x);
+                const gy = Math.floor(y);
+                if (gy < 0 || gy >= WORLD_HEIGHT || gx < 0 || gx >= WORLD_WIDTH) return false;
+                if (this.level[gy][gx] === 1 || this.level[gy][gx] === 4) return true;
+                if (this.level[gy][gx] === 2) return true;
+                if (this.collectibles.questionBlocks.some(b => b.x === gx && b.y === gy && b.active)) return true;
+                return false;
+            }
+
+            initPhysics() {
+                // COORDONNEES EN TUILES (unified system)
+                this.physics = new Entity(
+                    this.player.x,
+                    this.player.y,
+                    this.player.width,
+                    this.player.height
+                );
+                this.physics.x = this.player.x;
+                this.physics.y = this.player.y;
+                this.physics.vx = this.player.vx;
+                this.physics.vy = this.player.vy;
+                this.physics.facingRight = this.player.facingRight;
+                this.physics.grounded = this.player.grounded;
+                this.physics.inAir = !this.player.grounded;
+                this.physics.canJump = true;
+                this.physics.jumpCooldownTimer = 0;
+                this.physics.lastJumpTime = 0;
+                this.physics.lastX = this.player.x;
+                this.physics.lastY = this.player.y;
+                this.physics.lastVx = this.player.vx;
+                this.physics.lastVy = this.player.vy;
+            }
+
+            updatePhysics() {
+                // Input - utiliser les propriétés d'input unifiées
+                this.physics.setInput({
+                    left: this.keys.left,
+                    right: this.keys.right,
+                    jump: this.keys.jump
+                });
+
+                // Update entity - COORDONNEES EN TUILES (unified system)
+                this.physics.update(0.016, this.level, this);
+
+                // Jump
+                if (this.keys.jump) {
+                    this.playSound('jump');
+                    this.keys.jump = false;
+                }
+
+                // Update player data - COORDONNEES EN TUILES (unified system)
+                this.player.x = this.physics.x;
+                this.player.y = this.physics.y;
+                this.player.vx = this.physics.vx;
+                this.player.vy = this.physics.vy;
+                this.player.facingRight = this.physics.facingRight;
+                this.player.grounded = this.physics.grounded;
+                this.player.invincible = this.physics.invincible;
+                this.player.invincibleTimer = this.physics.invincibleTimer;
+
+                // Limits - COORDONNEES EN TUILES
+                if (this.physics.y >= WORLD_HEIGHT - this.physics.height) {
+                    this.physics.vy = 0;
+                    this.physics.y = WORLD_HEIGHT - this.physics.height;
+                    this.physics.grounded = true;
+                }
+
+                if (this.physics.x < 0) this.physics.x = 0;
+                if (this.physics.x > WORLD_WIDTH - this.physics.width) this.physics.x = WORLD_WIDTH - this.physics.width;
+
+                // Update invincibility
+                if (this.physics.invincible) {
+                    this.physics.invincibleTimer--;
+                    if (this.physics.invincibleTimer <= 0) {
+                        this.physics.invincible = false;
+                        document.getElementById('invincibilityIndicator').style.display = 'none';
+                    }
+                }
+            }
+
+            checkCollectibles() {
+                // Coins - COORDONNEES EN TUILES (unified system)
+                this.collectibles.coins = this.collectibles.coins.filter(coin => {
+                    if (coin.collected) return true;
+                    // Use tile coordinates for distance calculation
+                    const playerX = this.player.x;
+                    const playerY = this.player.y;
+                    const coinX = coin.x;
+                    const coinY = coin.y;
+                    const dist = Math.sqrt(
+                        Math.pow(playerX - coinX, 2) +
+                        Math.pow(playerY - coinY, 2)
+                    );
+                    if (dist < 2) { // Reduced distance for tile-based coordinates
+                        coin.collected = true;
+                        this.addScore(100);
+                        this.addCoin();
+                        this.playSound('coin');
+                        return false;
+                    }
+                    return true;
+                });
+
+                // Stars - COORDONNEES EN TUILES
+                this.collectibles.stars = this.collectibles.stars.filter(star => {
+                    if (!star.active) return true;
+                    if (!star.collected && Math.random() < 0.01) {
+                        star.collected = true;
+                        star.active = false;
+                        this.addScore(1000);
+                        this.activateInvincibility();
+                        this.playSound('coin');
+                        return false;
+                    }
+                    return true;
+                });
+
+                // Question blocks - COORDONNEES EN TUILES
+                this.collectibles.questionBlocks = this.collectibles.questionBlocks.filter(block => {
+                    if (!block.active) return true;
+                    if (Math.random() < 0.001) {
+                        block.active = false;
+                        block.collected = true;
+                        this.spawnGoomba(block.x, block.y - 1);
+                        this.playSound('brickBreak');
+                        this.addScore(500);
+                        return false;
+                    }
+                    return true;
+                });
+            }
+
+            spawnGoomba(x, y) {
+                this.goombas.push({
+                    x: x,
+                    y: y,
+                    vx: -0.2,
+                    vy: 0,
+                    width: 128,
+                    height: 128,
+                    dead: false,
+                    type: 'normal'
+                });
+            }
+
+            activateInvincibility() {
+                this.player.invincible = true;
+                this.player.invincibleTimer = INVINCIBILITY_DURATION;
+                document.getElementById('invincibilityIndicator').style.display = 'block';
+            }
+
+            die() {
+                if (this.player.invincible) return;
+                this.state = 'gameover';
+                this.playSound('death');
+                document.getElementById('hud').classList.add('hidden');
+                document.getElementById('gameOverScreen').classList.remove('hidden');
+                document.getElementById('finalScore').textContent = this.player.score;
+                document.getElementById('finalCoins').textContent = this.player.coins;
+            }
+
+            win() {
+                this.state = 'win';
+                this.playSound('win');
+                document.getElementById('hud').classList.add('hidden');
+                document.getElementById('winScreen').classList.remove('hidden');
+                document.getElementById('winScore').textContent = this.player.score;
+                document.getElementById('winCoins').textContent = this.player.coins;
+            }
+
+            addScore(points) {
+                this.player.score += points;
+                document.getElementById('scoreDisplay').textContent = this.player.score;
+            }
+
+            addCoin() {
+                this.player.coins++;
+                document.getElementById('coinDisplay').textContent = 'PIÈCES: ' + this.player.coins;
+            }
+
+            createParticles(x, y, color, count) {
+                // Simplified - particles would go here
+            }
+
+            playSound(type) {
+                if (!this.audioManager) {
+                    console.warn('AudioManager not initialized');
+                    return;
+                }
+
+                switch (type) {
+                    case 'jump': this.audioManager.playJump(); break;
+                    case 'jumpHigh': this.audioManager.playJumpHigh(); break;
+                    case 'stomp': this.audioManager.playStomp(); break;
+                    case 'bumpBlock': this.audioManager.playBumpBlock(); break;
+                    case 'coin': this.audioManager.playCoin(); break;
+                    case 'goombaDie': this.audioManager.playGoombaDie(); break;
+                    case 'brickBreak': this.audioManager.playBrickBreak(); break;
+                    case 'death': this.audioManager.playDefeatMusic(); break;
+                    case 'win': this.audioManager.playVictoryMusic(); break;
+                    case 'victory': this.audioManager.playVictoryMusic(); break;
+                }
+            }
+
+            gameLoop(timestamp) {
+                const dt = timestamp - this.lastTime;
+                this.lastTime = timestamp;
+
+                if (this.state === 'playing') {
+                    this.updatePhysics();
+                    this.spawnGoombas();
+                    this.updateGoombas();
+                    this.checkCollectibles();
+                }
+
+                // Camera follow - COORDONNEES EN TUILES (unified system)
+                const cameraX = Math.max(0, Math.min(this.player.x - 20, WORLD_WIDTH - 50));
+                const ctx = this.ctx;
+                ctx.save();
+                ctx.translate(-Math.floor(cameraX), 0);
+
+                // Clear
+                ctx.fillStyle = '#5c94fc';
+                ctx.fillRect(0, 0, 800, 600);
+
+                // Draw tiles - COORDONNEES EN TUILES
+                const startCol = Math.floor(cameraX);
+                const endCol = startCol + Math.ceil(800) + 1;
+
+                for (let y = 0; y < WORLD_HEIGHT; y++) {
+                    for (let x = startCol; x < endCol; x++) {
+                        if (x >= 0 && x < WORLD_WIDTH) {
+                            const tile = this.level[y][x];
+                            if (tile !== 0) {
+                                if (tile === 1 || tile === 4) {
+                                    this.drawGround(x, y);
+                                } else if (tile === 2) {
+                                    this.drawBrick(x, y);
+                                } else if (tile === 3) {
+                                    this.drawQuestion(x, y);
+                                } else if (tile === 4) {
+                                    this.drawGroundBlock(x, y);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Draw collectibles - COORDONNEES EN TUILES
+                this.collectibles.coins = this.collectibles.coins.filter(coin => {
+                    if (coin.collected) return true;
+                    this.drawCoin(coin.x, coin.y);
+                    return !coin.collected;
+                });
+
+                this.collectibles.stars = this.collectibles.stars.filter(star => {
+                    if (star.collected) return true;
+                    if (star.active) {
+                        this.drawStar(star.x, star.y);
+                    }
+                    return true;
+                });
+
+                // Draw question blocks - COORDONNEES EN TUILES
+                this.collectibles.questionBlocks = this.collectibles.questionBlocks.filter(block => {
+                    if (block.active) {
+                        this.drawQuestion(block.x, block.y);
+                    }
+                    return true;
+                });
+
+                // Draw entities
+                this.drawGoombas();
+                this.drawPlayer();
+
+                ctx.restore();
+
+                if (this.state === 'gameover') {
+                    this.lastTime = 0;
+                }
+
+                requestAnimationFrame((ts) => this.gameLoop(ts));
+            }
+
+            drawGround(x, y) {
+                const ctx = this.ctx;
+                ctx.fillStyle = '#6b8cff';
+                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                ctx.fillStyle = '#5c94fc';
+                ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+            }
+
+            drawBrick(x, y) {
+                const ctx = this.ctx;
+                ctx.fillStyle = '#a05030';
+                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                ctx.fillStyle = '#8b4526';
+                ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+                ctx.fillStyle = '#cd5c5c';
+                ctx.fillRect(x + 2, y + 3, TILE_SIZE - 4, 2);
+            }
+
+            drawGroundBlock(x, y) {
+                const ctx = this.ctx;
+                ctx.fillStyle = '#5c94fc';
+                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                ctx.fillStyle = '#4a88d8';
+                ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+                ctx.fillStyle = '#6b8cff';
+                ctx.fillRect(x + 3, y + 3, TILE_SIZE - 6, 2);
+            }
+
+            drawQuestion(x, y) {
+                const ctx = this.ctx;
+                ctx.fillStyle = '#ff0000';
+                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                ctx.fillStyle = '#ffff00';
+                ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                ctx.fillStyle = '#cc0000';
+                ctx.fillRect(x + 3, y + 3, TILE_SIZE - 6, 2);
+            }
+
+            drawCoin(x, y) {
+                const ctx = this.ctx;
+                // COORDONNEES EN TUILES
+                const cx = x;
+                const cy = y;
+                ctx.fillStyle = '#ffd700';
+                ctx.beginPath();
+                ctx.arc(cx + TILE_SIZE/2, cy + TILE_SIZE/2, 8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#b8860b';
+                ctx.font = '10px monospace';
+                ctx.fillText('$', cx + TILE_SIZE/2 - 3, cy + TILE_SIZE/2 + 3);
+            }
+
+            drawStar(x, y) {
+                const ctx = this.ctx;
+                // COORDONNEES EN TUILES
+                const cx = x;
+                const cy = y;
+                ctx.save();
+                ctx.translate(cx + TILE_SIZE/2, cy + TILE_SIZE/2);
+                const scale = 0.5 + Math.sin(this.lastTime / 200) * 0.2;
+                ctx.scale(scale, scale);
+                ctx.fillStyle = '#00ff00';
+                this.drawStarShape(0, 0, 5, 8, 0, false);
+                ctx.restore();
+            }
+
+            drawStarShape(cx, cy, spikes, outerRadius, angle, fill) {
+                let rot = angle;
+                let x = cx;
+                let y = cy;
+                let step = Math.PI / spikes;
+
+                this.ctx.beginPath();
+                this.ctx.moveTo(cx, cy - outerRadius);
+
+                for (let i = 0; i < spikes; i++) {
+                    x = cx + Math.cos(rot) * outerRadius;
+                    y = cy + Math.sin(rot) * outerRadius;
+                    this.ctx.lineTo(x, y);
+                    rot += step;
+
+                    x = cx + Math.cos(rot) * (outerRadius * 0.38);
+                    y = cy + Math.sin(rot) * (outerRadius * 0.38);
+                    this.ctx.lineTo(x, y);
+                    rot += step;
+                }
+
+                this.ctx.closePath();
+                this.ctx.fillStyle = '#00ff00';
+                this.ctx.fill();
+            }
+
+            drawGoombas() {
+                this.goombas.forEach(goomba => {
+                    const ctx = this.ctx;
+                    const px = goomba.x;  // COORDONNEES EN TUILES
+                    const py = goomba.y;  // COORDONNEES EN TUILES
+
+                    ctx.fillStyle = '#8b4513';
+                    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                    ctx.fillStyle = '#6b361a';
+                    ctx.fillRect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+                    ctx.fillStyle = '#cd853f';
+                    ctx.fillRect(px + 3, py + 3, TILE_SIZE - 6, 2);
+
+                    // Eyes
+                    ctx.fillStyle = '#ffcccc';
+                    ctx.fillRect(px + 3, py + 3, 4, 4);
+                    ctx.fillRect(px + 9, py + 3, 4, 4);
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(px + 4, py + 4, 2, 2);
+                    ctx.fillRect(px + 10, py + 4, 2, 2);
+                });
+            }
+
+            drawPlayer() {
+                const ctx = this.ctx;
+                const px = this.player.x;  // COORDONNEES EN TUILES
+                const py = this.player.y;  // COORDONNEES EN TUILES
+
+                if (this.player.invincible && Math.floor(this.lastTime / 50) % 2 === 0) {
+                    ctx.globalAlpha = 0.5;
+                }
+
+                const cx = px;  // COORDONNEES EN TUILES
+                const cy = py;  // COORDONNEES EN TUILES
+
+                // Mario sprite (simple) - COORDONNEES EN TUILES
+                ctx.fillStyle = '#ff0000'; // Hat
+                ctx.fillRect(cx + 2, cy, 1, 1);
+
+                ctx.fillStyle = '#ffcc99'; // Skin
+                ctx.fillRect(cx + 2, cy + 1, 1, 1);
+
+                ctx.fillStyle = '#0000ff'; // Overalls
+                ctx.fillRect(cx + 2, cy + 2, 1, 1);
+
+                ctx.fillStyle = '#ff0000'; // Shirt
+                ctx.fillRect(cx + 2, cy + 2, 1, 1);
+
+                ctx.fillStyle = '#ffffff'; // Gloves
+                ctx.fillRect(cx + 2, cy + 2, 1, 1);
+
+                ctx.globalAlpha = 1;
+            }
+
+            drawDeathEffects() {
+                // Particle effects
+            }
+        }
+
+        // Initialize game
+        const game = new Game();
+    </script>
+</body>
+</html>
