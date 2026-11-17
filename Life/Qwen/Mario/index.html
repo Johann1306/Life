@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Super Mario Clone — World 1-1</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        canvas {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            border: 2px solid #333;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Load all modules in dependency order -->
+    <script src="config/constants.js"></script>
+    <script src="input/keys.js"></script>
+    <script src="input/InputManager.js"></script>
+    <script src="entity/Entity.js"></script>
+    <script src="entity/Mario.js"></script>
+    <script src="entity/Goomba.js"></script>
+    <script src="entity/Coin.js"></script>
+    <script src="entity/Mushroom.js"></script>
+    <script src="entity/FlagPole.js"></script>
+    <script src="entity/ScorePopup.js"></script>
+    <script src="tilemap/levelData.js"></script>
+    <script src="tilemap/TileMap.js"></script>
+    <script src="camera/Camera.js"></script>
+    <script src="render/SpriteRenderer.js"></script>
+    <script src="render/TileRenderer.js"></script>
+    <script src="render/EntityRenderer.js"></script>
+    <script src="render/HUDRenderer.js"></script>
+    <script src="physics/Collision.js"></script>
+    <script src="game/GameState.js"></script>
+    <script src="game/GameLoop.js"></script>
+    <script src="init.js"></script>
+</body>
+</html>
