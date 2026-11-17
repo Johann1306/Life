@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Neon 5v5 Soccer - Expert Build</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #050505;
+            /* Fond très sombre */
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            /* Empêche le scroll */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        #gameContainer {
+            position: relative;
+            box-shadow: 0 0 50px rgba(0, 255, 255, 0.1);
+        }
+
+        canvas {
+            background: #0a0a0a;
+            border: 2px solid #333;
+            cursor: crosshair;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            pointer-events: none;
+            text-shadow: 0 0 10px #fff;
+        }
+
+        #controls {
+            margin-top: 10px;
+            font-size: 0.8em;
+            color: #888;
+        }
+
+        .team-score {
+            font-size: 2em;
+            margin: 0 20px;
+            font-weight: bold;
+        }
+
+        .blue {
+            color: #00f3ff;
+            text-shadow: 0 0 10px #00f3ff;
+        }
+
+        .red {
+            color: #ff0055;
+            text-shadow: 0 0 10px #ff0055;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="ui">
+            <span class="team-score blue" id="scoreBlue">0</span>
+            -
+            <span class="team-score red" id="scoreRed">0</span>
+        </div>
+    </div>
+
+    <div id="controls">
+        [ZQSD/Flèches] Bouger | [Souris] Viser | [Clic Maintenu] Puissance Tir | [Espace] Changer Joueur
+    </div>
+
+    <script>
+        /**
+         * ARCHITECTURE DU JEU
+         * 1. Vecteurs : Gestion mathématique des positions et vitesses.
+         * 2. Constantes : Paramètres d'équilibrage (physique, taille terrain).
+         * 3. Entités : Ball, Player (contient la logique IA et User).
+         * 4. Game : Boucle principale, rendu, arbitrage.
+         */
+
+        // --- 1. UTILITAIRES MATHÉMATIQUES ---
+        class Vec2 {
+            constructor(x, y) { this.x = x; this.y = y; }
+            add(v) { return new Vec2(this.x + v.x, this.y + v.y); }
+            sub(v) { return new Vec2(this.x - v.x, this.y - v.y); }
+            mult(n) { return new Vec2(this.x * n, this.y * n); }
+            mag() { return Math.sqrt(this.x * this.x + this.y * this.y); }
+            normalize() {
+                let m = this.mag();
+                return m === 0 ? new Vec2(0, 0) : new Vec2(this.x / m, this.y / m);
+            }
+            limit(max) {
+                if (this.mag() > max) return this.normalize().mult(max);
+                return this;
+            }
+            dist(v) { return this.sub(v).mag(); }
+        }
+
+        // --- 2. CONFIGURATION & ÉQUILIBRAGE ---
+        const CFG = {
+            PITCH_W: 1000,
+            PITCH_H: 600,
+            GOAL_SIZE: 140,
+            PLAYER_RAD: 12,
+            BALL_RAD: 6,
+            FRICTION: 0.97,       // La balle ralentit avec le temps
+            PLAYER_SPEED: 3.5,    // Vitesse max joueur
+            SPRINT_SPEED: 5.0,    // Vitesse max course (non utilisé ici mais prévu)
+            SHOOT_POWER: 12,      // Puissance max tir
+            KICK_DIST: 22,        // Distance pour toucher la balle
+            DRIBBLE_FACTOR: 0.8,  // Puissance de la "poussette" en dribble
+            AI_REACT_DIST: 200,   // Distance de réaction de l'IA
+            CAM_SMOOTH: 0.1       // Lissage caméra (si implémenté)
+        };
+
+        // --- 3. CLASSES D'ENTITÉS ---
+
+        class Ball {
+            constructor(x, y) {
+                this.pos = new Vec2(x, y);
+                this.vel = new Vec2(0, 0);
+            }
+
+            update() {
+                // Physique simple
+                this.pos = this.pos.add(this.vel);
+                this.vel = this.vel.mult(CFG.FRICTION);
+
+                // Arrêt complet si très lent
+                if (this.vel.mag() < 0.1) this.vel = new Vec2(0, 0);
+
+                // Collisions Murs (Rebond élastique)
+                if (this.pos.y < CFG.BALL_RAD || this.pos.y > CFG.PITCH_H - CFG.BALL_RAD) {
+                    this.vel.y *= -0.8;
+                    this.pos.y = Math.max(CFG.BALL_RAD, Math.min(this.pos.y, CFG.PITCH_H - CFG.BALL_RAD));
+                }
+
+                // Collisions Touche (X) - Sauf si c'est un but
+                let inGoalY = this.pos.y > (CFG.PITCH_H / 2 - CFG.GOAL_SIZE / 2) && this.pos.y < (CFG.PITCH_H / 2 + CFG.GOAL_SIZE / 2);
+
+                if (!inGoalY) {
+                    if (this.pos.x < CFG.BALL_RAD || this.pos.x > CFG.PITCH_W - CFG.BALL_RAD) {
+                        this.vel.x *= -0.8;
+                        this.pos.x = Math.max(CFG.BALL_RAD, Math.min(this.pos.x, CFG.PITCH_W - CFG.BALL_RAD));
+                    }
+                }
+            }
+
+            draw(ctx) {
+                ctx.beginPath();
+                ctx.arc(this.pos.x, this.pos.y, CFG.BALL_RAD, 0, Math.PI * 2);
+                ctx.fillStyle = "#ffffff";
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = "#ffffff";
+                ctx.fill();
+                ctx.shadowBlur = 0; // Reset
+                ctx.closePath();
+            }
+        }
+
+        class Player {
+            constructor(id, team, x, y, role) {
+                this.id = id;
+                this.team = team; // "blue" ou "red"
+                this.pos = new Vec2(x, y);
+                this.vel = new Vec2(0, 0);
+                this.acc = new Vec2(0, 0);
+                this.role = role; // "GK", "DEF", "FWD"
+                this.isUser = false;
+
+                // Position par défaut pour la formation
+                this.homePos = new Vec2(x, y);
+            }
+
+            update(ball, allPlayers, mousePos, isMouseDown, shootPower) {
+                this.acc = new Vec2(0, 0);
+
+                if (this.isUser) {
+                    // --- LOGIQUE JOUEUR HUMAIN ---
+                    this.handleInput();
+
+                    // Interaction Tir / Passe
+                    if (this.pos.dist(ball.pos) < CFG.KICK_DIST) {
+                        // Dribble automatique (poussette légère)
+                        let dirToMouse = mousePos.sub(this.pos).normalize();
+
+                        // Si on ne tire pas, on pousse la balle doucement pour dribbler
+                        if (!isMouseDown) {
+                            ball.vel = ball.vel.add(dirToMouse.mult(0.5)); // Petit coup
+                            // Le joueur ralentit un peu quand il conduit la balle
+                            this.vel = this.vel.mult(0.9);
+                        }
+                    }
+
+                } else {
+                    // --- LOGIQUE INTELLIGENCE ARTIFICIELLE ---
+                    this.calculateAI(ball, allPlayers);
+                }
+
+                // Physique mouvement
+                this.vel = this.vel.add(this.acc);
+                this.vel = this.vel.limit(CFG.PLAYER_SPEED);
+                this.pos = this.pos.add(this.vel);
+
+                // Friction joueurs (arrêt rapide)
+                this.vel = this.vel.mult(0.90);
+
+                // Collisions Limites Terrain
+                this.pos.x = Math.max(CFG.PLAYER_RAD, Math.min(this.pos.x, CFG.PITCH_W - CFG.PLAYER_RAD));
+                this.pos.y = Math.max(CFG.PLAYER_RAD, Math.min(this.pos.y, CFG.PITCH_H - CFG.PLAYER_RAD));
+
+                // Collisions avec la balle (physique simple cercle-cercle)
+                let d = this.pos.dist(ball.pos);
+                if (d < CFG.PLAYER_RAD + CFG.BALL_RAD) {
+                    let pushDir = ball.pos.sub(this.pos).normalize();
+                    // Repousser la balle
+                    ball.pos = this.pos.add(pushDir.mult(CFG.PLAYER_RAD + CFG.BALL_RAD));
+                    // Transférer énergie (Dribble physics)
+                    ball.vel = ball.vel.add(this.vel.mult(CFG.DRIBBLE_FACTOR));
+                }
+            }
+
+            handleInput() {
+                if (keys['KeyW'] || keys['ArrowUp']) this.acc.y = -1;
+                if (keys['KeyS'] || keys['ArrowDown']) this.acc.y = 1;
+                if (keys['KeyA'] || keys['ArrowLeft']) this.acc.x = -1;
+                if (keys['KeyD'] || keys['ArrowRight']) this.acc.x = 1;
+
+                if (this.acc.mag() > 0) this.acc = this.acc.normalize().mult(0.8);
+            }
+
+            calculateAI(ball, allPlayers) {
+                let target = new Vec2(this.homePos.x, this.homePos.y);
+                let distToBall = this.pos.dist(ball.pos);
+
+                // Vecteurs de Steering Behaviors
+                let seekForce = new Vec2(0, 0);
+                let separateForce = new Vec2(0, 0);
+
+                // 1. Rôle Gardien (GK)
+                if (this.role === "GK") {
+                    // Reste devant le but, suit la balle sur l'axe Y
+                    target.y = Math.max(CFG.PITCH_H / 2 - 100, Math.min(ball.pos.y, CFG.PITCH_H / 2 + 100));
+                    // Si la balle est très proche, foncer dessus
+                    if (distToBall < 100 && Math.abs(ball.pos.x - this.pos.x) < 200) {
+                        target = ball.pos;
+                    }
+                }
+                // 2. Joueurs de champ
+                else {
+                    // Si mon équipe n'a pas la balle (balle plus proche d'un ennemi), je défends
+                    // Simplification : on court vers la balle si on est le plus proche de mon équipe
+
+                    let amIClosest = true;
+                    for (let p of allPlayers) {
+                        if (p.team === this.team && p !== this) {
+                            if (p.pos.dist(ball.pos) < distToBall) amIClosest = false;
+                        }
+                    }
+
+                    if (amIClosest) {
+                        // CHASSE : Je suis le plus proche, je fonce sur la balle
+                        target = ball.pos;
+                    } else {
+                        // PLACEMENT : Je garde ma formation mais je glisse vers la balle
+                        // Décalage de la formation selon la position de la balle (Attaque/Défense)
+                        let offsetX = (ball.pos.x - CFG.PITCH_W / 2) * 0.5;
+                        target.x = this.homePos.x + offsetX;
+                        target.y = this.homePos.y + (ball.pos.y - CFG.PITCH_H / 2) * 0.2;
+                    }
+                }
+
+                // Application SEEK (Aller vers la cible)
+                let desired = target.sub(this.pos).normalize().mult(CFG.PLAYER_SPEED);
+                seekForce = desired.sub(this.vel);
+
+                // Application SEPARATION (Ne pas se coller aux autres)
+                let count = 0;
+                for (let other of allPlayers) {
+                    if (other !== this) {
+                        let d = this.pos.dist(other.pos);
+                        if (d < 30 && d > 0) {
+                            let diff = this.pos.sub(other.pos).normalize().mult(1 / d); // Plus on est proche, plus on repousse
+                            separateForce = separateForce.add(diff);
+                            count++;
+                        }
+                    }
+                }
+                if (count > 0) separateForce = separateForce.mult(20); // Force de répulsion élevée
+
+                // Combinaison des forces
+                this.acc = this.acc.add(seekForce).add(separateForce);
+            }
+
+            draw(ctx, mousePos, shootPower) {
+                // Couleur Neon
+                let color = this.team === "blue" ? "#00f3ff" : "#ff0055";
+
+                ctx.beginPath();
+                ctx.arc(this.pos.x, this.pos.y, CFG.PLAYER_RAD, 0, Math.PI * 2);
+
+                // Effet visuel si c'est le joueur actif
+                if (this.isUser) {
+                    ctx.strokeStyle = "#fff";
+                    ctx.lineWidth = 3;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = "#fff";
+
+                    // Indicateur de visée (Ligne pointillée)
+                    ctx.stroke();
+                    ctx.fillStyle = color;
+                    ctx.fill();
+
+                    // Ligne de visée
+                    ctx.beginPath();
+                    ctx.setLineDash([5, 5]);
+                    ctx.moveTo(this.pos.x, this.pos.y);
+                    ctx.lineTo(mousePos.x, mousePos.y);
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    ctx.setLineDash([]); // Reset
+
+                    // Jauge de puissance (cercle autour du joueur)
+                    if (shootPower > 0) {
+                        ctx.beginPath();
+                        let pct = shootPower / CFG.SHOOT_POWER;
+                        ctx.arc(this.pos.x, this.pos.y, CFG.PLAYER_RAD + 5, -Math.PI / 2, (-Math.PI / 2) + (Math.PI * 2 * pct));
+                        ctx.strokeStyle = "#FFFF00";
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    }
+
+                } else {
+                    ctx.fillStyle = color;
+                    ctx.shadowBlur = 5;
+                    ctx.shadowColor = color;
+                    ctx.fill();
+                }
+
+                // Numéro ou rôle (Optionnel)
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = "#000";
+                ctx.font = "10px Arial";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(this.role === "GK" ? "1" : "", this.pos.x, this.pos.y);
+                ctx.closePath();
+            }
+        }
+
+        // --- 4. COEUR DU JEU ---
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElBlue = document.getElementById('scoreBlue');
+        const scoreElRed = document.getElementById('scoreRed');
+
+        canvas.width = CFG.PITCH_W;
+        canvas.height = CFG.PITCH_H;
+
+        // État des Inputs
+        const keys = {};
+        let mousePos = new Vec2(0, 0);
+        let isMouseDown = false;
+        let shootPower = 0; // 0 à CFG.SHOOT_POWER
+
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => {
+            keys[e.code] = false;
+            if (e.code === 'Space') Game.switchPlayer();
+        });
+        canvas.addEventListener('mousemove', e => {
+            const rect = canvas.getBoundingClientRect();
+            mousePos = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
+        });
+        canvas.addEventListener('mousedown', () => isMouseDown = true);
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+            Game.shoot();
+            shootPower = 0;
+        });
+
+        const Game = {
+            ball: new Ball(CFG.PITCH_W / 2, CFG.PITCH_H / 2),
+            players: [],
+            scores: { blue: 0, red: 0 },
+
+            init: function () {
+                // Création Équipe Bleue (Gauche) - 1-2-2
+                this.players.push(new Player(0, "blue", 50, CFG.PITCH_H / 2, "GK"));
+                this.players.push(new Player(1, "blue", 200, CFG.PITCH_H / 3, "DEF"));
+                this.players.push(new Player(2, "blue", 200, CFG.PITCH_H * 2 / 3, "DEF"));
+                this.players.push(new Player(3, "blue", 400, CFG.PITCH_H / 2 - 50, "FWD"));
+                this.players.push(new Player(4, "blue", 400, CFG.PITCH_H / 2 + 50, "FWD"));
+
+                // Création Équipe Rouge (Droite)
+                this.players.push(new Player(5, "red", CFG.PITCH_W - 50, CFG.PITCH_H / 2, "GK"));
+                this.players.push(new Player(6, "red", CFG.PITCH_W - 200, CFG.PITCH_H / 3, "DEF"));
+                this.players.push(new Player(7, "red", CFG.PITCH_W - 200, CFG.PITCH_H * 2 / 3, "DEF"));
+                this.players.push(new Player(8, "red", CFG.PITCH_W - 400, CFG.PITCH_H / 2 - 50, "FWD"));
+                this.players.push(new Player(9, "red", CFG.PITCH_W - 400, CFG.PITCH_H / 2 + 50, "FWD"));
+
+                // Donner le contrôle au joueur 3 (Attaquant bleu)
+                this.players[3].isUser = true;
+
+                this.loop();
+            },
+
+            switchPlayer: function () {
+                // Trouver le joueur bleu le plus proche de la balle
+                let closest = null;
+                let minDist = Infinity;
+
+                // Désactiver l'actuel
+                this.players.forEach(p => {
+                    if (p.team === "blue") {
+                        p.isUser = false;
+                        let d = p.pos.dist(this.ball.pos);
+                        if (d < minDist) {
+                            minDist = d;
+                            closest = p;
+                        }
+                    }
+                });
+
+                // Activer le plus proche
+                if (closest) closest.isUser = true;
+            },
+
+            shoot: function () {
+                // Appliquer la force accumulée à la balle si le joueur actif est proche
+                let user = this.players.find(p => p.isUser);
+                if (user && user.pos.dist(this.ball.pos) < CFG.KICK_DIST + 5) {
+                    let dir = mousePos.sub(user.pos).normalize();
+                    // Tir non linéaire (un peu de hauteur simulée par la vitesse)
+                    let power = Math.max(3, shootPower); // Min power
+                    this.ball.vel = this.ball.vel.add(dir.mult(power));
+                }
+            },
+
+            checkGoal: function () {
+                if (this.ball.pos.x < 0) {
+                    this.scores.red++;
+                    this.resetPositions();
+                } else if (this.ball.pos.x > CFG.PITCH_W) {
+                    this.scores.blue++;
+                    this.resetPositions();
+                }
+            },
+
+            resetPositions: function () {
+                // Mise à jour UI
+                scoreElBlue.innerText = this.scores.blue;
+                scoreElRed.innerText = this.scores.red;
+
+                // Reset Balle
+                this.ball.pos = new Vec2(CFG.PITCH_W / 2, CFG.PITCH_H / 2);
+                this.ball.vel = new Vec2(0, 0);
+
+                // Reset Joueurs (retour positions initiales)
+                this.players.forEach(p => {
+                    p.pos = new Vec2(p.homePos.x, p.homePos.y);
+                    p.vel = new Vec2(0, 0);
+                });
+            },
+
+            drawPitch: function () {
+                ctx.strokeStyle = "#333";
+                ctx.lineWidth = 2;
+
+                // Ligne médiane
+                ctx.beginPath();
+                ctx.moveTo(CFG.PITCH_W / 2, 0);
+                ctx.lineTo(CFG.PITCH_W / 2, CFG.PITCH_H);
+                ctx.stroke();
+
+                // Cercle central
+                ctx.beginPath();
+                ctx.arc(CFG.PITCH_W / 2, CFG.PITCH_H / 2, 70, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Buts (Rectangles Neon)
+                ctx.shadowBlur = 10;
+
+                // But Bleu
+                ctx.strokeStyle = "#00f3ff";
+                ctx.shadowColor = "#00f3ff";
+                ctx.strokeRect(0, CFG.PITCH_H / 2 - CFG.GOAL_SIZE / 2, 40, CFG.GOAL_SIZE);
+
+                // But Rouge
+                ctx.strokeStyle = "#ff0055";
+                ctx.shadowColor = "#ff0055";
+                ctx.strokeRect(CFG.PITCH_W - 40, CFG.PITCH_H / 2 - CFG.GOAL_SIZE / 2, 40, CFG.GOAL_SIZE);
+
+                ctx.shadowBlur = 0; // Reset
+            },
+
+            loop: function () {
+                ctx.clearRect(0, 0, CFG.PITCH_W, CFG.PITCH_H);
+
+                // Logique
+                if (isMouseDown && shootPower < CFG.SHOOT_POWER) shootPower += 0.5;
+
+                this.ball.update();
+                this.checkGoal();
+
+                this.players.forEach(p => p.update(this.ball, this.players, mousePos, isMouseDown, shootPower));
+
+                // Rendu
+                this.drawPitch();
+                this.ball.draw(ctx);
+                this.players.forEach(p => p.draw(ctx, mousePos, shootPower));
+
+                requestAnimationFrame(() => this.loop());
+            }
+        };
+
+        // Lancement
+        Game.init();
+
+    </script>
+</body>
+
+</html>

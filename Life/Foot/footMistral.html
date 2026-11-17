@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Football 5 vs 5</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #222;
+        }
+
+        canvas {
+            border: 1px solid white;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+    <script>
+        // Initialisation du canvas et du contexte 2D
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Variables globales pour le jeu
+        let players = [];
+        let ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 8,
+            speedX: 0,
+            speedY: 0,
+            friction: 0.98
+        };
+
+        // Définition des équipes
+        const team1 = [{ x: 100, y: 250 }, { x: 150, y: 200 }, { x: 150, y: 300 }, { x: 200, y: 250 }, { x: 50, y: 250 }]; // 1 gardien et 4 joueurs
+        const team2 = [{ x: 700, y: 250 }, { x: 650, y: 200 }, { x: 650, y: 300 }, { x: 600, y: 250 }, { x: 750, y: 250 }]; // 1 gardien et 4 joueurs
+
+        // Joueur contrôlé
+        let activePlayer = 0;
+
+        // Initialisation des joueurs
+        function initPlayers() {
+            // Initialisation des joueurs de l'équipe 1
+            for (let i = 0; i < team1.length; i++) {
+                players.push({
+                    x: team1[i].x,
+                    y: team1[i].y,
+                    radius: 10,
+                    color: 'blue',
+                    speed: 2
+                });
+            }
+            // Initialisation des joueurs de l'équipe 2
+            for (let i = 0; i < team2.length; i++) {
+                players.push({
+                    x: team2[i].x,
+                    y: team2[i].y,
+                    radius: 10,
+                    color: 'red',
+                    speed: 2
+                });
+            }
+        }
+
+        // Dessiner le terrain
+        function drawField() {
+            ctx.fillStyle = 'green';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Ligne médiane
+            ctx.strokeStyle = 'white';
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+
+            // Cercles de centre
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, 50, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Buts
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, canvas.height / 2 - 50, 20, 100);
+            ctx.fillRect(canvas.width - 20, canvas.height / 2 - 50, 20, 100);
+        }
+
+        // Dessiner les joueurs et la balle
+        function drawPlayersAndBall() {
+            // Dessiner les joueurs
+            players.forEach(player => {
+                ctx.fillStyle = player.color;
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Dessiner la balle
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Mettre à jour le jeu
+        function update() {
+            // Logique de mouvement et de collision ici
+        }
+
+        // Boucle de jeu
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawField();
+            drawPlayersAndBall();
+            update();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Écouteurs d'événements pour les contrôles
+        document.addEventListener('keydown', (e) => {
+            const player = players[activePlayer];
+            switch (e.key) {
+                case 'z': // Haut
+                    player.y -= player.speed;
+                    break;
+                case 's': // Bas
+                    player.y += player.speed;
+                    break;
+                case 'q': // Gauche
+                    player.x -= player.speed;
+                    break;
+                case 'd': // Droite
+                    player.x += player.speed;
+                    break;
+                case ' ': // Espace pour changer de joueur
+                    activePlayer = (activePlayer + 1) % players.length;
+                    break;
+            }
+        });
+
+        // Initialisation et démarrage du jeu
+        initPlayers();
+        gameLoop();
+    </script>
+</body>
+
+</html>

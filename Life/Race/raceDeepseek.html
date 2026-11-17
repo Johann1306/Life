@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Course Arcade 2D - Micro Machines Style</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+
+        body {
+            background: #000;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+
+        #uiOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .player-info {
+            position: absolute;
+            top: 20px;
+            padding: 10px 15px;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+            border: 2px solid;
+            box-shadow: 0 0 10px currentColor;
+        }
+
+        #player1Info {
+            left: 20px;
+            color: #ff3300;
+            border-color: #ff3300;
+        }
+
+        #player2Info {
+            right: 20px;
+            color: #00ccff;
+            border-color: #00ccff;
+        }
+
+        .player-name {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .lap-info {
+            font-size: 0.9em;
+        }
+
+        .boost-bar {
+            width: 100%;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+
+        .boost-fill {
+            height: 100%;
+            border-radius: 5px;
+            transition: width 0.2s;
+        }
+
+        #player1Boost {
+            background: linear-gradient(to right, #ff3300, #ff9900);
+        }
+
+        #player2Boost {
+            background: linear-gradient(to right, #00ccff, #0099ff);
+        }
+
+        #gameMessage {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            font-size: 2.5em;
+            text-shadow: 0 0 10px #fff, 0 0 20px #fff;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+
+        #startScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+        }
+
+        #startScreen h1 {
+            font-size: 3em;
+            margin-bottom: 30px;
+            color: #fff;
+            text-shadow: 0 0 10px #fff, 0 0 20px #ff00ff, 0 0 30px #ff00ff;
+        }
+
+        #startScreen p {
+            font-size: 1.2em;
+            margin-bottom: 20px;
+            text-align: center;
+            max-width: 80%;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-around;
+            width: 80%;
+            margin: 20px 0;
+        }
+
+        .player-controls {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            width: 45%;
+        }
+
+        .player-controls h3 {
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .player-controls ul {
+            list-style: none;
+        }
+
+        .player-controls li {
+            margin: 8px 0;
+        }
+
+        .key {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #333;
+            border-radius: 5px;
+            margin-right: 5px;
+            font-weight: bold;
+        }
+
+        #startButton {
+            margin-top: 30px;
+            padding: 15px 40px;
+            font-size: 1.5em;
+            background: linear-gradient(to right, #ff3300, #ff9900);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 0 15px #ff3300;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        #startButton:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px #ff3300, 0 0 30px #ff9900;
+        }
+
+        #lapCounter {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid #00ffcc;
+            box-shadow: 0 0 10px #00ffcc;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="uiOverlay">
+            <div id="player1Info" class="player-info">
+                <div class="player-name">Joueur 1</div>
+                <div class="lap-info">Tours: <span id="player1Laps">0/3</span></div>
+                <div class="lap-info">Meilleur tour: <span id="player1BestLap">0.00</span>s</div>
+                <div class="boost-bar">
+                    <div id="player1Boost" class="boost-fill" style="width: 100%;"></div>
+                </div>
+            </div>
+
+            <div id="player2Info" class="player-info">
+                <div class="player-name">Joueur 2</div>
+                <div class="lap-info">Tours: <span id="player2Laps">0/3</span></div>
+                <div class="lap-info">Meilleur tour: <span id="player2BestLap">0.00</span>s</div>
+                <div class="boost-bar">
+                    <div id="player2Boost" class="boost-fill" style="width: 100%;"></div>
+                </div>
+            </div>
+
+            <div id="lapCounter">
+                <div>Tour actuel: <span id="currentLapTime">0.00</span>s</div>
+            </div>
+
+            <div id="gameMessage"></div>
+        </div>
+
+        <div id="startScreen">
+            <h1>COURSE ARCADE 2D</h1>
+            <p>Affrontez-vous dans cette course folle ! Le premier à terminer 3 tours gagne.</p>
+
+            <div class="controls">
+                <div class="player-controls" style="border: 2px solid #ff3300; box-shadow: 0 0 10px #ff3300;">
+                    <h3 style="color: #ff3300;">Joueur 1</h3>
+                    <ul>
+                        <li><span class="key">Z</span> Accélérer</li>
+                        <li><span class="key">S</span> Freiner</li>
+                        <li><span class="key">Q</span> Gauche</li>
+                        <li><span class="key">D</span> Droite</li>
+                        <li><span class="key">ESPACE</span> Boost</li>
+                    </ul>
+                </div>
+
+                <div class="player-controls" style="border: 2px solid #00ccff; box-shadow: 0 0 10px #00ccff;">
+                    <h3 style="color: #00ccff;">Joueur 2</h3>
+                    <ul>
+                        <li><span class="key">↑</span> Accélérer</li>
+                        <li><span class="key">↓</span> Freiner</li>
+                        <li><span class="key">←</span> Gauche</li>
+                        <li><span class="key">→</span> Droite</li>
+                        <li><span class="key">ENTRÉE</span> Boost</li>
+                    </ul>
+                </div>
+            </div>
+
+            <button id="startButton">COMMENCER LA COURSE</button>
+        </div>
+    </div>
+
+    <script>
+        // Initialisation du canvas
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const gameMessage = document.getElementById('gameMessage');
+
+        // Ajuster la taille du canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Variables du jeu
+        let gameRunning = false;
+        let raceStarted = false;
+        let gameTime = 0;
+        let currentLapStartTime = 0;
+        let lastTime = 0;
+
+        // Configuration des voitures
+        const cars = [
+            {
+                x: canvas.width * 0.3,
+                y: canvas.height * 0.6,
+                width: 20,
+                height: 35,
+                color: '#ff3300',
+                glowColor: '#ff6600',
+                speed: 0,
+                maxSpeed: 6,
+                acceleration: 0.15,
+                deceleration: 0.1,
+                steering: 0.08,
+                angle: 0,
+                keys: {
+                    up: 'KeyZ',
+                    down: 'KeyS',
+                    left: 'KeyQ',
+                    right: 'KeyD',
+                    boost: 'Space'
+                },
+                boost: 100,
+                boostActive: false,
+                boostCooldown: 0,
+                laps: 0,
+                bestLap: 0,
+                lapStartTime: 0,
+                trail: []
+            },
+            {
+                x: canvas.width * 0.7,
+                y: canvas.height * 0.6,
+                width: 20,
+                height: 35,
+                color: '#00ccff',
+                glowColor: '#0099ff',
+                speed: 0,
+                maxSpeed: 6,
+                acceleration: 0.15,
+                deceleration: 0.1,
+                steering: 0.08,
+                angle: 0,
+                keys: {
+                    up: 'ArrowUp',
+                    down: 'ArrowDown',
+                    left: 'ArrowLeft',
+                    right: 'ArrowRight',
+                    boost: 'Enter'
+                },
+                boost: 100,
+                boostActive: false,
+                boostCooldown: 0,
+                laps: 0,
+                bestLap: 0,
+                lapStartTime: 0,
+                trail: []
+            }
+        ];
+
+        // Configuration de la piste
+        const track = {
+            outerRadius: Math.min(canvas.width, canvas.height) * 0.8 / 2,
+            innerRadius: Math.min(canvas.width, canvas.height) * 0.5 / 2,
+            centerX: canvas.width / 2,
+            centerY: canvas.height / 2,
+            checkpoints: [
+                { angle: 0, width: 100 },      // Droite
+                { angle: Math.PI / 2, width: 80 },   // Bas
+                { angle: Math.PI, width: 100 },      // Gauche
+                { angle: Math.PI * 1.5, width: 80 }  // Haut
+            ],
+            // Points de départ
+            startPositions: [
+                { x: canvas.width * 0.3, y: canvas.height * 0.6, angle: 0 },
+                { x: canvas.width * 0.7, y: canvas.height * 0.6, angle: 0 }
+            ]
+        };
+
+        // État des touches
+        const keys = {};
+
+        // Gestion des événements clavier
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+
+            // Empêcher le défilement avec les touches de direction
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+                e.preventDefault();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        // Démarrer le jeu
+        document.getElementById('startButton').addEventListener('click', startGame);
+
+        function startGame() {
+            startScreen.style.display = 'none';
+            gameRunning = true;
+            raceStarted = false;
+            gameTime = 0;
+            currentLapStartTime = 0;
+
+            // Réinitialiser les voitures
+            cars.forEach((car, index) => {
+                car.x = track.startPositions[index].x;
+                car.y = track.startPositions[index].y;
+                car.angle = track.startPositions[index].angle;
+                car.speed = 0;
+                car.laps = 0;
+                car.bestLap = 0;
+                car.lapStartTime = 0;
+                car.boost = 100;
+                car.boostActive = false;
+                car.boostCooldown = 0;
+                car.trail = [];
+            });
+
+            // Compte à rebours
+            showMessage("3", 1000, () => {
+                showMessage("2", 1000, () => {
+                    showMessage("1", 1000, () => {
+                        showMessage("GO!", 500, () => {
+                            raceStarted = true;
+                            currentLapStartTime = gameTime;
+                            cars.forEach(car => {
+                                car.lapStartTime = gameTime;
+                            });
+                        });
+                    });
+                });
+            });
+
+            // Démarrer la boucle de jeu
+            requestAnimationFrame(gameLoop);
+        }
+
+        function showMessage(text, duration, callback) {
+            gameMessage.textContent = text;
+            gameMessage.style.opacity = 1;
+
+            setTimeout(() => {
+                gameMessage.style.opacity = 0;
+                if (callback) setTimeout(callback, 300);
+            }, duration);
+        }
+
+        function gameLoop(timestamp) {
+            if (!lastTime) lastTime = timestamp;
+            const deltaTime = (timestamp - lastTime) / 16; // Normaliser à ~60fps
+            lastTime = timestamp;
+
+            if (gameRunning) {
+                gameTime += deltaTime / 60; // Incrémenter le temps de jeu
+
+                updateGame(deltaTime);
+                drawGame();
+
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function updateGame(deltaTime) {
+            if (!raceStarted) return;
+
+            // Mettre à jour les voitures
+            cars.forEach(car => {
+                updateCar(car, deltaTime);
+                updateTrail(car);
+                checkLapCompletion(car);
+            });
+
+            // Mettre à jour l'interface utilisateur
+            updateUI();
+        }
+
+        function updateCar(car, deltaTime) {
+            // Gestion de l'accélération et du freinage
+            if (keys[car.keys.up]) {
+                car.speed = Math.min(car.speed + car.acceleration, car.maxSpeed);
+            } else if (keys[car.keys.down]) {
+                car.speed = Math.max(car.speed - car.deceleration * 1.5, -car.maxSpeed * 0.5);
+            } else {
+                // Ralentissement naturel
+                if (car.speed > 0) {
+                    car.speed = Math.max(car.speed - car.deceleration, 0);
+                } else if (car.speed < 0) {
+                    car.speed = Math.min(car.speed + car.deceleration, 0);
+                }
+            }
+
+            // Gestion de la direction
+            if (keys[car.keys.left]) {
+                car.angle -= car.steering * (car.speed / car.maxSpeed);
+            }
+            if (keys[car.keys.right]) {
+                car.angle += car.steering * (car.speed / car.maxSpeed);
+            }
+
+            // Gestion du boost
+            if (keys[car.keys.boost] && car.boost >= 20 && car.boostCooldown <= 0) {
+                car.boostActive = true;
+                car.boost -= 20;
+                car.boostCooldown = 60; // 1 seconde de recharge
+            } else {
+                car.boostActive = false;
+            }
+
+            // Appliquer le boost
+            if (car.boostActive) {
+                car.speed = Math.min(car.speed * 1.5, car.maxSpeed * 1.5);
+            }
+
+            // Recharger le boost
+            if (car.boost < 100 && !car.boostActive && car.boostCooldown <= 0) {
+                car.boost = Math.min(car.boost + 0.5, 100);
+            }
+
+            // Mettre à jour le cooldown du boost
+            if (car.boostCooldown > 0) {
+                car.boostCooldown--;
+            }
+
+            // Déplacer la voiture
+            const moveX = Math.cos(car.angle) * car.speed;
+            const moveY = Math.sin(car.angle) * car.speed;
+
+            // Vérifier les collisions avec les bords de la piste
+            const newX = car.x + moveX;
+            const newY = car.y + moveY;
+
+            if (isOnTrack(newX, newY)) {
+                car.x = newX;
+                car.y = newY;
+            } else {
+                // Collision avec le bord - ralentissement
+                car.speed *= 0.7;
+            }
+        }
+
+        function isOnTrack(x, y) {
+            // Calculer la distance par rapport au centre
+            const dx = x - track.centerX;
+            const dy = y - track.centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            // Vérifier si le point est sur la piste
+            return distance >= track.innerRadius && distance <= track.outerRadius;
+        }
+
+        function updateTrail(car) {
+            // Ajouter un point de traînée
+            car.trail.push({
+                x: car.x,
+                y: car.y,
+                opacity: 1.0,
+                width: car.width * 0.7
+            });
+
+            // Mettre à jour et supprimer les anciens points de traînée
+            for (let i = car.trail.length - 1; i >= 0; i--) {
+                car.trail[i].opacity -= 0.05;
+                if (car.trail[i].opacity <= 0) {
+                    car.trail.splice(i, 1);
+                }
+            }
+        }
+
+        function checkLapCompletion(car) {
+            // Vérifier si la voiture a franchi la ligne d'arrivée
+            const dx = car.x - (track.centerX + track.outerRadius);
+            const dy = car.y - track.centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            // Si la voiture est proche de la ligne d'arrivée et se déplace dans la bonne direction
+            if (distance < 50 && Math.cos(car.angle) > 0.7) {
+                const lapTime = gameTime - car.lapStartTime;
+
+                // Vérifier que c'est un nouveau tour (pour éviter les détections multiples)
+                if (lapTime > 1) {
+                    car.laps++;
+                    car.lapStartTime = gameTime;
+
+                    // Mettre à jour le meilleur temps
+                    if (car.bestLap === 0 || lapTime < car.bestLap) {
+                        car.bestLap = lapTime;
+                    }
+
+                    // Vérifier si un joueur a gagné
+                    if (car.laps >= 3) {
+                        endGame(car === cars[0] ? 1 : 2);
+                    } else {
+                        showMessage(`Tour ${car.laps + 1}`, 1000);
+                    }
+                }
+            }
+        }
+
+        function updateUI() {
+            // Mettre à jour les informations des joueurs
+            document.getElementById('player1Laps').textContent = `${cars[0].laps}/3`;
+            document.getElementById('player1BestLap').textContent = cars[0].bestLap.toFixed(2);
+            document.getElementById('player1Boost').style.width = `${cars[0].boost}%`;
+
+            document.getElementById('player2Laps').textContent = `${cars[1].laps}/3`;
+            document.getElementById('player2BestLap').textContent = cars[1].bestLap.toFixed(2);
+            document.getElementById('player2Boost').style.width = `${cars[1].boost}%`;
+
+            // Mettre à jour le temps du tour actuel
+            const currentLapTime = gameTime - currentLapStartTime;
+            document.getElementById('currentLapTime').textContent = currentLapTime.toFixed(2);
+        }
+
+        function endGame(winner) {
+            raceStarted = false;
+            showMessage(`Joueur ${winner} gagne!`, 3000, () => {
+                startScreen.style.display = 'flex';
+            });
+        }
+
+        function drawGame() {
+            // Effacer le canvas
+            ctx.fillStyle = '#001122';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Dessiner la piste
+            drawTrack();
+
+            // Dessiner les traînées des voitures
+            cars.forEach(car => {
+                drawTrail(car);
+            });
+
+            // Dessiner les voitures
+            cars.forEach(car => {
+                drawCar(car);
+            });
+        }
+
+        function drawTrack() {
+            // Dessiner l'herbe
+            ctx.fillStyle = '#003300';
+            ctx.beginPath();
+            ctx.arc(track.centerX, track.centerY, track.outerRadius + 50, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Dessiner la piste
+            ctx.fillStyle = '#222233';
+            ctx.beginPath();
+            ctx.arc(track.centerX, track.centerY, track.outerRadius, 0, Math.PI * 2);
+            ctx.arc(track.centerX, track.centerY, track.innerRadius, 0, Math.PI * 2, true);
+            ctx.fill();
+
+            // Dessiner les lignes de la piste
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([10, 10]);
+
+            // Ligne centrale
+            ctx.beginPath();
+            ctx.arc(track.centerX, track.centerY, (track.outerRadius + track.innerRadius) / 2, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Bordures intérieure et extérieure
+            ctx.setLineDash([]);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3;
+
+            ctx.beginPath();
+            ctx.arc(track.centerX, track.centerY, track.outerRadius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(track.centerX, track.centerY, track.innerRadius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Ligne d'arrivée
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(
+                track.centerX + track.outerRadius - 5,
+                track.centerY - 25,
+                10,
+                50
+            );
+
+            // Ajouter un effet de lueur à la ligne d'arrivée
+            ctx.shadowColor = '#ffffff';
+            ctx.shadowBlur = 15;
+            ctx.fillRect(
+                track.centerX + track.outerRadius - 5,
+                track.centerY - 25,
+                10,
+                50
+            );
+            ctx.shadowBlur = 0;
+        }
+
+        function drawTrail(car) {
+            car.trail.forEach(point => {
+                ctx.save();
+                ctx.globalAlpha = point.opacity;
+                ctx.fillStyle = car.color;
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, point.width / 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Effet de lueur
+                ctx.shadowColor = car.glowColor;
+                ctx.shadowBlur = 10;
+                ctx.fill();
+                ctx.restore();
+            });
+        }
+
+        function drawCar(car) {
+            ctx.save();
+            ctx.translate(car.x, car.y);
+            ctx.rotate(car.angle);
+
+            // Corps de la voiture
+            ctx.fillStyle = car.color;
+            ctx.fillRect(-car.width / 2, -car.height / 2, car.width, car.height);
+
+            // Détails de la voiture
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(-car.width / 2 + 2, -car.height / 2 + 2, car.width - 4, car.height / 3);
+            ctx.fillRect(-car.width / 2 + 2, car.height / 2 - car.height / 3 - 2, car.width - 4, car.height / 3);
+
+            // Effet de lueur
+            ctx.shadowColor = car.glowColor;
+            ctx.shadowBlur = 15;
+            ctx.fillRect(-car.width / 2, -car.height / 2, car.width, car.height);
+
+            // Si le boost est actif, ajouter des flammes
+            if (car.boostActive) {
+                ctx.fillStyle = '#ff9900';
+                ctx.beginPath();
+                ctx.moveTo(-car.width / 2, car.height / 2);
+                ctx.lineTo(-car.width / 2 - 15, car.height / 2 + 20);
+                ctx.lineTo(-car.width / 2 + 15, car.height / 2 + 20);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.fillStyle = '#ff3300';
+                ctx.beginPath();
+                ctx.moveTo(-car.width / 2, car.height / 2);
+                ctx.lineTo(-car.width / 2 - 10, car.height / 2 + 15);
+                ctx.lineTo(-car.width / 2 + 10, car.height / 2 + 15);
+                ctx.closePath();
+                ctx.fill();
+
+                // Effet de lueur pour les flammes
+                ctx.shadowColor = '#ff3300';
+                ctx.shadowBlur = 20;
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
+    </script>
+</body>
+
+</html>

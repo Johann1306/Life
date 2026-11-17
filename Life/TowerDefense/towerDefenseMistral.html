@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tower Defense</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #000;
+            font-family: Arial, sans-serif;
+        }
+
+        #gameContainer {
+            position: relative;
+        }
+
+        #gameCanvas {
+            border: 1px solid #fff;
+            background-color: #111;
+        }
+
+        #gameUI {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+        }
+
+        #gameUI div {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="gameContainer">
+        <div id="gameUI">
+            <div>Or: <span id="gold">100</span></div>
+            <div>Vies: <span id="lives">10</span></div>
+            <div>Vague: <span id="wave">0</span></div>
+            <div>Temps avant la prochaine vague: <span id="timeUntilNextWave">10</span>s</div>
+        </div>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+    </div>
+    <script>
+        // Initialisation du canvas et du contexte
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameUI = document.getElementById('gameUI');
+
+        // État du jeu
+        const game = {
+            gold: 100,
+            lives: 10,
+            wave: 0,
+            enemies: [],
+            towers: [],
+            path: [],
+            gameOver: false,
+            waveInProgress: false,
+            timeUntilNextWave: 10,
+            lastWaveTime: 0,
+            waveInterval: 10000, // 10 secondes entre les vagues
+            updateUI() {
+                document.getElementById('gold').textContent = this.gold;
+                document.getElementById('lives').textContent = this.lives;
+                document.getElementById('wave').textContent = this.wave;
+            }
+        };
+
+        // Classe pour les ennemis
+        class Enemy {
+            constructor(x, y, health, speed, type) {
+                this.x = x;
+                this.y = y;
+                this.health = health;
+                this.speed = speed;
+                this.type = type;
+                this.radius = 10;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.type === 'boss' ? 'red' : 'green';
+                ctx.fill();
+                ctx.closePath();
+            }
+
+            update() {
+                // Logique de déplacement de l'ennemi
+                // Pour l'instant, les ennemis se déplacent en ligne droite
+                this.x += this.speed;
+            }
+        }
+
+        // Classe pour les tours
+        class Tower {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.radius = 20;
+                this.damage = type === 'rapid' ? 10 : type === 'ice' ? 5 : 20;
+                this.range = type === 'rapid' ? 100 : type === 'ice' ? 80 : 120;
+                this.cooldown = type === 'rapid' ? 10 : type === 'ice' ? 30 : 60;
+                this.currentCooldown = 0;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.type === 'rapid' ? 'blue' : this.type === 'ice' ? 'cyan' : 'purple';
+                ctx.fill();
+                ctx.closePath();
+            }
+
+            update() {
+                if (this.currentCooldown > 0) {
+                    this.currentCooldown--;
+                } else {
+                    // Logique de tir
+                    for (let enemy of game.enemies) {
+                        const dx = this.x - enemy.x;
+                        const dy = this.y - enemy.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        if (distance < this.range) {
+                            enemy.health -= this.damage;
+                            this.currentCooldown = this.cooldown;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fonction pour générer une vague d'ennemis
+        function generateWave() {
+            game.wave++;
+            game.waveInProgress = true;
+            game.lastWaveTime = Date.now();
+
+            // Générer des ennemis en fonction de la vague
+            const enemyCount = 5 + game.wave * 2;
+            for (let i = 0; i < enemyCount; i++) {
+                const health = 10 + game.wave * 2;
+                const speed = 1 + game.wave * 0.1;
+                const type = i % 10 === 0 ? 'boss' : 'normal';
+                game.enemies.push(new Enemy(-50, 300, health, speed, type));
+            }
+        }
+
+        // Fonction pour mettre à jour le jeu
+        function update() {
+            if (game.gameOver) return;
+
+            // Vérifier si une nouvelle vague doit commencer
+            const now = Date.now();
+            if (!game.waveInProgress && now - game.lastWaveTime > game.waveInterval) {
+                generateWave();
+            }
+
+            // Mettre à jour les ennemis
+            for (let i = game.enemies.length - 1; i >= 0; i--) {
+                game.enemies[i].update();
+                if (game.enemies[i].x > canvas.width) {
+                    game.lives--;
+                    game.enemies.splice(i, 1);
+                    if (game.lives <= 0) {
+                        game.gameOver = true;
+                        alert('Game Over!');
+                    }
+                } else if (game.enemies[i].health <= 0) {
+                    game.gold += 10;
+                    game.enemies.splice(i, 1);
+                }
+            }
+
+            // Mettre à jour les tours
+            for (let tower of game.towers) {
+                tower.update();
+            }
+
+            // Vérifier si la vague est terminée
+            if (game.enemies.length === 0 && game.waveInProgress) {
+                game.waveInProgress = false;
+                game.lastWaveTime = Date.now();
+            }
+
+            // Mettre à jour le temps jusqu'à la prochaine vague
+            const timeSinceLastWave = (now - game.lastWaveTime) / 1000;
+            game.timeUntilNextWave = Math.max(0, Math.ceil((game.waveInterval / 1000) - timeSinceLastWave));
+            document.getElementById('timeUntilNextWave').textContent = game.timeUntilNextWave;
+
+            game.updateUI();
+        }
+
+        // Fonction pour dessiner le jeu
+        function draw() {
+            // Effacer le canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dessiner le chemin (pour l'instant, une ligne horizontale)
+            ctx.beginPath();
+            ctx.moveTo(0, 300);
+            ctx.lineTo(canvas.width, 300);
+            ctx.strokeStyle = 'white';
+            ctx.stroke();
+
+            // Dessiner les ennemis
+            for (let enemy of game.enemies) {
+                enemy.draw();
+            }
+
+            // Dessiner les tours
+            for (let tower of game.towers) {
+                tower.draw();
+            }
+        }
+
+        // Fonction principale de la boucle de jeu
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Écouteur d'événements pour le clic sur le canvas
+        canvas.addEventListener('click', function (event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+
+            // Vérifier si le joueur a assez d'or pour acheter une tour
+            if (game.gold >= 50) {
+                // Ajouter une tour (par exemple, une mitrailleuse rapide)
+                game.towers.push(new Tower(x, y, 'rapid'));
+                game.gold -= 50;
+                game.updateUI();
+            }
+        });
+
+        // Démarrer le jeu
+        gameLoop();
+    </script>
+</body>
+
+</html>

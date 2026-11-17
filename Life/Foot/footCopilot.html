@@ -1,0 +1,922 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Mini Football 5v5 — Top-down (single file)</title>
+    <style>
+        /* --- Style général --- */
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            background: #0b1020;
+            color: #fff;
+            font-family: Arial, Helvetica, sans-serif
+        }
+
+        #ui {
+            position: fixed;
+            left: 12px;
+            top: 12px;
+            z-index: 10
+        }
+
+        #ui .info {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px;
+            border-radius: 6px;
+            margin-bottom: 6px
+        }
+
+        #canvas {
+            display: block;
+            margin: 0 auto;
+            background: #0b6b2f;
+            box-shadow: 0 6px 30px rgba(0, 0, 0, 0.6)
+        }
+
+        /* Jauge de tir */
+        #powerBar {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: 18px;
+            width: 320px;
+            height: 18px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 9px;
+            overflow: hidden
+        }
+
+        #powerFill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #ffdd57, #ff6b6b)
+        }
+
+        /* Aide touches */
+        #help {
+            position: fixed;
+            right: 12px;
+            top: 12px;
+            background: rgba(0, 0, 0, 0.45);
+            padding: 8px;
+            border-radius: 6px
+        }
+
+        .small {
+            font-size: 12px;
+            opacity: 0.9
+        }
+
+        /* Cursor crosshair */
+        canvas {
+            cursor: crosshair
+        }
+    </style>
+</head>
+
+<body>
+    <div id="ui">
+        <div class="info"><strong>Mini Football 5v5</strong> — Vue de dessus (schématique)</div>
+        <div class="info small" id="score">Score — Vous: 0 | CPU: 0</div>
+        <div class="info small" id="controlled">Joueur contrôlé: #1</div>
+    </div>
+    <div id="help" class="small">
+        Déplacements: ZQSD ou Flèches<br>
+        Viser: souris — Clic maintenu = jauge de puissance<br>
+        Changer joueur: Espace (manuel) / automatique si éloigné<br>
+    </div>
+    <canvas id="canvas" width="960" height="600"></canvas>
+    <div id="powerBar" style="display:none">
+        <div id="powerFill"></div>
+    </div>
+
+    <script>
+        /*
+          Mini Football 5v5 — Single HTML file
+          - Vue: top-down schématique (cercles et lignes)
+          - Contrôles: ZQSD / Flèches pour déplacer le joueur actif
+          - Souris: viser; clic maintenu pour jauge de puissance (tir/passe)
+          - Espace: changer manuellement le joueur contrôlé
+          - Physique: collisions joueurs/balle/limites, inertie et frottements pour la balle
+          - IA: machine à états finis (FSM) pour joueurs non contrôlés et gardiens
+          - Code commenté en français pour expliquer choix algorithmiques
+        */
+
+        /* -------------------------
+           Configuration et constantes
+           ------------------------- */
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const W = canvas.width;
+        const H = canvas.height;
+
+        // Terrain (marges pour lignes de touche)
+        const PADDING = 40;
+        const FIELD = { x: PADDING, y: PADDING, w: W - 2 * PADDING, h: H - 2 * PADDING };
+
+        // Zones de réparation (petites rectangles devant les buts)
+        const PENALTY_W = 120;
+        const PENALTY_H = 160;
+
+        // Buts (cages)
+        const GOAL_W = 10;
+        const GOAL_H = 120;
+
+        // Joueurs
+        const TEAM_SIZE = 5; // 1 gardien + 4 joueurs de champ
+        const PLAYER_RADIUS = 10;
+        const GOALKEEPER_RADIUS = 12;
+        const PLAYER_MAX_SPEED = 2.2; // px/frame
+        const PLAYER_ACCEL = 0.25;
+
+        // Balle
+        const BALL_RADIUS = 6;
+        const BALL_FRICTION = 0.992; // frottement global
+        const BALL_MIN_SPEED = 0.05; // seuil pour stopper
+
+        // Physique collisions
+        const PLAYER_BOUNCE = 0.9; // restitution entre joueurs
+        const BALL_BOUNCE = 0.9; // restitution balle-limites
+
+        // Temps
+        let lastTime = performance.now();
+
+        // Score
+        let score = { player: 0, cpu: 0 };
+
+        // Choix d'implémentation (expliqué):
+        // - Style: schématique (cercles et lignes) pour lisibilité et performance.
+        // - Système de tir: jauge de puissance (clic maintenu) — plus engageant et précis.
+        // - Conduite de balle: la balle est réaliste (inertie + frottement). Si un joueur est très proche et "contrôle" la balle, on applique un petit "attachement" pour faciliter passes courtes.
+        // - IA: machine à états finis (FSM) pour comportements clairs et débogables.
+
+        /* -------------------------
+           Utilitaires vectoriels
+           ------------------------- */
+        function v(x = 0, y = 0) { return { x, y } }
+        function vAdd(a, b) { return { x: a.x + b.x, y: a.y + b.y } }
+        function vSub(a, b) { return { x: a.x - b.x, y: a.y - b.y } }
+        function vMul(a, s) { return { x: a.x * s, y: a.y * s } }
+        function vLen(a) { return Math.hypot(a.x, a.y) }
+        function vNorm(a) { let l = vLen(a); return l ? { x: a.x / l, y: a.y / l } : { x: 0, y: 0 } }
+        function clamp(v, min, max) { return Math.max(min, Math.min(max, v)) }
+
+        /* -------------------------
+           Entités: Joueurs et Balle
+           ------------------------- */
+        class Ball {
+            constructor(x, y) {
+                this.pos = v(x, y);
+                this.vel = v(0, 0);
+                this.radius = BALL_RADIUS;
+                this.lastTouch = null; // référence au joueur qui a touché
+            }
+            update(dt) {
+                // Intégration simple: inertie + frottement
+                this.pos.x += this.vel.x * dt;
+                this.pos.y += this.vel.y * dt;
+                // Frottement exponentiel
+                this.vel.x *= Math.pow(BALL_FRICTION, dt);
+                this.vel.y *= Math.pow(BALL_FRICTION, dt);
+                if (vLen(this.vel) < BALL_MIN_SPEED) this.vel = v(0, 0);
+                // Limites du terrain: rebond si touche les bords (hors buts)
+                // On autorise la balle à entrer dans la zone de but (geste de but)
+                // Bord gauche
+                if (this.pos.x - this.radius < FIELD.x) {
+                    // Si dans la zone de but verticalement, on laisse (goal), sinon rebond
+                    if (!(this.pos.y > (H / 2 - GOAL_H / 2) && this.pos.y < (H / 2 + GOAL_H / 2) && this.pos.x - this.radius < FIELD.x - GOAL_W)) {
+                        this.pos.x = FIELD.x + this.radius;
+                        this.vel.x = -this.vel.x * BALL_BOUNCE;
+                    }
+                }
+                // Bord droit
+                if (this.pos.x + this.radius > FIELD.x + FIELD.w) {
+                    if (!(this.pos.y > (H / 2 - GOAL_H / 2) && this.pos.y < (H / 2 + GOAL_H / 2) && this.pos.x + this.radius > FIELD.x + FIELD.w + GOAL_W)) {
+                        this.pos.x = FIELD.x + FIELD.w - this.radius;
+                        this.vel.x = -this.vel.x * BALL_BOUNCE;
+                    }
+                }
+                // Haut et bas
+                if (this.pos.y - this.radius < FIELD.y) {
+                    this.pos.y = FIELD.y + this.radius;
+                    this.vel.y = -this.vel.y * BALL_BOUNCE;
+                }
+                if (this.pos.y + this.radius > FIELD.y + FIELD.h) {
+                    this.pos.y = FIELD.y + FIELD.h - this.radius;
+                    this.vel.y = -this.vel.y * BALL_BOUNCE;
+                }
+            }
+            draw(ctx) {
+                // Balle simple: cercle blanc avec ombre
+                ctx.save();
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class Player {
+            constructor(team, id, x, y, isKeeper = false) {
+                this.team = team; // 0 = player (left), 1 = cpu (right)
+                this.id = id;
+                this.pos = v(x, y);
+                this.vel = v(0, 0);
+                this.radius = isKeeper ? GOALKEEPER_RADIUS : PLAYER_RADIUS;
+                this.isKeeper = isKeeper;
+                this.maxSpeed = isKeeper ? 1.8 : PLAYER_MAX_SPEED;
+                this.state = 'idle'; // FSM state
+                this.target = v(x, y); // position cible pour déplacement
+                this.hasBall = false; // flag local (not authoritative)
+                this.cooldown = 0; // pour éviter actions trop fréquentes
+                this.color = this.team === 0 ? '#1e90ff' : '#ff6b6b';
+                this.number = id + 1;
+            }
+            update(dt, game) {
+                // FSM update: décisions basées sur rôle, position, balle
+                this.cooldown = Math.max(0, this.cooldown - dt);
+                if (this.team === 0 && game.controlled === this) {
+                    // joueur contrôlé: mouvement géré par input (handled elsewhere)
+                    // mais we still apply velocity friction
+                    this.vel.x *= 0.9;
+                    this.vel.y *= 0.9;
+                    this.pos.x += this.vel.x * dt;
+                    this.pos.y += this.vel.y * dt;
+                    this._keepInField();
+                    return;
+                }
+
+                // AI pour joueurs non contrôlés
+                // Priorités:
+                // - Si gardien: rester dans la zone, sortir pour intercepter si balle proche
+                // - Si proche de la balle: chase (poursuite)
+                // - Si coéquipier a la balle: se démarquer (support)
+                // - Sinon: placement défensif/attaque selon possession
+
+                const ball = game.ball;
+                const toBall = vSub(ball.pos, this.pos);
+                const distBall = vLen(toBall);
+
+                if (this.isKeeper) {
+                    this._keeperAI(dt, game, distBall, toBall);
+                } else {
+                    this._fieldAI(dt, game, distBall, toBall);
+                }
+
+                // Mouvement vers target (simple steering)
+                const desired = vSub(this.target, this.pos);
+                const dlen = vLen(desired);
+                if (dlen > 1) {
+                    const dir = vMul(vNorm(desired), this.maxSpeed);
+                    // acceleration smoothing
+                    this.vel.x += (dir.x - this.vel.x) * 0.12;
+                    this.vel.y += (dir.y - this.vel.y) * 0.12;
+                } else {
+                    // ralentir si proche
+                    this.vel.x *= 0.8;
+                    this.vel.y *= 0.8;
+                }
+                this.pos.x += this.vel.x * dt;
+                this.pos.y += this.vel.y * dt;
+                this._keepInField();
+            }
+
+            _keeperAI(dt, game, distBall, toBall) {
+                // Gardien: FSM simple
+                // États: idle (position de base), intercept (si balle proche), clear (si balle dans zone)
+                const goalX = this.team === 0 ? FIELD.x + 6 : FIELD.x + FIELD.w - 6;
+                const goalY = H / 2;
+                const basePos = { x: goalX + (this.team === 0 ? 30 : -30), y: goalY };
+                const ball = game.ball;
+
+                if (distBall < 140 && Math.abs(ball.pos.x - this.pos.x) < 220) {
+                    // Intercepter: se rapprocher de la trajectoire
+                    this.state = 'intercept';
+                    // positionner entre balle et centre du but
+                    const intercept = vAdd(ball.pos, vMul(vSub(basePos, ball.pos), 0.35));
+                    this.target = intercept;
+                } else {
+                    this.state = 'base';
+                    // rester proche de la ligne de but mais suivre verticalement
+                    this.target = { x: basePos.x, y: clamp(ball.pos.y, FIELD.y + 40, FIELD.y + FIELD.h - 40) };
+                }
+                // Si balle très proche du but, tenter de sortir et dégager
+                if (distBall < 30 && ball.lastTouch && ball.lastTouch.team !== this.team && this.cooldown === 0) {
+                    // dégager vers le milieu du terrain adverse
+                    const dir = vNorm(vSub({ x: FIELD.x + FIELD.w / 2, y: H / 2 }, this.pos));
+                    ball.vel = vMul(dir, 8 + Math.random() * 3);
+                    ball.lastTouch = this;
+                    this.cooldown = 60;
+                }
+            }
+
+            _fieldAI(dt, game, distBall, toBall) {
+                // FSM pour joueurs de champ
+                // États: chase (poursuite du ballon), support (se démarquer), defend (retour), hold (si proche du ballon)
+                const ball = game.ball;
+                const teammates = game.players.filter(p => p.team === this.team && p !== this);
+                const opponents = game.players.filter(p => p.team !== this.team);
+
+                // Détection possession: si un joueur est très proche de la balle et moving slowly, consider possession
+                const possessor = game.getPossessor();
+
+                // Si je suis le plus proche de la balle et pas trop loin -> chase
+                const myDist = distBall;
+                const closest = game.getClosestToBall();
+                if (closest === this && myDist < 140) {
+                    // Poursuivre la balle agressivement
+                    this.state = 'chase';
+                    this.target = ball.pos;
+                    // Si très proche, tenter d'interagir (contrôle ou tir)
+                    if (myDist < this.radius + ball.radius + 6) {
+                        // Si adversaire, tenter de dribbler / tirer
+                        if (this.team === 0) {
+                            // joueur contrôlé ou AI controlled? For AI, decide pass or shoot
+                            if (this.cooldown === 0) {
+                                // Si proche du but adverse, tirer
+                                const goalCenter = { x: FIELD.x + FIELD.w - (this.team === 0 ? 0 : 0), y: H / 2 };
+                                const distToOppGoal = vLen(vSub(goalCenter, this.pos));
+                                if (distToOppGoal < 220 && Math.random() < 0.6) {
+                                    // tirer vers le but
+                                    this._kickBallTowards(game.ball, goalCenter, 8 + Math.random() * 4);
+                                } else {
+                                    // passer à un coéquipier démarqué
+                                    const mate = this._findBestPassTarget(teammates, game);
+                                    if (mate) this._kickBallTowards(game.ball, mate.pos, 5 + Math.random() * 3);
+                                }
+                                this.cooldown = 60 + Math.random() * 40;
+                            }
+                        } else {
+                            // CPU: similar logic but with different thresholds
+                            if (this.cooldown === 0) {
+                                const goalCenter = { x: FIELD.x + (this.team === 1 ? 0 : 0), y: H / 2 };
+                                const distToOppGoal = vLen(vSub(goalCenter, this.pos));
+                                if (distToOppGoal < 220 && Math.random() < 0.5) {
+                                    this._kickBallTowards(game.ball, { x: FIELD.x + FIELD.w / 2, y: H / 2 }, 7 + Math.random() * 3);
+                                } else {
+                                    const mate = this._findBestPassTarget(teammates, game);
+                                    if (mate) this._kickBallTowards(game.ball, mate.pos, 4 + Math.random() * 3);
+                                }
+                                this.cooldown = 60 + Math.random() * 40;
+                            }
+                        }
+                    }
+                    return;
+                }
+
+                // Si un coéquipier a la balle -> support: se démarquer en créant un angle de passe
+                if (possessor && possessor.team === this.team && possessor !== this) {
+                    this.state = 'support';
+                    // se placer à une position d'attaque relative au possesseur
+                    const dirToGoal = vNorm({ x: (this.team === 0 ? 1 : -1), y: 0 });
+                    // position latérale pour offrir une passe
+                    const lateral = { x: possessor.pos.x + dirToGoal.x * 80 - (Math.random() * 40 - 20), y: possessor.pos.y + (Math.random() * 120 - 60) };
+                    // garder dans le terrain
+                    this.target = { x: clamp(lateral.x, FIELD.x + 20, FIELD.x + FIELD.w - 20), y: clamp(lateral.y, FIELD.y + 20, FIELD.y + FIELD.h - 20) };
+                    return;
+                }
+
+                // Sinon: placement défensif ou offensif selon possession globale
+                if (game.possessionTeam() === this.team) {
+                    // attaque: monter un peu
+                    this.state = 'attack';
+                    const advanceX = this.team === 0 ? FIELD.x + FIELD.w * 0.6 : FIELD.x + FIELD.w * 0.4;
+                    const yOffset = (this.id - 2) * 40; // spread players vertically
+                    this.target = { x: advanceX + (Math.random() * 20 - 10), y: H / 2 + yOffset + (Math.random() * 30 - 15) };
+                } else {
+                    // défense: reculer et couvrir
+                    this.state = 'defend';
+                    const defendX = this.team === 0 ? FIELD.x + FIELD.w * 0.35 : FIELD.x + FIELD.w * 0.65;
+                    const yOffset = (this.id - 2) * 40;
+                    this.target = { x: defendX + (Math.random() * 20 - 10), y: H / 2 + yOffset + (Math.random() * 30 - 15) };
+                }
+            }
+
+            _findBestPassTarget(teammates, game) {
+                // Choisir un coéquipier démarqué: heuristique simple
+                let best = null;
+                let bestScore = -Infinity;
+                for (let m of teammates) {
+                    if (m === this) continue;
+                    // score = distance to me (préférence proche) + distance from nearest opponent (préférence éloigné)
+                    const dToMe = vLen(vSub(m.pos, this.pos));
+                    const nearestOpp = game.getNearestOpponent(m);
+                    const dOpp = nearestOpp ? vLen(vSub(nearestOpp.pos, m.pos)) : 999;
+                    const score = -dToMe + dOpp * 0.6 + (Math.random() * 10 - 5);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        best = m;
+                    }
+                }
+                return best;
+            }
+
+            _kickBallTowards(ball, targetPos, power) {
+                // Appliquer une impulsion à la balle vers targetPos
+                const dir = vNorm(vSub(targetPos, ball.pos));
+                ball.vel = vMul(dir, power);
+                ball.lastTouch = this;
+            }
+
+            _keepInField() {
+                // Empêcher les joueurs de sortir du terrain (hors buts)
+                this.pos.x = clamp(this.pos.x, FIELD.x + this.radius, FIELD.x + FIELD.w - this.radius);
+                this.pos.y = clamp(this.pos.y, FIELD.y + this.radius, FIELD.y + FIELD.h - this.radius);
+            }
+
+            draw(ctx, highlight = false) {
+                ctx.save();
+                // Cercle joueur
+                ctx.beginPath();
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = 0.95;
+                ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                // numéro
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.number, this.pos.x, this.pos.y);
+                // si gardien, dessiner un anneau
+                if (this.isKeeper) {
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(this.pos.x, this.pos.y, this.radius + 3, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                // highlight joueur contrôlé
+                if (highlight) {
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(this.pos.x, this.pos.y, this.radius + 6, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+        }
+
+        /* -------------------------
+           Jeu: initialisation
+           ------------------------- */
+        const game = {
+            players: [],
+            ball: null,
+            controlled: null, // joueur contrôlé par l'utilisateur (Player instance)
+            mouse: { x: W / 2, y: H / 2, down: false },
+            power: 0,
+            powerMax: 12,
+            powerCharging: false,
+            autoSwitch: true,
+            init() {
+                // Créer équipes
+                // Équipe 0 (gauche) = joueur humain par défaut
+                // Équipe 1 (droite) = CPU
+                this.players = [];
+                // Positions de départ (schéma simple)
+                const leftX = FIELD.x + 80;
+                const rightX = FIELD.x + FIELD.w - 80;
+                const spacingY = 60;
+                // équipe 0
+                for (let i = 0; i < TEAM_SIZE; i++) {
+                    const isKeeper = (i === 0);
+                    const x = isKeeper ? FIELD.x + 20 : leftX + (isKeeper ? 0 : Math.random() * 20 - 10);
+                    const y = H / 2 + (i - 2) * spacingY + (Math.random() * 20 - 10);
+                    const p = new Player(0, i, x, y, isKeeper);
+                    this.players.push(p);
+                }
+                // équipe 1
+                for (let i = 0; i < TEAM_SIZE; i++) {
+                    const isKeeper = (i === 0);
+                    const x = isKeeper ? FIELD.x + FIELD.w - 20 : rightX + (isKeeper ? 0 : Math.random() * 20 - 10);
+                    const y = H / 2 + (i - 2) * spacingY + (Math.random() * 20 - 10);
+                    const p = new Player(1, i, x, y, isKeeper);
+                    this.players.push(p);
+                }
+                // Balle au centre
+                this.ball = new Ball(FIELD.x + FIELD.w / 2, H / 2);
+                // Contrôlé: joueur 1 de l'équipe 0 (id 1)
+                this.controlled = this.players.find(p => p.team === 0 && !p.isKeeper);
+                updateControlledUI();
+            },
+            update(dt) {
+                // Update joueurs
+                for (let p of this.players) {
+                    p.update(dt, this);
+                }
+                // Collisions joueurs-joueurs (simple séparation)
+                this._resolvePlayerCollisions();
+                // Balle interactions
+                this._playerBallInteractions();
+                // Update balle
+                this.ball.update(dt);
+                // Check goals
+                this._checkGoals();
+                // Auto-switch: si contrôlé trop loin de la balle, switch to closest teammate
+                if (this.autoSwitch && this.controlled) {
+                    const dist = vLen(vSub(this.controlled.pos, this.ball.pos));
+                    if (dist > 260) {
+                        const closest = this.getClosestToBallTeam(0);
+                        if (closest) {
+                            this.controlled = closest;
+                            updateControlledUI();
+                        }
+                    }
+                }
+            },
+
+            draw(ctx) {
+                // Terrain
+                drawField(ctx);
+                // Draw players sorted by y for simple depth
+                const sorted = [...this.players].sort((a, b) => a.pos.y - b.pos.y);
+                for (let p of sorted) p.draw(ctx, p === this.controlled);
+                // Ball on top
+                this.ball.draw(ctx);
+                // Debug: draw target for controlled player
+                // draw aim line
+                ctx.save();
+                ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+                ctx.setLineDash([6, 6]);
+                ctx.beginPath();
+                ctx.moveTo(this.controlled.pos.x, this.controlled.pos.y);
+                ctx.lineTo(this.mouse.x, this.mouse.y);
+                ctx.stroke();
+                ctx.restore();
+            },
+
+            _resolvePlayerCollisions() {
+                // Séparer les joueurs qui se chevauchent (simple résolution élastique)
+                const players = this.players;
+                for (let i = 0; i < players.length; i++) {
+                    for (let j = i + 1; j < players.length; j++) {
+                        const a = players[i], b = players[j];
+                        const diff = vSub(b.pos, a.pos);
+                        const d = vLen(diff);
+                        const minDist = a.radius + b.radius;
+                        if (d < minDist && d > 0.001) {
+                            const overlap = (minDist - d) / 2;
+                            const dir = vMul(diff, 1 / d);
+                            // déplacer a et b
+                            a.pos.x -= dir.x * overlap;
+                            a.pos.y -= dir.y * overlap;
+                            b.pos.x += dir.x * overlap;
+                            b.pos.y += dir.y * overlap;
+                            // échanger une partie des vitesses (simple)
+                            const vx = (a.vel.x - b.vel.x) * 0.5;
+                            const vy = (a.vel.y - b.vel.y) * 0.5;
+                            a.vel.x -= vx * PLAYER_BOUNCE;
+                            a.vel.y -= vy * PLAYER_BOUNCE;
+                            b.vel.x += vx * PLAYER_BOUNCE;
+                            b.vel.y += vy * PLAYER_BOUNCE;
+                        }
+                    }
+                }
+            },
+
+            _playerBallInteractions() {
+                // Collision balle-joueurs: si proche, appliquer impulsion selon vitesse du joueur
+                const ball = this.ball;
+                for (let p of this.players) {
+                    const diff = vSub(ball.pos, p.pos);
+                    const d = vLen(diff);
+                    const minDist = ball.radius + p.radius;
+                    if (d < minDist) {
+                        // Si joueur contrôle (proche et faible vitesse relative), "attacher" légèrement la balle
+                        const relVel = vLen(vSub(ball.vel, p.vel));
+                        if (relVel < 1.2) {
+                            // Attachement: balle suit le joueur avec un petit offset in direction of movement
+                            const follow = vAdd(p.pos, vMul(vNorm(p.vel || { x: 1, y: 0 }), p.radius + ball.radius + 1));
+                            // Lerp position to follow
+                            ball.pos.x += (follow.x - ball.pos.x) * 0.35;
+                            ball.pos.y += (follow.y - ball.pos.y) * 0.35;
+                            // Damp ball velocity to player's velocity
+                            ball.vel.x += (p.vel.x - ball.vel.x) * 0.25;
+                            ball.vel.y += (p.vel.y - ball.vel.y) * 0.25;
+                            ball.lastTouch = p;
+                        } else {
+                            // Collision physique: repousser la balle selon direction
+                            const dir = d > 0 ? vMul(vNorm(diff), 1) : { x: 1, y: 0 };
+                            // Impulsion proportionnelle à la vitesse du joueur
+                            const impulse = vLen(p.vel) * 1.2 + 1;
+                            ball.vel.x = dir.x * impulse + p.vel.x * 0.3;
+                            ball.vel.y = dir.y * impulse + p.vel.y * 0.3;
+                            ball.lastTouch = p;
+                        }
+                        // Séparer pour éviter enchevêtrement
+                        const push = (minDist - d) + 0.5;
+                        if (d > 0) {
+                            ball.pos.x += vNorm(diff).x * push;
+                            ball.pos.y += vNorm(diff).y * push;
+                        } else {
+                            ball.pos.x += push;
+                        }
+                    }
+                }
+            },
+
+            _checkGoals() {
+                // Si la balle traverse la ligne de but entre les poteaux -> but
+                // Gauche but
+                if (this.ball.pos.x - this.ball.radius < FIELD.x) {
+                    if (this.ball.pos.y > H / 2 - GOAL_H / 2 && this.ball.pos.y < H / 2 + GOAL_H / 2) {
+                        // But pour l'équipe 1 (droite)
+                        score.cpu++;
+                        updateScoreUI();
+                        this._resetAfterGoal(1);
+                    }
+                }
+                // Droite but
+                if (this.ball.pos.x + this.ball.radius > FIELD.x + FIELD.w) {
+                    if (this.ball.pos.y > H / 2 - GOAL_H / 2 && this.ball.pos.y < H / 2 + GOAL_H / 2) {
+                        // But pour l'équipe 0 (gauche)
+                        score.player++;
+                        updateScoreUI();
+                        this._resetAfterGoal(0);
+                    }
+                }
+            },
+
+            _resetAfterGoal(scoringTeam) {
+                // Remettre les joueurs et la balle au centre après un court délai
+                // Simple: reposition immediate and small pause
+                this.ball.pos = v(FIELD.x + FIELD.w / 2, H / 2);
+                this.ball.vel = v(0, 0);
+                // reposition players
+                this.init(); // re-init positions
+            },
+
+            getClosestToBall() {
+                let best = null, bestD = Infinity;
+                for (let p of this.players) {
+                    const d = vLen(vSub(p.pos, this.ball.pos));
+                    if (d < bestD) { bestD = d; best = p; }
+                }
+                return best;
+            },
+
+            getClosestToBallTeam(team) {
+                let best = null, bestD = Infinity;
+                for (let p of this.players.filter(p => p.team === team)) {
+                    const d = vLen(vSub(p.pos, this.ball.pos));
+                    if (d < bestD) { bestD = d; best = p; }
+                }
+                return best;
+            },
+
+            getPossessor() {
+                // Retourne le joueur qui "contrôle" la balle (dernière touche et proche)
+                const last = this.ball.lastTouch;
+                if (last && vLen(vSub(last.pos, this.ball.pos)) < 40) return last;
+                return null;
+            },
+
+            getNearestOpponent(player) {
+                let best = null, bestD = Infinity;
+                for (let p of this.players.filter(pp => pp.team !== player.team)) {
+                    const d = vLen(vSub(p.pos, player.pos));
+                    if (d < bestD) { bestD = d; best = p; }
+                }
+                return best;
+            }
+        };
+
+        /* -------------------------
+           Dessin du terrain
+           ------------------------- */
+        function drawField(ctx) {
+            // Fond
+            ctx.save();
+            ctx.fillStyle = '#0b6b2f';
+            ctx.fillRect(FIELD.x, FIELD.y, FIELD.w, FIELD.h);
+
+            // Lignes: bordures
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(FIELD.x, FIELD.y, FIELD.w, FIELD.h);
+
+            // Ligne médiane
+            ctx.beginPath();
+            ctx.moveTo(FIELD.x + FIELD.w / 2, FIELD.y);
+            ctx.lineTo(FIELD.x + FIELD.w / 2, FIELD.y + FIELD.h);
+            ctx.stroke();
+
+            // Cercle central
+            ctx.beginPath();
+            ctx.arc(FIELD.x + FIELD.w / 2, FIELD.y + FIELD.h / 2, 60, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Zones de réparation (penalty boxes)
+            // Gauche
+            ctx.strokeRect(FIELD.x, H / 2 - PENALTY_H / 2, PENALTY_W, PENALTY_H);
+            // Droite
+            ctx.strokeRect(FIELD.x + FIELD.w - PENALTY_W, H / 2 - PENALTY_H / 2, PENALTY_W, PENALTY_H);
+
+            // Buts (schématisés)
+            ctx.fillStyle = '#000';
+            // gauche goal opening (just a gap)
+            ctx.fillRect(FIELD.x - GOAL_W, H / 2 - GOAL_H / 2, GOAL_W, GOAL_H);
+            // droite
+            ctx.fillRect(FIELD.x + FIELD.w, H / 2 - GOAL_H / 2, GOAL_W, GOAL_H);
+
+            // Marques de corner (petits arcs)
+            ctx.strokeStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(FIELD.x, FIELD.y, 6, 0, Math.PI / 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(FIELD.x + FIELD.w, FIELD.y, 6, Math.PI / 2, Math.PI);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(FIELD.x, FIELD.y + FIELD.h, 6, -Math.PI / 2, 0);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(FIELD.x + FIELD.w, FIELD.y + FIELD.h, 6, Math.PI, 3 * Math.PI / 2);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        /* -------------------------
+           Input handling
+           ------------------------- */
+        const keys = {};
+        window.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+            // Espace: switch controlled player manually
+            if (e.code === 'Space') {
+                e.preventDefault();
+                manualSwitch();
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+
+        // Mouse
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            game.mouse.x = e.clientX - rect.left;
+            game.mouse.y = e.clientY - rect.top;
+        });
+        canvas.addEventListener('mousedown', (e) => {
+            game.mouse.down = true;
+            game.powerCharging = true;
+            document.getElementById('powerBar').style.display = 'block';
+        });
+        canvas.addEventListener('mouseup', (e) => {
+            game.mouse.down = false;
+            // On release: perform kick/pass from controlled player
+            if (game.powerCharging) {
+                performKickFromControlled();
+                game.powerCharging = false;
+                game.power = 0;
+                document.getElementById('powerBar').style.display = 'none';
+                document.getElementById('powerFill').style.width = '0%';
+            }
+        });
+
+        /* -------------------------
+           Actions utilisateur
+           ------------------------- */
+        function manualSwitch() {
+            // Choisir le coéquipier le plus proche de la souris (ou de la balle)
+            const teamMates = game.players.filter(p => p.team === 0 && !p.isKeeper);
+            let best = null, bestD = Infinity;
+            for (let p of teamMates) {
+                const d = vLen(vSub(p.pos, game.mouse));
+                if (d < bestD) { bestD = d; best = p; }
+            }
+            if (best) {
+                game.controlled = best;
+                updateControlledUI();
+            }
+        }
+
+        function performKickFromControlled() {
+            const p = game.controlled;
+            if (!p) return;
+            const ball = game.ball;
+            // Si le joueur est trop loin, on ne peut pas kicker (sauf passes longues)
+            const dist = vLen(vSub(ball.pos, p.pos));
+            // On autorise passes longues si power élevé
+            const aim = vSub(game.mouse, p.pos);
+            const dir = vNorm(aim);
+            const power = clamp(game.power, 0, game.powerMax);
+            if (dist < 60 || power > 6) {
+                // Appliquer impulsion
+                ball.vel = vAdd(vMul(dir, power), vMul(p.vel, 0.4));
+                ball.lastTouch = p;
+                p.cooldown = 30;
+            } else {
+                // Si trop loin et faible power: pas d'action
+            }
+        }
+
+        /* -------------------------
+           Mise à jour UI
+           ------------------------- */
+        function updateScoreUI() {
+            document.getElementById('score').textContent = `Score — Vous: ${score.player} | CPU: ${score.cpu}`;
+        }
+        function updateControlledUI() {
+            const idx = game.controlled ? game.controlled.number : '-';
+            document.getElementById('controlled').textContent = `Joueur contrôlé: #${idx}`;
+        }
+
+        /* -------------------------
+           Boucle principale
+           ------------------------- */
+        function loop(now) {
+            const dt = Math.min(1 / 30, (now - lastTime) / 16.6667); // approx frames
+            lastTime = now;
+            // Handle input for controlled player
+            handlePlayerInput(dt);
+            // Charge power if mouse down
+            if (game.powerCharging) {
+                game.power = clamp(game.power + 0.18, 0, game.powerMax);
+                const pct = (game.power / game.powerMax) * 100;
+                document.getElementById('powerFill').style.width = pct + '%';
+            }
+            // Update game
+            game.update(dt);
+            // Draw
+            ctx.clearRect(0, 0, W, H);
+            game.draw(ctx);
+            requestAnimationFrame(loop);
+        }
+
+        /* -------------------------
+           Input -> player movement
+           ------------------------- */
+        function handlePlayerInput(dt) {
+            const p = game.controlled;
+            if (!p) return;
+            // Movement keys: z/q/s/d or arrows
+            let ax = 0, ay = 0;
+            if (keys['z'] || keys['arrowup']) ay -= 1;
+            if (keys['s'] || keys['arrowdown']) ay += 1;
+            if (keys['q'] || keys['arrowleft']) ax -= 1;
+            if (keys['d'] || keys['arrowright']) ax += 1;
+            // Normalize
+            if (ax !== 0 || ay !== 0) {
+                const n = vNorm({ x: ax, y: ay });
+                p.vel.x += n.x * PLAYER_ACCEL * 1.6;
+                p.vel.y += n.y * PLAYER_ACCEL * 1.6;
+                // clamp speed
+                const speed = vLen(p.vel);
+                if (speed > p.maxSpeed) {
+                    p.vel = vMul(vNorm(p.vel), p.maxSpeed);
+                }
+            } else {
+                // friction
+                p.vel.x *= 0.86;
+                p.vel.y *= 0.86;
+            }
+            // Update target to follow velocity (for AI steering compatibility)
+            p.target = { x: p.pos.x + p.vel.x * 20, y: p.pos.y + p.vel.y * 20 };
+        }
+
+        /* -------------------------
+           Initialisation et démarrage
+           ------------------------- */
+        game.init();
+        updateScoreUI();
+        requestAnimationFrame(loop);
+
+        /* -------------------------
+           Événements supplémentaires: switch automatique toggle
+           ------------------------- */
+        window.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'm') { // m pour toggle auto switch
+                game.autoSwitch = !game.autoSwitch;
+            }
+        });
+
+        /* -------------------------
+           Explications algorithmiques (résumé)
+           - Physique balle: intégration explicite simple (pos += vel*dt), frottement multiplicatif.
+             Avantage: stable et performant pour un jeu arcade.
+           - Interaction joueur-balle: combinaison de deux modes:
+             * "Attachement" quand vitesse relative faible -> facilite le contrôle et les passes courtes.
+             * Impulsion physique quand collision à haute vitesse -> comportement réaliste.
+           - Collisions joueurs-joueurs: séparation positionnelle + échange partiel de vitesse (approximation élastique).
+           - IA: machine à états finis (FSM) pour chaque joueur:
+             * États simples (chase, support, defend, attack, keeper: base/intercept) pour garder comportement lisible.
+             * Décisions basées sur distances, possession et heuristiques (ex: tirer si proche du but).
+             * Passes choisies via heuristique "démarquage" (distance au coéquipier et distance au plus proche adversaire).
+           - Choix de la jauge de puissance: clic maintenu -> plus de contrôle pour l'utilisateur (passes/tirs).
+           - Style visuel: schématique (cercles et lignes) pour clarté et performance dans un seul fichier.
+           ------------------------- */
+    </script>
+</body>
+
+</html>

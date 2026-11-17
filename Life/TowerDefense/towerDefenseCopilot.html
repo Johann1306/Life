@@ -1,0 +1,966 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Neon Defense — Tower Defense (Single File)</title>
+    <style>
+        :root {
+            --bg: #0b0f1a;
+            --panel: #071026;
+            --accent: #00f0ff;
+            --accent2: #ff00d0;
+            --muted: #9aa7c7;
+            --glass: rgba(255, 255, 255, 0.04);
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            background: linear-gradient(180deg, #05060a 0%, #071026 60%);
+            font-family: Inter, Segoe UI, Arial;
+        }
+
+        #gameWrap {
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            box-sizing: border-box;
+            height: 100%;
+        }
+
+        #left {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        canvas {
+            background: linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.05));
+            border-radius: 8px;
+            box-shadow: 0 6px 30px rgba(0, 0, 0, 0.6);
+            display: block;
+        }
+
+        #hud {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .panel {
+            background: var(--panel);
+            color: var(--muted);
+            padding: 10px;
+            border-radius: 8px;
+            min-width: 120px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+        }
+
+        .big {
+            font-size: 18px;
+            color: #fff;
+            font-weight: 600
+        }
+
+        #controls {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 320px;
+        }
+
+        .shop {
+            background: linear-gradient(90deg, rgba(0, 0, 0, 0.25), rgba(255, 255, 255, 0.02));
+            padding: 12px;
+            border-radius: 8px;
+            color: var(--muted);
+        }
+
+        .towerCard {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            border-radius: 6px;
+            background: var(--glass);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .towerCard button {
+            margin-left: auto;
+            background: linear-gradient(90deg, var(--accent), var(--accent2));
+            border: none;
+            color: #001;
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        .hudStat {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .muted {
+            color: var(--muted);
+            font-size: 12px
+        }
+
+        .smallBtn {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            color: var(--muted);
+            padding: 6px;
+            border-radius: 6px;
+            cursor: pointer
+        }
+
+        #log {
+            height: 120px;
+            overflow: auto;
+            padding: 8px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
+            border-radius: 6px;
+            color: var(--muted);
+            font-size: 13px
+        }
+
+        .selected {
+            outline: 2px solid rgba(0, 240, 255, 0.12);
+            box-shadow: 0 6px 20px rgba(0, 240, 255, 0.04) inset;
+        }
+
+        .footer {
+            margin-top: auto;
+            color: var(--muted);
+            font-size: 12px;
+            text-align: center
+        }
+
+        .btnRow {
+            display: flex;
+            gap: 8px
+        }
+
+        .upgradeBtn {
+            background: linear-gradient(90deg, #1b2a4a, #0b1b2b);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            color: var(--muted);
+            padding: 6px;
+            border-radius: 6px;
+            cursor: pointer
+        }
+
+        .targetSelect {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px
+        }
+
+        .targetSelect button {
+            padding: 6px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            background: transparent;
+            color: var(--muted);
+            cursor: pointer
+        }
+
+        h3 {
+            margin: 6px 0;
+            color: var(--accent)
+        }
+
+        .neon {
+            color: var(--accent);
+            text-shadow: 0 0 8px rgba(0, 240, 255, 0.12)
+        }
+    </style>
+</head>
+
+<body>
+    <div id="gameWrap">
+        <div id="left">
+            <div id="hud">
+                <div class="panel hudStat">
+                    <div class="big" id="gold">Or: 100</div>
+                    <div class="muted">Ressources</div>
+                </div>
+                <div class="panel hudStat">
+                    <div class="big" id="lives">Vies: 20</div>
+                    <div class="muted">Santé de la base</div>
+                </div>
+                <div class="panel hudStat">
+                    <div class="big" id="wave">Vague: 0</div>
+                    <div class="muted" id="nextWave">Prochaine vague: 10s</div>
+                </div>
+                <div class="panel hudStat">
+                    <div class="big" id="research">Recherche: 0</div>
+                    <div class="muted">Points de recherche</div>
+                </div>
+                <div class="panel hudStat">
+                    <div class="big" id="mode">Ciblage: Avancée</div>
+                    <div class="muted">Mode de ciblage</div>
+                </div>
+            </div>
+            <canvas id="gameCanvas" width="960" height="640"></canvas>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+                <div class="panel" style="flex:1">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <div><strong class="neon">Neon Defense</strong>
+                            <div class="muted">Mode: Cyberpunk Neon</div>
+                        </div>
+                        <div>
+                            <button id="startWave" class="smallBtn">Lancer vague</button>
+                            <button id="speedBtn" class="smallBtn">x1</button>
+                        </div>
+                    </div>
+                    <div id="log"></div>
+                </div>
+                <div class="panel" style="width:260px">
+                    <h3>Tour sélectionnée</h3>
+                    <div id="selectedInfo" style="min-height:120px;color:var(--muted)">Aucune</div>
+                    <div style="margin-top:8px" id="upgradeArea"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="controls">
+            <div class="shop panel">
+                <h3>Acheter Tours</h3>
+                <div class="towerCard" id="buyMachine">
+                    <div>
+                        <div style="font-weight:700;color:#fff">Mitrailleuse</div>
+                        <div class="muted">Rapide; dégâts moyens</div>
+                    </div>
+                    <div style="text-align:right">
+                        <div style="font-weight:800;color:var(--accent)">Coût 60</div>
+                        <button data-type="machine">Acheter</button>
+                    </div>
+                </div>
+                <div class="towerCard" id="buyIce" style="margin-top:8px">
+                    <div>
+                        <div style="font-weight:700;color:#fff">Tour de Glace</div>
+                        <div class="muted">Ralentit; dégâts faibles</div>
+                    </div>
+                    <div style="text-align:right">
+                        <div style="font-weight:800;color:var(--accent)">Coût 70</div>
+                        <button data-type="ice">Acheter</button>
+                    </div>
+                </div>
+                <div class="towerCard" id="buyCannon" style="margin-top:8px">
+                    <div>
+                        <div style="font-weight:700;color:#fff">Canon</div>
+                        <div class="muted">Zone; dégâts lourds</div>
+                    </div>
+                    <div style="text-align:right">
+                        <div style="font-weight:800;color:var(--accent)">Coût 100</div>
+                        <button data-type="cannon">Acheter</button>
+                    </div>
+                </div>
+                <div style="margin-top:10px" class="muted">Cliquez sur une case pour placer la tour achetée. Les tours
+                    ne peuvent pas être placées sur le chemin.</div>
+            </div>
+
+            <div class="panel">
+                <h3>Options de ciblage</h3>
+                <div class="targetSelect">
+                    <button data-target="closest">Plus proche</button>
+                    <button data-target="weakest">Plus faible</button>
+                    <button data-target="advanced" class="selected">Avancée</button>
+                </div>
+                <h3 style="margin-top:10px">Progression</h3>
+                <div class="muted">Débloquez des améliorations entre les vagues</div>
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <button id="spendResearch" class="upgradeBtn">Dépenser 5 R&D</button>
+                    <button id="resetGame" class="smallBtn">Réinitialiser</button>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>Raccourcis</h3>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                    <button id="sellBtn" class="smallBtn">Vendre tour (75%)</button>
+                    <button id="upgradeRange" class="smallBtn">Upgrade portée (20)</button>
+                    <button id="upgradeRate" class="smallBtn">Upgrade cadence (25)</button>
+                </div>
+                <div class="footer">Conçu par Expert Game Design</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* -------------------------
+           Neon Defense - Tower Defense
+           Single-file HTML + Canvas
+           Style: Cyberpunk Neon
+           Langue: Français
+           ------------------------- */
+
+        /* ---------- CONSTANTES ET ÉTAT GLOBAL ---------- */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const GRID_SIZE = 32; // taille d'une case
+        const COLS = Math.floor(canvas.width / GRID_SIZE);
+        const ROWS = Math.floor(canvas.height / GRID_SIZE);
+
+        let gameState = {
+            gold: 100,
+            lives: 20,
+            wave: 0,
+            nextWaveTimer: 10,
+            inWave: false,
+            speed: 1,
+            research: 0,
+            targetMode: 'advanced', // 'closest','weakest','advanced'
+            selectedTower: null,
+            placingType: null, // type en cours d'achat
+            log: []
+        };
+
+        /* ---------- GRILLE ET CHEMIN FIXE ---------- */
+        /* On définit un chemin fixe comme une série de points (centres de cases).
+           Les ennemis suivront ces points dans l'ordre. */
+        const pathCells = [
+            { x: 0, y: 6 }, { x: 1, y: 6 }, { x: 2, y: 6 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 },
+            { x: 5, y: 5 }, { x: 5, y: 4 }, { x: 6, y: 4 }, { x: 7, y: 4 }, { x: 8, y: 4 }, { x: 9, y: 4 },
+            { x: 9, y: 5 }, { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 13, y: 6 },
+            { x: 13, y: 7 }, { x: 13, y: 8 }, { x: 12, y: 8 }, { x: 11, y: 8 }, { x: 10, y: 8 }, { x: 9, y: 8 },
+            { x: 8, y: 8 }, { x: 7, y: 8 }, { x: 6, y: 8 }, { x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 },
+            { x: 2, y: 8 }, { x: 1, y: 8 }, { x: 0, y: 8 }
+        ];
+
+        function cellCenter(cell) { return { cx: cell.x * GRID_SIZE + GRID_SIZE / 2, cy: cell.y * GRID_SIZE + GRID_SIZE / 2 }; }
+
+        /* ---------- ENTITÉS: TOURS, ENNEMIS, PROJECTILES ---------- */
+        let towers = []; // {x,y,type,level,range,rate,damage,lastShot,ownerCost}
+        let enemies = []; // {x,y,hp,maxHp,speed,type,pathIndex,progress,slowTimer,rotation}
+        let projectiles = []; // {x,y,vx,vy,spd,damage,radius,target,type,aoe}
+
+        /* ---------- CONFIG DES TOURS ---------- */
+        const TOWER_TYPES = {
+            machine: { cost: 60, range: 100, rate: 0.18, damage: 12, color: '#00f0ff' },
+            ice: { cost: 70, range: 90, rate: 0.6, damage: 6, slow: 0.5, color: '#7fdfff' },
+            cannon: { cost: 100, range: 140, rate: 1.2, damage: 40, aoe: 28, color: '#ff00d0' }
+        };
+
+        /* ---------- GÉNÉRATEUR DE VAGUES ---------- */
+        let waveConfig = {
+            baseCount: 6,
+            growth: 1.15,
+            spawnInterval: 0.9 // secondes entre ennemis
+        };
+
+        let waveSpawner = {
+            remaining: 0,
+            spawnTimer: 0,
+            interEnemyDelay: waveConfig.spawnInterval
+        };
+
+        /* ---------- UTILITAIRES ---------- */
+        function log(msg) {
+            gameState.log.unshift(`[${new Date().toLocaleTimeString()}] ${msg}`);
+            const logEl = document.getElementById('log');
+            logEl.innerText = gameState.log.slice(0, 40).join('\n');
+        }
+
+        /* ---------- INITIALISATION ---------- */
+        function init() {
+            attachUI();
+            resetGame();
+            requestAnimationFrame(loop);
+        }
+
+        /* ---------- RÉINITIALISER LE JEU ---------- */
+        function resetGame() {
+            gameState.gold = 100;
+            gameState.lives = 20;
+            gameState.wave = 0;
+            gameState.nextWaveTimer = 8;
+            gameState.inWave = false;
+            gameState.research = 0;
+            towers = [];
+            enemies = [];
+            projectiles = [];
+            waveSpawner.remaining = 0;
+            waveSpawner.spawnTimer = 0;
+            gameState.placingType = null;
+            gameState.selectedTower = null;
+            log('Partie réinitialisée');
+        }
+
+        /* ---------- LANCER VAGUE ---------- */
+        function startWave() {
+            if (gameState.inWave) return;
+            gameState.wave++;
+            gameState.inWave = true;
+            // calcul du nombre d'ennemis selon la vague
+            const count = Math.floor(waveConfig.baseCount * Math.pow(waveConfig.growth, gameState.wave - 1));
+            waveSpawner.remaining = count;
+            waveSpawner.spawnTimer = 0;
+            waveSpawner.interEnemyDelay = Math.max(0.25, waveConfig.spawnInterval - (gameState.wave * 0.02));
+            log(`Vague ${gameState.wave} lancée: ${count} ennemis`);
+        }
+
+        /* ---------- SPAWN D'ENNEMIS ---------- */
+        function spawnEnemy() {
+            // types: 'fast','tank','normal','boss'
+            let type = 'normal';
+            if (gameState.wave % 7 === 0) type = 'boss';
+            else if (Math.random() < Math.min(0.25, 0.05 + gameState.wave * 0.01)) type = 'fast';
+            else if (Math.random() < Math.min(0.2, 0.03 + gameState.wave * 0.01)) type = 'tank';
+
+            let baseHp = 30 + gameState.wave * 6;
+            let speed = 0.6 + Math.min(1.6, gameState.wave * 0.02);
+            if (type === 'fast') { baseHp *= 0.7; speed *= 1.8; }
+            if (type === 'tank') { baseHp *= 2.2; speed *= 0.6; }
+            if (type === 'boss') { baseHp *= 6 + gameState.wave * 0.5; speed *= 0.5; }
+
+            const start = cellCenter(pathCells[0]);
+            enemies.push({
+                x: start.cx, y: start.cy,
+                hp: baseHp, maxHp: baseHp,
+                speed: speed,
+                type: type,
+                pathIndex: 0,
+                progress: 0,
+                slowTimer: 0,
+                rotation: 0
+            });
+        }
+
+        /* ---------- MISE À JOUR DES ENNEMIS (PATH FOLLOWING) ---------- */
+        /* Les ennemis suivent la liste pathCells. Ils se déplacent vers le point suivant.
+           La rotation est calculée pour un rendu fluide. */
+        function updateEnemies(dt) {
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const e = enemies[i];
+                // si l'ennemi est lent (effet glace), réduire la vitesse
+                let spd = e.speed * (e.slowTimer > 0 ? 0.5 : 1);
+                e.slowTimer = Math.max(0, e.slowTimer - dt);
+
+                // cible: centre du prochain point
+                const targetIndex = Math.min(e.pathIndex + 1, pathCells.length - 1);
+                const target = cellCenter(pathCells[targetIndex]);
+                const dx = target.cx - e.x;
+                const dy = target.cy - e.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist < 1) {
+                    // atteint le point suivant
+                    if (targetIndex >= pathCells.length - 1) {
+                        // atteint la fin: enlève une vie
+                        gameState.lives -= 1;
+                        enemies.splice(i, 1);
+                        log('Un ennemi a atteint la base !');
+                        continue;
+                    } else {
+                        e.pathIndex++;
+                    }
+                } else {
+                    // déplacement fluide vers la cible
+                    const vx = (dx / dist) * spd * dt * 60;
+                    const vy = (dy / dist) * spd * dt * 60;
+                    e.x += vx;
+                    e.y += vy;
+                    // rotation vers la direction du mouvement (pour rendu)
+                    e.rotation = Math.atan2(dy, dx);
+                }
+            }
+        }
+
+        /* ---------- MISE À JOUR DES TOURS (TIR) ---------- */
+        /* Ciblage: selon gameState.targetMode
+           - closest: distance minimale à la tour
+           - weakest: hp restant minimal
+           - advanced: ennemi le plus avancé sur le chemin (pathIndex + progress)
+        */
+        function updateTowers(dt) {
+            for (const t of towers) {
+                t.lastShot = (t.lastShot || 0) + dt;
+                const rate = Math.max(0.02, t.rate / gameState.speed);
+                if (t.lastShot < rate) continue;
+
+                // trouver cibles valides dans la portée
+                const inRange = enemies.filter(e => {
+                    const d = Math.hypot(e.x - t.x, e.y - t.y);
+                    return d <= t.range;
+                });
+                if (inRange.length === 0) continue;
+
+                // tri selon le mode
+                let target = null;
+                if (gameState.targetMode === 'closest') {
+                    inRange.sort((a, b) => Math.hypot(a.x - t.x, a.y - t.y) - Math.hypot(b.x - t.x, b.y - t.y));
+                    target = inRange[0];
+                } else if (gameState.targetMode === 'weakest') {
+                    inRange.sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp));
+                    target = inRange[0];
+                } else {
+                    // advanced: le plus avancé sur le chemin
+                    inRange.sort((a, b) => (b.pathIndex + b.progress) - (a.pathIndex + a.progress));
+                    target = inRange[0];
+                }
+
+                if (target) {
+                    // tirer: créer projectile selon type
+                    if (t.type === 'machine') {
+                        spawnProjectile(t.x, t.y, target, t.damage, 6, 'bullet', false);
+                    } else if (t.type === 'ice') {
+                        spawnProjectile(t.x, t.y, target, t.damage, 5, 'ice', false);
+                    } else if (t.type === 'cannon') {
+                        spawnProjectile(t.x, t.y, target, t.damage, 4, 'shell', true, t.aoe);
+                    }
+                    t.lastShot = 0;
+                }
+            }
+        }
+
+        /* ---------- SPAWN PROJECTILE ---------- */
+        function spawnProjectile(x, y, target, damage, spd, type, aoe = false, aoeRadius = 0) {
+            const angle = Math.atan2(target.y - y, target.x - x);
+            projectiles.push({
+                x: x, y: y,
+                vx: Math.cos(angle) * spd,
+                vy: Math.sin(angle) * spd,
+                spd: spd,
+                damage: damage,
+                radius: (type === 'shell' ? 6 : 3),
+                targetId: target, // référence directe
+                type: type,
+                aoe: aoe,
+                aoeRadius: aoeRadius
+            });
+        }
+
+        /* ---------- MISE À JOUR DES PROJECTILES ET COLLISIONS ---------- */
+        /* Détection de collision Cercle-Point:
+           - Un projectile est représenté par un cercle (centre x,y et radius r).
+           - Un ennemi est approximé par un point (x,y) pour la détection simple.
+           - Condition de collision: distance(projectile.center, enemy.point) <= projectile.radius + enemyHitbox
+           - Ici on utilise enemyHitbox = 10 (rayon approximatif de l'ennemi).
+           - Cette méthode est efficace et peu coûteuse pour de nombreux projectiles.
+           - Commentaire détaillé en français ci-dessous.
+        */
+
+        /*
+          DÉTECTION CERCLE-POINT (explication):
+          - Soit P le centre du projectile (px,py) et r son rayon.
+          - Soit E le point représentant l'ennemi (ex,ey).
+          - On calcule la distance d = sqrt((px-ex)^2 + (py-ey)^2).
+          - Si d <= r + re (où re est le rayon d'approximation de l'ennemi), alors il y a collision.
+          - On évite le calcul de sqrt si possible en comparant les carrés:
+              (px-ex)^2 + (py-ey)^2 <= (r + re)^2
+          - Ici on utilise re = 10 pour un compromis entre précision et performance.
+        */
+
+        function updateProjectiles(dt) {
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.x += p.vx * dt * 60;
+                p.y += p.vy * dt * 60;
+
+                // vérifier collision avec la cible (référence)
+                let hit = null;
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const e = enemies[j];
+                    const re = 10;
+                    const dx = p.x - e.x;
+                    const dy = p.y - e.y;
+                    const dist2 = dx * dx + dy * dy;
+                    const rsum = p.radius + re;
+                    if (dist2 <= rsum * rsum) {
+                        hit = e;
+                        // appliquer dégâts
+                        if (p.aoe) {
+                            // dégâts de zone: appliquer à tous les ennemis proches
+                            for (const e2 of enemies) {
+                                const dx2 = e2.x - p.x;
+                                const dy2 = e2.y - p.y;
+                                if (dx2 * dx2 + dy2 * dy2 <= p.aoeRadius * p.aoeRadius) {
+                                    e2.hp -= p.damage;
+                                    if (e2.hp <= 0) {
+                                        awardKill(e2);
+                                    }
+                                }
+                            }
+                        } else {
+                            e.hp -= p.damage;
+                            if (p.type === 'ice') {
+                                e.slowTimer = Math.max(e.slowTimer, 1.6); // ralentissement
+                            }
+                            if (e.hp <= 0) {
+                                awardKill(e);
+                            }
+                        }
+                        break;
+                    }
+                }
+                if (hit || p.x < -50 || p.x > canvas.width + 50 || p.y < -50 || p.y > canvas.height + 50) {
+                    projectiles.splice(i, 1);
+                }
+            }
+        }
+
+        /* ---------- RÉCOMPENSES ET SUPPRESSION D'ENNEMIS ---------- */
+        function awardKill(enemy) {
+            // or gagné selon type et vague
+            let gain = Math.floor(8 + enemy.maxHp / 20);
+            if (enemy.type === 'boss') gain *= 6;
+            if (enemy.type === 'fast') gain = Math.floor(gain * 0.8);
+            if (enemy.type === 'tank') gain = Math.floor(gain * 1.4);
+            gameState.gold += gain;
+            gameState.research += Math.floor(gain / 10);
+            // retirer l'ennemi
+            const idx = enemies.indexOf(enemy);
+            if (idx >= 0) enemies.splice(idx, 1);
+            log(`Ennemi éliminé (+${gain} Or, +${Math.floor(gain / 10)} R&D)`);
+        }
+
+        /* ---------- PLACEMENT DE TOURS ET VENTE ---------- */
+        function canPlaceAt(cellX, cellY) {
+            // ne pas placer sur le chemin
+            for (const p of pathCells) {
+                if (p.x === cellX && p.y === cellY) return false;
+            }
+            // ne pas chevaucher une autre tour
+            for (const t of towers) {
+                if (t.gridX === cellX && t.gridY === cellY) return false;
+            }
+            return true;
+        }
+
+        function placeTower(gridX, gridY, type) {
+            if (!canPlaceAt(gridX, gridY)) return false;
+            const cfg = TOWER_TYPES[type];
+            if (gameState.gold < cfg.cost) { log("Or insuffisant"); return false; }
+            gameState.gold -= cfg.cost;
+            const center = { x: gridX * GRID_SIZE + GRID_SIZE / 2, y: gridY * GRID_SIZE + GRID_SIZE / 2 };
+            towers.push({
+                x: center.x, y: center.y,
+                gridX, gridY,
+                type: type,
+                level: 1,
+                range: cfg.range,
+                rate: cfg.rate,
+                damage: cfg.damage,
+                aoe: cfg.aoe || 0,
+                color: cfg.color,
+                ownerCost: cfg.cost
+            });
+            log(`Tour ${type} placée (coût ${cfg.cost})`);
+            return true;
+        }
+
+        function sellSelected() {
+            if (!gameState.selectedTower) return;
+            const t = gameState.selectedTower;
+            const refund = Math.floor(t.ownerCost * 0.75);
+            gameState.gold += refund;
+            towers = towers.filter(x => x !== t);
+            gameState.selectedTower = null;
+            document.getElementById('selectedInfo').innerText = 'Aucune';
+            log(`Tour vendue (+${refund} Or)`);
+        }
+
+        /* ---------- AMÉLIORATIONS ---------- */
+        function upgradeSelected(stat) {
+            const t = gameState.selectedTower;
+            if (!t) return;
+            let cost = 0;
+            if (stat === 'range') cost = 20 + t.level * 10;
+            if (stat === 'rate') cost = 25 + t.level * 12;
+            if (gameState.gold < cost) { log('Or insuffisant pour upgrade'); return; }
+            gameState.gold -= cost;
+            if (stat === 'range') { t.range += 12; }
+            if (stat === 'rate') { t.rate = Math.max(0.02, t.rate * 0.85); t.damage = Math.round(t.damage * 1.05); }
+            t.level++;
+            t.ownerCost += cost;
+            log(`Tour améliorée (${stat}) - coût ${cost}`);
+        }
+
+        /* ---------- BOUCLE PRINCIPALE ---------- */
+        let lastTime = performance.now();
+        function loop(now) {
+            const dt = Math.min(0.06, (now - lastTime) / 1000) * gameState.speed;
+            lastTime = now;
+
+            // gestion des vagues
+            if (!gameState.inWave) {
+                gameState.nextWaveTimer -= dt;
+                if (gameState.nextWaveTimer <= 0) {
+                    startWave();
+                    gameState.nextWaveTimer = 10 + Math.max(0, 6 - gameState.wave * 0.2);
+                }
+            } else {
+                // spawn d'ennemis
+                waveSpawner.spawnTimer -= dt;
+                if (waveSpawner.remaining > 0 && waveSpawner.spawnTimer <= 0) {
+                    spawnEnemy();
+                    waveSpawner.remaining--;
+                    waveSpawner.spawnTimer = waveSpawner.interEnemyDelay;
+                }
+                // si plus d'ennemis et plus de spawn => fin de vague
+                if (waveSpawner.remaining === 0 && enemies.length === 0 && projectiles.length === 0) {
+                    gameState.inWave = false;
+                    gameState.nextWaveTimer = 8;
+                    // récompense de fin de vague
+                    const bonus = 10 + Math.floor(gameState.wave * 2);
+                    gameState.gold += bonus;
+                    gameState.research += 1;
+                    log(`Vague ${gameState.wave} terminée (+${bonus} Or, +1 R&D)`);
+                }
+            }
+
+            // update entités
+            updateEnemies(dt);
+            updateTowers(dt);
+            updateProjectiles(dt);
+
+            // vérification fin de partie
+            if (gameState.lives <= 0) {
+                log('La base est détruite. Partie terminée.');
+                // reset partiel: on donne option de recommencer
+                resetGame();
+            }
+
+            render();
+            updateHUD();
+            requestAnimationFrame(loop);
+        }
+
+        /* ---------- RENDU ---------- */
+        function render() {
+            // fond
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // grille
+            for (let x = 0; x < COLS; x++) {
+                for (let y = 0; y < ROWS; y++) {
+                    ctx.fillStyle = (x + y) % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'rgba(255,255,255,0.005)';
+                    ctx.fillRect(x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+                }
+            }
+
+            // chemin
+            ctx.lineWidth = GRID_SIZE * 0.9;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = 'rgba(0,240,255,0.08)';
+            ctx.beginPath();
+            for (let i = 0; i < pathCells.length; i++) {
+                const c = cellCenter(pathCells[i]);
+                if (i === 0) ctx.moveTo(c.cx, c.cy); else ctx.lineTo(c.cx, c.cy);
+            }
+            ctx.stroke();
+
+            // tours
+            for (const t of towers) {
+                // halo
+                ctx.beginPath();
+                ctx.fillStyle = hexToRgba(t.color, 0.06);
+                ctx.arc(t.x, t.y, t.range, 0, Math.PI * 2);
+                ctx.fill();
+
+                // corps
+                ctx.fillStyle = t.color;
+                ctx.beginPath();
+                ctx.rect(t.x - 12, t.y - 12, 24, 24);
+                ctx.fill();
+
+                // niveau
+                ctx.fillStyle = '#001';
+                ctx.font = '10px monospace';
+                ctx.fillText('Lv' + t.level, t.x - 12, t.y + 26);
+            }
+
+            // ennemis
+            for (const e of enemies) {
+                // corps
+                ctx.save();
+                ctx.translate(e.x, e.y);
+                ctx.rotate(e.rotation);
+                // couleur selon type
+                let col = '#fff';
+                if (e.type === 'fast') col = '#7fdfff';
+                if (e.type === 'tank') col = '#ffb86b';
+                if (e.type === 'boss') col = '#ff6bff';
+                ctx.fillStyle = col;
+                ctx.beginPath();
+                ctx.arc(0, 0, 10, 0, Math.PI * 2);
+                ctx.fill();
+
+                // barre de vie
+                ctx.fillStyle = '#222';
+                ctx.fillRect(-12, -16, 24, 4);
+                ctx.fillStyle = '#00ff88';
+                const hpRatio = Math.max(0, e.hp / e.maxHp);
+                ctx.fillRect(-12, -16, 24 * hpRatio, 4);
+
+                ctx.restore();
+            }
+
+            // projectiles
+            for (const p of projectiles) {
+                ctx.beginPath();
+                ctx.fillStyle = (p.type === 'ice') ? '#bfefff' : (p.type === 'shell' ? '#ffb6ff' : '#fff');
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+                if (p.aoe) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = hexToRgba('#ff00d0', 0.12);
+                    ctx.arc(p.x, p.y, p.aoeRadius, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            }
+
+            // overlay HUD minimal
+            ctx.fillStyle = 'rgba(0,0,0,0.2)';
+            ctx.fillRect(6, 6, 220, 56);
+        }
+
+        /* ---------- MISE À JOUR HUD HTML ---------- */
+        function updateHUD() {
+            document.getElementById('gold').innerText = `Or: ${gameState.gold}`;
+            document.getElementById('lives').innerText = `Vies: ${gameState.lives}`;
+            document.getElementById('wave').innerText = `Vague: ${gameState.wave}`;
+            document.getElementById('research').innerText = `Recherche: ${gameState.research}`;
+            document.getElementById('mode').innerText = `Ciblage: ${modeLabel(gameState.targetMode)}`;
+            document.getElementById('nextWave').innerText = gameState.inWave ? 'En cours' : `Prochaine vague: ${Math.max(0, Math.ceil(gameState.nextWaveTimer))}s`;
+        }
+
+        /* ---------- UTILITAIRES UI ---------- */
+        function modeLabel(m) {
+            if (m === 'closest') return 'Plus proche';
+            if (m === 'weakest') return 'Plus faible';
+            return 'Avancée';
+        }
+
+        function hexToRgba(hex, a) {
+            const h = hex.replace('#', '');
+            const r = parseInt(h.substring(0, 2), 16);
+            const g = parseInt(h.substring(2, 4), 16);
+            const b = parseInt(h.substring(4, 6), 16);
+            return `rgba(${r},${g},${b},${a})`;
+        }
+
+        /* ---------- GESTION UI ET ÉVÉNEMENTS ---------- */
+        function attachUI() {
+            // acheter tours
+            document.querySelectorAll('[data-type]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const type = e.currentTarget.dataset.type;
+                    gameState.placingType = type;
+                    log(`Achat sélectionné: ${type}. Cliquez sur une case libre pour placer.`);
+                });
+            });
+
+            // canvas click pour placement / sélection
+            canvas.addEventListener('click', (ev) => {
+                const rect = canvas.getBoundingClientRect();
+                const mx = ev.clientX - rect.left;
+                const my = ev.clientY - rect.top;
+                const gx = Math.floor(mx / GRID_SIZE);
+                const gy = Math.floor(my / GRID_SIZE);
+
+                // si on est en mode placement
+                if (gameState.placingType) {
+                    if (placeTower(gx, gy, gameState.placingType)) {
+                        gameState.placingType = null;
+                    }
+                    return;
+                }
+
+                // sinon sélectionner une tour si cliqué dessus
+                let found = null;
+                for (const t of towers) {
+                    const dx = mx - t.x;
+                    const dy = my - t.y;
+                    if (Math.hypot(dx, dy) <= 16) {
+                        found = t; break;
+                    }
+                }
+                gameState.selectedTower = found;
+                updateSelectedInfo();
+            });
+
+            // start wave
+            document.getElementById('startWave').addEventListener('click', () => startWave());
+            document.getElementById('speedBtn').addEventListener('click', () => {
+                gameState.speed = gameState.speed === 1 ? 2 : 1;
+                document.getElementById('speedBtn').innerText = gameState.speed === 1 ? 'x1' : 'x2';
+            });
+
+            // ciblage
+            document.querySelectorAll('[data-target]').forEach(b => {
+                b.addEventListener('click', (e) => {
+                    document.querySelectorAll('[data-target]').forEach(x => x.classList.remove('selected'));
+                    e.currentTarget.classList.add('selected');
+                    gameState.targetMode = e.currentTarget.dataset.target;
+                });
+            });
+
+            // vente et upgrades rapides
+            document.getElementById('sellBtn').addEventListener('click', sellSelected);
+            document.getElementById('upgradeRange').addEventListener('click', () => upgradeSelected('range'));
+            document.getElementById('upgradeRate').addEventListener('click', () => upgradeSelected('rate'));
+
+            // spend research
+            document.getElementById('spendResearch').addEventListener('click', () => {
+                if (gameState.research < 5) { log('Pas assez de points de recherche'); return; }
+                gameState.research -= 5;
+                // débloquer une amélioration globale: +5 gold par vague (exemple)
+                waveConfig.baseCount = Math.max(1, waveConfig.baseCount - 0.5);
+                log('Amélioration de recherche appliquée: vagues légèrement réduites');
+            });
+
+            // reset
+            document.getElementById('resetGame').addEventListener('click', resetGame);
+        }
+
+        /* ---------- MISE À JOUR DE L'AFFICHAGE DE LA TOUR SÉLECTIONNÉE ---------- */
+        function updateSelectedInfo() {
+            const el = document.getElementById('selectedInfo');
+            const upArea = document.getElementById('upgradeArea');
+            upArea.innerHTML = '';
+            if (!gameState.selectedTower) {
+                el.innerText = 'Aucune';
+                return;
+            }
+            const t = gameState.selectedTower;
+            el.innerHTML = `<div style="font-weight:700;color:${t.color}">${t.type.toUpperCase()} (Lv ${t.level})</div>
+                  <div class="muted">Dégâts: ${t.damage} • Cadence: ${t.rate.toFixed(2)}s • Portée: ${Math.round(t.range)}</div>
+                  <div class="muted">Coût total: ${t.ownerCost}</div>`;
+            // boutons d'upgrade
+            const b1 = document.createElement('button');
+            b1.className = 'upgradeBtn';
+            b1.innerText = 'Améliorer portée (20)';
+            b1.onclick = () => { if (gameState.gold >= 20) { gameState.gold -= 20; t.range += 12; t.ownerCost += 20; log('Portée améliorée'); updateSelectedInfo(); } else log('Or insuffisant'); };
+            const b2 = document.createElement('button');
+            b2.className = 'upgradeBtn';
+            b2.innerText = 'Améliorer cadence (25)';
+            b2.onclick = () => { if (gameState.gold >= 25) { gameState.gold -= 25; t.rate = Math.max(0.02, t.rate * 0.85); t.damage = Math.round(t.damage * 1.05); t.ownerCost += 25; log('Cadence améliorée'); updateSelectedInfo(); } else log('Or insuffisant'); };
+            const b3 = document.createElement('button');
+            b3.className = 'smallBtn';
+            b3.innerText = 'Vendre (75%)';
+            b3.onclick = sellSelected;
+            upArea.appendChild(b1); upArea.appendChild(b2); upArea.appendChild(b3);
+        }
+
+        /* ---------- ÉVÉNEMENTS CLAVIER ---------- */
+        window.addEventListener('keydown', (e) => {
+            if (e.key === '1') gameState.targetMode = 'closest';
+            if (e.key === '2') gameState.targetMode = 'weakest';
+            if (e.key === '3') gameState.targetMode = 'advanced';
+        });
+
+        /* ---------- DÉMARRAGE ---------- */
+        init();
+
+    </script>
+</body>
+
+</html>

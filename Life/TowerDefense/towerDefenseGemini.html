@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <title>NEON DEFENSE - Cyberpunk TD</title>
+    <style>
+        /* --- STYLE CYBERPUNK --- */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050510;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+            user-select: none;
+        }
+
+        #gameCanvas {
+            display: block;
+        }
+
+        /* Interface Utilisateur (HUD) - Glassmorphism */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            /* Laisse passer les clics vers le canvas */
+        }
+
+        .hud-panel {
+            position: absolute;
+            background: rgba(16, 20, 40, 0.85);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            backdrop-filter: blur(5px);
+            padding: 15px;
+            border-radius: 8px;
+            pointer-events: auto;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.1);
+        }
+
+        #top-bar {
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #0ff;
+            text-shadow: 0 0 5px #0ff;
+        }
+
+        #build-menu {
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+        }
+
+        #selection-panel {
+            top: 50%;
+            right: 20px;
+            transform: translateY(-50%);
+            width: 220px;
+            display: none;
+            /* Caché par défaut */
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #004444, #002222);
+            border: 1px solid #0ff;
+            color: #0ff;
+            padding: 10px 15px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            font-size: 12px;
+            border-radius: 4px;
+        }
+
+        .btn:hover {
+            background: #0ff;
+            color: #000;
+            box-shadow: 0 0 10px #0ff;
+        }
+
+        .btn:disabled {
+            border-color: #555;
+            color: #555;
+            cursor: not-allowed;
+            background: #222;
+            box-shadow: none;
+        }
+
+        .tower-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 80px;
+        }
+
+        .tower-icon {
+            width: 40px;
+            height: 40px;
+            margin-bottom: 5px;
+            border: 2px solid;
+            border-radius: 50%;
+        }
+
+        h3 {
+            margin: 0 0 10px 0;
+            color: #f0f;
+            text-shadow: 0 0 5px #f0f;
+            font-size: 16px;
+        }
+
+        p {
+            margin: 5px 0;
+            font-size: 14px;
+            color: #ccc;
+        }
+
+        #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            display: none;
+        }
+
+        #game-over-screen h1 {
+            font-size: 60px;
+            color: #f00;
+            text-shadow: 0 0 20px #f00;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-layer">
+        <div id="top-bar" class="hud-panel">
+            <span id="wave-display">VAGUE: 1</span>
+            <span id="gold-display" style="color: #ffcc00; text-shadow: 0 0 5px #ffcc00;">OR: 100</span>
+            <span id="lives-display" style="color: #f00; text-shadow: 0 0 5px #f00;">VIES: 20</span>
+        </div>
+
+        <div id="build-menu" class="hud-panel">
+            <div class="tower-card">
+                <div class="tower-icon" style="background: #0ff; border-color: #0ff;"></div>
+                <button class="btn" id="btn-laser" onclick="game.selectBuildType('LASER')">LASER (50)</button>
+            </div>
+            <div class="tower-card">
+                <div class="tower-icon" style="background: #f0f; border-color: #f0f;"></div>
+                <button class="btn" id="btn-canon" onclick="game.selectBuildType('CANON')">CANON (120)</button>
+            </div>
+            <div class="tower-card">
+                <div class="tower-icon" style="background: #00f; border-color: #00f;"></div>
+                <button class="btn" id="btn-ice" onclick="game.selectBuildType('ICE')">GLACE (80)</button>
+            </div>
+            <div class="tower-card" style="justify-content: center;">
+                <button class="btn" style="background: #333; height: 100%;" onclick="game.startNextWave()"
+                    id="btn-next-wave">LANCER VAGUE</button>
+            </div>
+        </div>
+
+        <div id="selection-panel" class="hud-panel">
+            <h3>UNITÉ SÉLECTIONNÉE</h3>
+            <p id="sel-name">Type: --</p>
+            <p id="sel-stats">Dmg: -- | Rng: --</p>
+            <button class="btn" id="btn-upgrade" onclick="game.upgradeTower()">AMÉLIORER (<span
+                    id="upgrade-cost">0</span>)</button>
+            <button class="btn" style="border-color: #f00; color: #f00; margin-top:5px;"
+                onclick="game.sellTower()">VENDRE (<span id="sell-value">0</span>)</button>
+            <button class="btn" style="margin-top:5px; border-color: #888; color: #888;"
+                onclick="game.deselectTower()">FERMER</button>
+        </div>
+    </div>
+
+    <div id="game-over-screen">
+        <h1>SYSTEM FAILURE</h1>
+        <p style="font-size: 24px; margin-bottom: 20px;" id="final-score">Vagues Survécu : 0</p>
+        <button class="btn" style="font-size: 20px; padding: 20px 40px;" onclick="location.reload()">REBOOT
+            SYSTEM</button>
+    </div>
+
+    <script>
+        /**
+         * CONFIGURATION & CONSTANTES
+         */
+        const TILE_SIZE = 40;
+        const CANVAS_WIDTH = window.innerWidth;
+        const CANVAS_HEIGHT = window.innerHeight;
+
+        // Définition des Tours
+        const TOWERS = {
+            LASER: { name: "Laser Rapide", cost: 50, range: 120, damage: 15, rate: 8, color: '#0ff', type: 'single' }, // rate en frames (60fps)
+            CANON: { name: "Canon Plasma", cost: 120, range: 180, damage: 60, rate: 60, color: '#f0f', type: 'splash', splashRadius: 60 },
+            ICE: { name: "Cryo-Stase", cost: 80, range: 100, damage: 2, rate: 5, color: '#00f', type: 'slow', slowFactor: 0.5, slowDuration: 120 }
+        };
+
+        // Définition des Ennemis
+        const ENEMIES = {
+            NORMAL: { hp: 40, speed: 1.5, color: '#0f0', reward: 5, radius: 10 },
+            FAST: { hp: 20, speed: 3.0, color: '#ff0', reward: 8, radius: 8 },
+            TANK: { hp: 120, speed: 0.8, color: '#f00', reward: 15, radius: 14 },
+            BOSS: { hp: 800, speed: 0.5, color: '#fff', reward: 100, radius: 20 }
+        };
+
+        /**
+         * MOTEUR GRAPHIQUE & UTILITAIRES
+         */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+
+        // Gestion du redimensionnement
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            // Note: Dans un vrai jeu, il faudrait recalculer la grille/chemin ici.
+        });
+
+        // Calcul de distance Euclidienne (Hypoténuse)
+        function getDistance(p1, p2) {
+            const dx = p1.x - p2.x;
+            const dy = p1.y - p2.y;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        // Classe Particule pour les effets visuels
+        class Particle {
+            constructor(x, y, color, speed, life) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.angle = Math.random() * Math.PI * 2;
+                this.speed = Math.random() * speed;
+                this.life = life;
+                this.maxLife = life;
+                this.alpha = 1;
+            }
+            update() {
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+                this.life--;
+                this.alpha = this.life / this.maxLife;
+            }
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        /**
+         * LOGIQUE DU JEU
+         */
+
+        class Game {
+            constructor() {
+                this.gold = 150;
+                this.lives = 20;
+                this.wave = 1;
+                this.waveActive = false;
+                this.enemiesToSpawn = [];
+                this.spawnTimer = 0;
+
+                this.path = this.generatePath();
+                this.towers = [];
+                this.enemies = [];
+                this.projectiles = [];
+                this.particles = [];
+
+                this.selectedTile = { x: -1, y: -1 };
+                this.buildMode = null; // 'LASER', 'CANON', 'ICE' ou null
+                this.selectedTower = null;
+
+                // Gestion souris
+                this.mouse = { x: 0, y: 0 };
+                canvas.addEventListener('mousemove', e => {
+                    const rect = canvas.getBoundingClientRect();
+                    this.mouse.x = e.clientX - rect.left;
+                    this.mouse.y = e.clientY - rect.top;
+                });
+                canvas.addEventListener('click', e => this.handleClick());
+
+                this.loop = this.loop.bind(this);
+                requestAnimationFrame(this.loop);
+
+                this.updateUI();
+            }
+
+            // --- Génération du Chemin (Fixe mais procéduralement adaptable) ---
+            generatePath() {
+                // Un chemin simple en "S" adapté à la taille de l'écran
+                const w = CANVAS_WIDTH;
+                const h = CANVAS_HEIGHT;
+                const midY = h / 2;
+
+                return [
+                    { x: 0, y: midY - 200 },
+                    { x: w * 0.2, y: midY - 200 },
+                    { x: w * 0.2, y: midY + 150 },
+                    { x: w * 0.5, y: midY + 150 },
+                    { x: w * 0.5, y: midY - 150 },
+                    { x: w * 0.8, y: midY - 150 },
+                    { x: w * 0.8, y: midY + 200 },
+                    { x: w, y: midY + 200 }
+                ];
+            }
+
+            // --- Gestion des Vagues ---
+            startNextWave() {
+                if (this.waveActive) return;
+
+                this.waveActive = true;
+                this.enemiesToSpawn = [];
+                const count = 5 + Math.floor(this.wave * 1.5);
+
+                for (let i = 0; i < count; i++) {
+                    let type = 'NORMAL';
+                    if (this.wave % 3 === 0 && i % 4 === 0) type = 'FAST';
+                    if (this.wave % 5 === 0 && i % 5 === 0) type = 'TANK';
+                    if (this.wave % 10 === 0 && i === count - 1) type = 'BOSS';
+
+                    // Scaling de la difficulté
+                    let enemyConfig = JSON.parse(JSON.stringify(ENEMIES[type]));
+                    enemyConfig.hp *= (1 + this.wave * 0.2); // +20% HP par vague
+
+                    this.enemiesToSpawn.push(enemyConfig);
+                }
+
+                document.getElementById('btn-next-wave').disabled = true;
+                document.getElementById('btn-next-wave').innerText = "VAGUE EN COURS...";
+            }
+
+            // --- Boucle Principale ---
+            loop() {
+                ctx.fillStyle = '#050510';
+                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+                this.update();
+                this.draw();
+
+                if (this.lives > 0) requestAnimationFrame(this.loop);
+            }
+
+            update() {
+                // 1. Spawning
+                if (this.waveActive && this.enemiesToSpawn.length > 0) {
+                    this.spawnTimer++;
+                    if (this.spawnTimer > 40) { // Délai entre ennemis
+                        const config = this.enemiesToSpawn.shift();
+                        this.enemies.push(new Enemy(this.path, config));
+                        this.spawnTimer = 0;
+                    }
+                } else if (this.waveActive && this.enemies.length === 0 && this.enemiesToSpawn.length === 0) {
+                    // Fin de vague
+                    this.waveActive = false;
+                    this.wave++;
+                    this.gold += 50 + (this.wave * 10); // Bonus fin de vague
+                    this.updateUI();
+                    document.getElementById('btn-next-wave').disabled = false;
+                    document.getElementById('btn-next-wave').innerText = "LANCER VAGUE";
+                }
+
+                // 2. Update Entities
+                // Ennemis
+                for (let i = this.enemies.length - 1; i >= 0; i--) {
+                    const e = this.enemies[i];
+                    e.update();
+                    if (e.reachedEnd) {
+                        this.lives--;
+                        this.enemies.splice(i, 1);
+                        this.triggerScreenShake();
+                        this.updateUI();
+                        if (this.lives <= 0) this.gameOver();
+                    } else if (e.hp <= 0) {
+                        this.gold += e.reward;
+                        this.createExplosion(e.x, e.y, e.color, 10);
+                        this.enemies.splice(i, 1);
+                        this.updateUI();
+                    }
+                }
+
+                // Tours
+                this.towers.forEach(t => t.update(this.enemies, this));
+
+                // Projectiles
+                for (let i = this.projectiles.length - 1; i >= 0; i--) {
+                    const p = this.projectiles[i];
+                    const hit = p.update();
+                    if (hit) {
+                        this.handleImpact(p);
+                        this.projectiles.splice(i, 1);
+                    } else if (p.life <= 0) { // Sécurité pour nettoyer
+                        this.projectiles.splice(i, 1);
+                    }
+                }
+
+                // Particules
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    this.particles[i].update();
+                    if (this.particles[i].life <= 0) this.particles.splice(i, 1);
+                }
+            }
+
+            // --- Collision Logic (Cercle-Point / Cercle-Cercle) ---
+            /* Détection de collision simple : 
+               On vérifie si la distance entre le projectile et la cible 
+               est inférieure à la somme de leurs rayons (ou seuil de hit).
+            */
+            handleImpact(proj) {
+                if (proj.type === 'splash') {
+                    // Dégâts de zone
+                    this.createExplosion(proj.x, proj.y, proj.color, 15);
+                    this.enemies.forEach(e => {
+                        if (getDistance(e, proj) <= proj.splashRadius) {
+                            e.takeDamage(proj.damage);
+                        }
+                    });
+                } else if (proj.type === 'slow') {
+                    // Effet de ralentissement
+                    if (proj.target && this.enemies.includes(proj.target)) {
+                        proj.target.takeDamage(proj.damage);
+                        proj.target.applySlow(proj.slowFactor, proj.slowDuration);
+                        this.createExplosion(proj.x, proj.y, '#fff', 5);
+                    }
+                } else {
+                    // Dégât unique
+                    if (proj.target && this.enemies.includes(proj.target)) {
+                        proj.target.takeDamage(proj.damage);
+                        this.createExplosion(proj.x, proj.y, proj.color, 5);
+                    }
+                }
+            }
+
+            createExplosion(x, y, color, count) {
+                for (let i = 0; i < count; i++) {
+                    this.particles.push(new Particle(x, y, color, 4, 30));
+                }
+            }
+
+            // --- Rendu ---
+            draw() {
+                // Dessin du chemin (Glow effect)
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#00ff00';
+                ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
+                ctx.lineWidth = 30;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+
+                ctx.beginPath();
+                if (this.path.length > 0) ctx.moveTo(this.path[0].x, this.path[0].y);
+                for (let i = 1; i < this.path.length; i++) {
+                    ctx.lineTo(this.path[i].x, this.path[i].y);
+                }
+                ctx.stroke();
+
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#00ff00';
+                ctx.stroke(); // Ligne centrale fine
+
+                ctx.shadowBlur = 0; // Reset
+
+                // Entités
+                this.towers.forEach(t => t.draw(ctx, this.selectedTower === t));
+                this.enemies.forEach(e => e.draw(ctx));
+                this.projectiles.forEach(p => p.draw(ctx));
+                this.particles.forEach(p => p.draw(ctx));
+
+                // Fantôme de construction (Grid Snapping)
+                if (this.buildMode) {
+                    const gx = Math.round(this.mouse.x / TILE_SIZE) * TILE_SIZE;
+                    const gy = Math.round(this.mouse.y / TILE_SIZE) * TILE_SIZE;
+
+                    // Cercle de portée
+                    ctx.beginPath();
+                    ctx.arc(gx, gy, TOWERS[this.buildMode].range, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                    ctx.fill();
+                    ctx.strokeStyle = '#fff';
+                    ctx.setLineDash([5, 5]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Carré de placement
+                    ctx.fillStyle = this.isValidPlacement(gx, gy) ? 'rgba(0, 255, 0, 0.5)' : 'rgba(255, 0, 0, 0.5)';
+                    ctx.fillRect(gx - 10, gy - 10, 20, 20);
+                }
+            }
+
+            // --- Interactions ---
+            selectBuildType(type) {
+                if (this.selectedTower) this.deselectTower();
+                this.buildMode = (this.buildMode === type) ? null : type;
+            }
+
+            handleClick() {
+                const gx = Math.round(this.mouse.x / TILE_SIZE) * TILE_SIZE;
+                const gy = Math.round(this.mouse.y / TILE_SIZE) * TILE_SIZE;
+
+                if (this.buildMode) {
+                    // Tentative de construction
+                    if (this.isValidPlacement(gx, gy)) {
+                        const template = TOWERS[this.buildMode];
+                        if (this.gold >= template.cost) {
+                            this.gold -= template.cost;
+                            this.towers.push(new Tower(gx, gy, this.buildMode, template));
+                            this.updateUI();
+                            this.buildMode = null; // Quitter le mode construction après pose
+                        }
+                    } else {
+                        this.buildMode = null; // Annuler si clic invalide
+                    }
+                } else {
+                    // Tentative de sélection
+                    const clickedTower = this.towers.find(t => Math.hypot(t.x - gx, t.y - gy) < 20);
+                    if (clickedTower) {
+                        this.selectedTower = clickedTower;
+                        this.showSelectionMenu();
+                    } else {
+                        this.deselectTower();
+                    }
+                }
+            }
+
+            isValidPlacement(x, y) {
+                // Pas trop près du chemin
+                for (let i = 0; i < this.path.length - 1; i++) {
+                    const p1 = this.path[i];
+                    const p2 = this.path[i + 1];
+                    // Distance point à segment (approximatif pour la démo)
+                    if (Math.abs(x - p1.x) < 30 && Math.abs(y - p1.y) < 30) return false;
+                    // On simplifie : pas sur la tour existante
+                }
+
+                // Pas sur une autre tour
+                if (this.towers.some(t => Math.hypot(t.x - x, t.y - y) < 20)) return false;
+
+                return true;
+            }
+
+            // --- UI Logic ---
+            updateUI() {
+                document.getElementById('gold-display').innerText = `OR: ${Math.floor(this.gold)}`;
+                document.getElementById('lives-display').innerText = `VIES: ${this.lives}`;
+                document.getElementById('wave-display').innerText = `VAGUE: ${this.wave}`;
+
+                // Update boutons (griser si pas assez d'or)
+                ['LASER', 'CANON', 'ICE'].forEach(type => {
+                    const btn = document.getElementById(`btn-${type.toLowerCase()}`);
+                    btn.disabled = this.gold < TOWERS[type].cost;
+                });
+
+                if (this.selectedTower) this.showSelectionMenu();
+            }
+
+            showSelectionMenu() {
+                const panel = document.getElementById('selection-panel');
+                panel.style.display = 'flex';
+                document.getElementById('sel-name').innerText = this.selectedTower.templateName;
+                document.getElementById('sel-stats').innerText = `Dmg: ${Math.floor(this.selectedTower.damage)} | Rang: ${this.selectedTower.level}`;
+
+                const upgradeCost = Math.floor(this.selectedTower.baseCost * 0.5 * (this.selectedTower.level + 1));
+                const sellVal = Math.floor(this.selectedTower.invested * 0.7);
+
+                const btnUp = document.getElementById('btn-upgrade');
+                document.getElementById('upgrade-cost').innerText = upgradeCost;
+                btnUp.disabled = this.gold < upgradeCost;
+
+                document.getElementById('sell-value').innerText = sellVal;
+
+                // Dessiner la portée de la tour sélectionnée
+                ctx.beginPath();
+                ctx.arc(this.selectedTower.x, this.selectedTower.y, this.selectedTower.range, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.stroke();
+            }
+
+            deselectTower() {
+                this.selectedTower = null;
+                document.getElementById('selection-panel').style.display = 'none';
+            }
+
+            upgradeTower() {
+                if (!this.selectedTower) return;
+                const cost = Math.floor(this.selectedTower.baseCost * 0.5 * (this.selectedTower.level + 1));
+                if (this.gold >= cost) {
+                    this.gold -= cost;
+                    this.selectedTower.upgrade(cost);
+                    this.updateUI();
+                }
+            }
+
+            sellTower() {
+                if (!this.selectedTower) return;
+                this.gold += Math.floor(this.selectedTower.invested * 0.7);
+                this.towers = this.towers.filter(t => t !== this.selectedTower);
+                this.deselectTower();
+                this.updateUI();
+            }
+
+            triggerScreenShake() {
+                canvas.style.transform = `translate(${Math.random() * 10 - 5}px, ${Math.random() * 10 - 5}px)`;
+                setTimeout(() => canvas.style.transform = 'translate(0,0)', 100);
+            }
+
+            gameOver() {
+                document.getElementById('game-over-screen').style.display = 'flex';
+                document.getElementById('final-score').innerText = `Vagues Survécu : ${this.wave - 1}`;
+            }
+        }
+
+        /**
+         * CLASSE ENEMY
+         * Gère le déplacement le long des waypoints
+         */
+        class Enemy {
+            constructor(path, config) {
+                this.path = path;
+                this.waypointIndex = 0;
+                this.x = path[0].x;
+                this.y = path[0].y;
+
+                this.hp = config.hp;
+                this.maxHp = config.hp;
+                this.speed = config.speed;
+                this.baseSpeed = config.speed;
+                this.color = config.color;
+                this.reward = config.reward;
+                this.radius = config.radius;
+
+                this.reachedEnd = false;
+
+                // Gestion ralentissement
+                this.slowTimer = 0;
+            }
+
+            update() {
+                // Gestion status effects
+                if (this.slowTimer > 0) {
+                    this.slowTimer--;
+                    if (this.slowTimer <= 0) this.speed = this.baseSpeed;
+                }
+
+                // Déplacement vers le prochain waypoint
+                const target = this.path[this.waypointIndex + 1];
+                if (!target) {
+                    this.reachedEnd = true;
+                    return;
+                }
+
+                const dx = target.x - this.x;
+                const dy = target.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < this.speed) {
+                    this.x = target.x;
+                    this.y = target.y;
+                    this.waypointIndex++;
+                } else {
+                    this.x += (dx / dist) * this.speed;
+                    this.y += (dy / dist) * this.speed;
+                }
+            }
+
+            takeDamage(amount) {
+                this.hp -= amount;
+            }
+
+            applySlow(factor, duration) {
+                this.speed = this.baseSpeed * factor;
+                this.slowTimer = duration;
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                // Barre de vie
+                const hpPct = this.hp / this.maxHp;
+                ctx.fillStyle = 'red';
+                ctx.fillRect(-10, -15, 20, 3);
+                ctx.fillStyle = '#0f0';
+                ctx.fillRect(-10, -15, 20 * hpPct, 3);
+
+                // Corps
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color;
+
+                // Forme selon le type (simplifié ici en cercles/carrés pour la démo)
+                if (this.radius > 15) { // Boss/Tank
+                    ctx.fillRect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                if (this.slowTimer > 0) {
+                    ctx.strokeStyle = '#00f';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        /**
+         * CLASSE TOWER
+         */
+        class Tower {
+            constructor(x, y, typeKey, config) {
+                this.x = x;
+                this.y = y;
+                this.typeKey = typeKey;
+                this.templateName = config.name;
+                this.color = config.color;
+
+                this.range = config.range;
+                this.damage = config.damage;
+                this.rate = config.rate;
+                this.type = config.type; // single, splash, slow
+
+                // Spécifiques
+                this.splashRadius = config.splashRadius || 0;
+                this.slowFactor = config.slowFactor || 1;
+                this.slowDuration = config.slowDuration || 0;
+
+                this.cooldown = 0;
+                this.angle = 0;
+
+                this.level = 1;
+                this.baseCost = config.cost;
+                this.invested = config.cost;
+            }
+
+            update(enemies, gameContext) {
+                if (this.cooldown > 0) this.cooldown--;
+
+                // Trouver cible (Logique: Plus avancé sur le chemin)
+                // Optimisation: On ne vérifie que ceux qui sont vivants
+                let target = null;
+                let maxProgress = -1;
+
+                for (const e of enemies) {
+                    const dist = getDistance(this, e);
+                    if (dist <= this.range) {
+                        // Calcul de progression approximative (Index waypoint + distance au suivant)
+                        // Pour simplifier ici: Index waypoint.
+                        if (e.waypointIndex > maxProgress) {
+                            maxProgress = e.waypointIndex;
+                            target = e;
+                        }
+                    }
+                }
+
+                if (target) {
+                    // Rotation vers la cible
+                    this.angle = Math.atan2(target.y - this.y, target.x - this.x);
+
+                    // Tirer
+                    if (this.cooldown <= 0) {
+                        this.shoot(target, gameContext);
+                        this.cooldown = this.rate;
+                    }
+                }
+            }
+
+            shoot(target, game) {
+                const proj = new Projectile(this.x, this.y, target, {
+                    damage: this.damage,
+                    color: this.color,
+                    type: this.type,
+                    splashRadius: this.splashRadius,
+                    slowFactor: this.slowFactor,
+                    slowDuration: this.slowDuration,
+                    speed: (this.type === 'splash') ? 6 : 15 // Missiles lents, lasers rapides
+                });
+                game.projectiles.push(proj);
+            }
+
+            upgrade(cost) {
+                this.level++;
+                this.damage *= 1.3;
+                this.range *= 1.1;
+                this.invested += cost;
+            }
+
+            draw(ctx, isSelected) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                // Socle
+                ctx.shadowBlur = isSelected ? 20 : 5;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = '#222';
+                ctx.beginPath();
+                ctx.arc(0, 0, 15, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Tourelle rotative
+                ctx.rotate(this.angle);
+                ctx.fillStyle = this.color;
+                ctx.fillRect(0, -5, 20, 10); // Canon
+                ctx.fillRect(-8, -8, 16, 16); // Corps
+
+                ctx.restore();
+
+                if (isSelected) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.range, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                    ctx.stroke();
+                }
+            }
+        }
+
+        /**
+         * CLASSE PROJECTILE
+         */
+        class Projectile {
+            constructor(x, y, target, config) {
+                this.x = x;
+                this.y = y;
+                this.target = target; // Référence vers l'objet ennemi
+                this.damage = config.damage;
+                this.color = config.color;
+                this.speed = config.speed;
+                this.type = config.type;
+
+                // Transfert des propriétés spéciales
+                this.splashRadius = config.splashRadius;
+                this.slowFactor = config.slowFactor;
+                this.slowDuration = config.slowDuration;
+
+                this.life = 100; // Sécurité anti-fuite mémoire
+            }
+
+            update() {
+                if (!this.target) { this.life = 0; return false; }
+
+                // Guidage missile (Homing)
+                const dx = this.target.x - this.x;
+                const dy = this.target.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < this.speed || dist < this.target.radius) {
+                    return true; // Impact
+                }
+
+                const vx = (dx / dist) * this.speed;
+                const vy = (dy / dist) * this.speed;
+
+                this.x += vx;
+                this.y += vy;
+
+                this.life--;
+                return false;
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 5;
+                ctx.shadowColor = this.color;
+
+                if (this.type === 'splash') {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    // Effet de trait pour laser
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+        }
+
+        // Initialisation
+        const game = new Game();
+
+    </script>
+</body>
+
+</html>

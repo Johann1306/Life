@@ -1,0 +1,766 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Neon Sprint — 1v1 Local</title>
+    <style>
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            background: #05040a;
+            font-family: Inter, system-ui, Segoe UI, Arial;
+            color: #e6f7ff;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            background: #05040a;
+        }
+
+        #ui {
+            position: fixed;
+            left: 12px;
+            top: 12px;
+            z-index: 10;
+            background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.15));
+            padding: 10px 12px;
+            border-radius: 10px;
+            backdrop-filter: blur(6px);
+            box-shadow: 0 6px 30px rgba(0, 0, 0, 0.6), 0 0 18px rgba(0, 200, 255, 0.03) inset;
+            color: #bfefff;
+            font-size: 13px;
+        }
+
+        #ui h1 {
+            margin: 0 0 6px 0;
+            font-size: 16px;
+            color: #fff;
+            text-shadow: 0 0 8px rgba(0, 200, 255, 0.12);
+        }
+
+        .panel {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .stat {
+            padding: 6px 8px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.02);
+            min-width: 120px;
+        }
+
+        .big {
+            font-weight: 700;
+            color: #fff;
+            font-size: 14px;
+        }
+
+        #rightUI {
+            position: fixed;
+            right: 12px;
+            top: 12px;
+            z-index: 10;
+            text-align: right;
+        }
+
+        #message {
+            position: fixed;
+            left: 50%;
+            top: 8%;
+            transform: translateX(-50%);
+            z-index: 20;
+            color: #fff;
+            font-size: 20px;
+            text-shadow: 0 0 18px rgba(255, 255, 255, 0.06);
+        }
+
+        #controls {
+            position: fixed;
+            left: 12px;
+            bottom: 12px;
+            z-index: 10;
+            font-size: 12px;
+            color: #cfefff;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 8px 10px;
+            border-radius: 8px;
+        }
+
+        .bar {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 6px;
+            overflow: hidden;
+            margin-top: 6px;
+        }
+
+        .bar>i {
+            display: block;
+            height: 100%;
+            background: linear-gradient(90deg, #ff8a00, #ff2d6f);
+            box-shadow: 0 0 12px rgba(255, 80, 40, 0.6);
+        }
+
+        .bar.blue>i {
+            background: linear-gradient(90deg, #00e5ff, #0066ff);
+            box-shadow: 0 0 12px rgba(0, 150, 255, 0.6);
+        }
+
+        #footer {
+            position: fixed;
+            right: 12px;
+            bottom: 12px;
+            color: #9fdfff;
+            font-size: 12px;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 8px 10px;
+            border-radius: 8px;
+        }
+
+        .winner {
+            font-size: 28px;
+            font-weight: 800;
+            color: #fff;
+            text-shadow: 0 0 18px rgba(255, 255, 255, 0.12);
+        }
+
+        @media (max-width:600px) {
+            #ui {
+                font-size: 12px
+            }
+
+            .stat {
+                min-width: 100px
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+
+    <div id="ui">
+        <h1>Neon Sprint — 1v1 Local</h1>
+        <div style="display:flex;gap:8px;">
+            <div class="stat">
+                <div style="font-size:11px;color:#9fdfff">Joueur 1 (Rouge)</div>
+                <div class="big" id="p1Lap">Tours: 0</div>
+                <div style="font-size:12px" id="p1LapTime">Tour: 0.00s</div>
+                <div style="font-size:12px" id="p1Best">Meilleur: —</div>
+                <div class="bar" style="margin-top:6px;"><i id="p1Boost" style="width:0%"></i></div>
+            </div>
+            <div class="stat">
+                <div style="font-size:11px;color:#9fdfff">Joueur 2 (Bleu)</div>
+                <div class="big" id="p2Lap">Tours: 0</div>
+                <div style="font-size:12px" id="p2LapTime">Tour: 0.00s</div>
+                <div style="font-size:12px" id="p2Best">Meilleur: —</div>
+                <div class="bar blue" style="margin-top:6px;"><i id="p2Boost" style="width:0%"></i></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="rightUI">
+        <div class="stat" style="text-align:right;">
+            <div style="font-size:11px;color:#9fdfff">Classement</div>
+            <div class="big" id="ranking">1: — 2: —</div>
+            <div style="font-size:12px" id="raceInfo">Objectif: 3 tours</div>
+        </div>
+    </div>
+
+    <div id="controls">
+        <div><strong>Contrôles</strong></div>
+        <div style="display:flex;gap:12px;margin-top:6px;">
+            <div>J1: Z/S Q/D • Boost: Espace</div>
+            <div>J2: ↑/↓ ←/→ • Boost: Entrée</div>
+        </div>
+    </div>
+
+    <div id="footer">Astuce: heurter l'herbe ralentit; utilisez le boost stratégiquement.</div>
+    <div id="message"></div>
+
+    <script>
+        (() => {
+            const canvas = document.getElementById('c');
+            const ctx = canvas.getContext('2d', { alpha: false });
+            let W = canvas.width = innerWidth;
+            let H = canvas.height = innerHeight;
+            const DPR = Math.max(1, devicePixelRatio || 1);
+            canvas.width = W * DPR; canvas.height = H * DPR; canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+            ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+            // UI elements
+            const p1LapEl = document.getElementById('p1Lap');
+            const p2LapEl = document.getElementById('p2Lap');
+            const p1LapTimeEl = document.getElementById('p1LapTime');
+            const p2LapTimeEl = document.getElementById('p2LapTime');
+            const p1BestEl = document.getElementById('p1Best');
+            const p2BestEl = document.getElementById('p2Best');
+            const p1BoostEl = document.getElementById('p1Boost');
+            const p2BoostEl = document.getElementById('p2Boost');
+            const rankingEl = document.getElementById('ranking');
+            const messageEl = document.getElementById('message');
+
+            // Track geometry using Path2D
+            let outerPath, innerPath, roadCenterPoints = [];
+            function buildTrack() {
+                outerPath = new Path2D();
+                innerPath = new Path2D();
+                roadCenterPoints = [];
+
+                // Define control points for a stylized oval-ish track with insets
+                const cx = W / 2, cy = H / 2;
+                const rx = Math.min(W, H) * 0.42;
+                const ry = Math.min(W, H) * 0.28;
+                const wobble = Math.min(W, H) * 0.06;
+
+                // Create centerline points (for checkpoints & progress)
+                const steps = 64;
+                for (let i = 0; i < steps; i++) {
+                    const a = (i / steps) * Math.PI * 2;
+                    const r = 1 + 0.12 * Math.sin(3 * a) + 0.06 * Math.cos(5 * a);
+                    const x = cx + Math.cos(a) * rx * r;
+                    const y = cy + Math.sin(a) * ry * r;
+                    roadCenterPoints.push({ x, y });
+                }
+
+                // Outer path (wider)
+                outerPath.moveTo(roadCenterPoints[0].x + 120, roadCenterPoints[0].y);
+                for (let i = 0; i < roadCenterPoints.length; i++) {
+                    const p = roadCenterPoints[i];
+                    outerPath.lineTo(p.x + 120 * Math.cos(i / roadCenterPoints.length * Math.PI * 2 + 0.5), p.y + 60 * Math.sin(i / roadCenterPoints.length * Math.PI * 2 + 0.5));
+                }
+                outerPath.closePath();
+
+                // Inner path (hole)
+                innerPath.moveTo(roadCenterPoints[0].x - 120, roadCenterPoints[0].y);
+                for (let i = 0; i < roadCenterPoints.length; i++) {
+                    const p = roadCenterPoints[i];
+                    innerPath.lineTo(p.x - 120 * Math.cos(i / roadCenterPoints.length * Math.PI * 2 + 0.5), p.y - 60 * Math.sin(i / roadCenterPoints.length * Math.PI * 2 + 0.5));
+                }
+                innerPath.closePath();
+
+                // Create checkpoints along centerline (8 checkpoints)
+                checkpoints = [];
+                const cpCount = 8;
+                for (let i = 0; i < cpCount; i++) {
+                    const idx = Math.floor(i * roadCenterPoints.length / cpCount);
+                    const p = roadCenterPoints[idx];
+                    // compute normal to centerline by using next point
+                    const next = roadCenterPoints[(idx + 3) % roadCenterPoints.length];
+                    const nx = next.x - p.x, ny = next.y - p.y;
+                    const len = Math.hypot(nx, ny) || 1;
+                    const ux = nx / len, uy = ny / len;
+                    // checkpoint rectangle centered at p, oriented perpendicular to track
+                    checkpoints.push({ x: p.x, y: p.y, nx: -uy, ny: ux, idx });
+                }
+            }
+
+            // Checkpoint state
+            let checkpoints = [];
+            buildTrack();
+
+            // Start/finish line is checkpoint 0
+            const totalLapsToWin = 3;
+
+            // Car class
+            class Car {
+                constructor(x, y, angle, color, accent) {
+                    this.x = x; this.y = y; this.angle = angle; // radians
+                    this.vx = 0; this.vy = 0;
+                    this.speed = 0; // scalar forward speed
+                    this.maxSpeed = 6.2;
+                    this.acc = 0.22;
+                    this.brake = 0.32;
+                    this.turnSpeed = 0.035;
+                    this.width = 28; this.length = 44;
+                    this.color = color; this.accent = accent;
+                    this.trail = []; // recent positions
+                    this.trailMax = 18;
+                    this.boosting = false;
+                    this.boostCooldown = 0; // seconds
+                    this.boostDuration = 0;
+                    this.boostMaxCooldown = 3.2;
+                    this.boostPower = 4.6;
+                    this.laps = 0;
+                    this.checkIdx = 0;
+                    this.lapStartTime = performance.now();
+                    this.currentLapTime = 0;
+                    this.bestLap = null;
+                    this.finished = false;
+                }
+                update(dt, controls) {
+                    // Controls: {acc, brake, left, right, boost}
+                    // Steering depends on speed sign
+                    const forward = Math.max(-1, Math.min(1, controls.acc - controls.brake));
+                    // Apply acceleration/brake
+                    if (forward > 0) {
+                        this.speed += this.acc * forward;
+                    } else if (forward < 0) {
+                        this.speed += this.brake * forward;
+                    } else {
+                        // natural friction
+                        this.speed *= 0.992;
+                    }
+
+                    // Limit speed (boost modifies temporarily)
+                    let maxS = this.maxSpeed;
+                    if (this.boosting) maxS += this.boostPower;
+                    // Off-road penalty handled externally by passing a multiplier
+                    if (this.speed > maxS) this.speed = maxS;
+                    if (this.speed < -2.2) this.speed = -2.2;
+
+                    // Turning: more effective at higher forward speed, less when reversing
+                    const turnEffect = (this.speed / (this.maxSpeed + this.boostPower)) * (this.speed >= 0 ? 1 : 0.6);
+                    this.angle += (controls.right - controls.left) * this.turnSpeed * (1 + Math.abs(turnEffect) * 1.2);
+
+                    // Update position
+                    this.x += Math.cos(this.angle) * this.speed;
+                    this.y += Math.sin(this.angle) * this.speed;
+
+                    // Trail
+                    this.trail.unshift({ x: this.x, y: this.y, life: 1 });
+                    if (this.trail.length > this.trailMax) this.trail.pop();
+
+                    // Boost handling
+                    if (controls.boost && this.boostCooldown <= 0 && !this.boosting) {
+                        this.boosting = true;
+                        this.boostDuration = 0.22; // seconds
+                        this.boostCooldown = this.boostMaxCooldown;
+                    }
+                    if (this.boosting) {
+                        this.boostDuration -= dt;
+                        if (this.boostDuration <= 0) this.boosting = false;
+                    }
+                    if (this.boostCooldown > 0) this.boostCooldown -= dt;
+                    if (this.boostCooldown < 0) this.boostCooldown = 0;
+
+                    // Lap timer
+                    this.currentLapTime = (performance.now() - this.lapStartTime) / 1000;
+                }
+            }
+
+            // Initialize two cars near start
+            const startPoint = roadCenterPoints[0];
+            const p1 = new Car(startPoint.x - 30, startPoint.y + 60, 0, '#ff6b00', '#ffd6a5');
+            const p2 = new Car(startPoint.x + 30, startPoint.y - 60, Math.PI, '#00e5ff', '#bfefff');
+
+            // Controls state
+            const keys = {};
+            const controlsP1 = { acc: 0, brake: 0, left: 0, right: 0, boost: false };
+            const controlsP2 = { acc: 0, brake: 0, left: 0, right: 0, boost: false };
+
+            window.addEventListener('keydown', e => {
+                if (e.repeat) return;
+                keys[e.code] = true;
+                mapKeys();
+                // Prevent scrolling with arrows/space
+                if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+            });
+            window.addEventListener('keyup', e => {
+                keys[e.code] = false;
+                mapKeys();
+            });
+
+            function mapKeys() {
+                // Player 1: Z/S Q/D, Space
+                controlsP1.acc = keys['KeyZ'] ? 1 : 0;
+                controlsP1.brake = keys['KeyS'] ? 1 : 0;
+                controlsP1.left = keys['KeyQ'] ? 1 : 0;
+                controlsP1.right = keys['KeyD'] ? 1 : 0;
+                controlsP1.boost = !!keys['Space'];
+
+                // Player 2: Arrow keys, Enter
+                controlsP2.acc = keys['ArrowUp'] ? 1 : 0;
+                controlsP2.brake = keys['ArrowDown'] ? 1 : 0;
+                controlsP2.left = keys['ArrowLeft'] ? 1 : 0;
+                controlsP2.right = keys['ArrowRight'] ? 1 : 0;
+                controlsP2.boost = !!keys['Enter'];
+            }
+
+            // Utility: check if point is on road (between outer and inner)
+            function isOnRoad(x, y) {
+                // point in outer and not in inner
+                if (ctx.isPointInPath(outerPath, x, y) && !ctx.isPointInPath(innerPath, x, y)) return true;
+                return false;
+            }
+
+            // Checkpoint crossing logic
+            function checkCheckpoints(car) {
+                // Each checkpoint is a small line segment; detect crossing by checking distance to line and sign of dot product
+                const cp = checkpoints[car.checkIdx % checkpoints.length];
+                const nextIdx = (car.checkIdx + 1) % checkpoints.length;
+                const target = checkpoints[nextIdx];
+                // We'll detect crossing by proximity to target and angle
+                const dx = car.x - target.x, dy = car.y - target.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist < 36) {
+                    car.checkIdx = nextIdx;
+                    // If we returned to checkpoint 0 (start) and completed all checkpoints, count lap
+                    if (car.checkIdx === 0) {
+                        // Completed a lap
+                        car.laps += 1;
+                        const lapTime = (performance.now() - car.lapStartTime) / 1000;
+                        if (car.bestLap === null || lapTime < car.bestLap) car.bestLap = lapTime;
+                        car.lapStartTime = performance.now();
+                        // small flash message
+                        flash(`${car === p1 ? 'Joueur 1' : 'Joueur 2'} a complété un tour (${car.laps})`);
+                    }
+                }
+            }
+
+            // Flash message
+            let flashTimer = 0;
+            function flash(txt, t = 1400) {
+                messageEl.textContent = txt;
+                messageEl.style.opacity = 1;
+                flashTimer = t;
+            }
+
+            // Collision with track edges: if off-road, apply heavy friction and push back slightly
+            function handleOffRoad(car) {
+                if (!isOnRoad(car.x, car.y)) {
+                    // heavy slow down
+                    car.speed *= 0.86;
+                    // small push towards center of track
+                    // find nearest center point
+                    let best = null, bestD = 1e9;
+                    for (let p of roadCenterPoints) {
+                        const d = (p.x - car.x) * (p.x - car.x) + (p.y - car.y) * (p.y - car.y);
+                        if (d < bestD) { bestD = d; best = p; }
+                    }
+                    if (best) {
+                        const dx = best.x - car.x, dy = best.y - car.y;
+                        const ang = Math.atan2(dy, dx);
+                        car.x += Math.cos(ang) * 0.6;
+                        car.y += Math.sin(ang) * 0.6;
+                    }
+                    // reduce turning control
+                    car.turnSpeed = 0.02;
+                } else {
+                    car.turnSpeed = 0.035;
+                }
+            }
+
+            // Draw functions
+            function drawBackground() {
+                // subtle gradient
+                const g = ctx.createLinearGradient(0, 0, 0, H);
+                g.addColorStop(0, '#05040a');
+                g.addColorStop(1, '#0a0710');
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, W, H);
+
+                // neon grid under track
+                ctx.save();
+                ctx.globalAlpha = 0.06;
+                ctx.strokeStyle = '#00e5ff';
+                ctx.lineWidth = 1;
+                for (let x = - (W % 40); x < W; x += 40) {
+                    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+                }
+                for (let y = - (H % 40); y < H; y += 40) {
+                    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+                }
+                ctx.restore();
+            }
+
+            function drawTrack() {
+                // Draw grass/sand outside
+                ctx.save();
+                ctx.fillStyle = '#0b1a0f';
+                ctx.fillRect(0, 0, W, H);
+
+                // Outer glow
+                ctx.shadowColor = '#00e5ff';
+                ctx.shadowBlur = 28;
+                ctx.fillStyle = '#07121a';
+                ctx.fill(outerPath);
+                ctx.shadowBlur = 0;
+
+                // Road surface: draw outer then inner to create ring
+                // asphalt texture: dark with subtle noise lines
+                ctx.save();
+                ctx.fillStyle = '#0f1116';
+                ctx.fill(outerPath);
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.fill(innerPath);
+                ctx.globalCompositeOperation = 'source-over';
+
+                // road stripes and texture
+                ctx.save();
+                ctx.clip(outerPath);
+                ctx.clip(innerPath, 'evenodd'); // ensure ring
+                // asphalt base
+                const g = ctx.createLinearGradient(0, 0, 0, H);
+                g.addColorStop(0, '#0b0b0f');
+                g.addColorStop(1, '#14141a');
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, W, H);
+
+                // subtle dashed centerline along center points
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([18, 18]);
+                ctx.globalAlpha = 0.06;
+                ctx.beginPath();
+                for (let i = 0; i < roadCenterPoints.length; i++) {
+                    const p = roadCenterPoints[i];
+                    if (i === 0) ctx.moveTo(p.x, p.y);
+                    else ctx.lineTo(p.x, p.y);
+                }
+                ctx.closePath();
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // inner shadow to give depth
+                ctx.globalAlpha = 0.12;
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, W, H);
+                ctx.restore();
+
+                // Draw track borders with neon glow
+                ctx.lineWidth = 6;
+                ctx.strokeStyle = '#ff6b00';
+                ctx.shadowColor = '#ff6b00';
+                ctx.shadowBlur = 18;
+                ctx.stroke(outerPath);
+                ctx.shadowColor = '#00e5ff';
+                ctx.shadowBlur = 18;
+                ctx.stroke(innerPath);
+                ctx.shadowBlur = 0;
+                ctx.restore();
+
+                // Draw checkpoints (invisible in gameplay but helpful for debug)
+                for (let i = 0; i < checkpoints.length; i++) {
+                    const cp = checkpoints[i];
+                    // small neon markers
+                    ctx.save();
+                    ctx.translate(cp.x, cp.y);
+                    ctx.rotate(Math.atan2(cp.ny, cp.nx));
+                    ctx.globalAlpha = 0.12;
+                    ctx.fillStyle = i % 2 === 0 ? '#00e5ff' : '#ff6b00';
+                    ctx.fillRect(-18, -6, 36, 12);
+                    ctx.restore();
+                }
+            }
+
+            function drawCar(car, highlight = false) {
+                ctx.save();
+                ctx.translate(car.x, car.y);
+                ctx.rotate(car.angle);
+                // shadow glow
+                ctx.shadowColor = car.color;
+                ctx.shadowBlur = 18;
+                // body
+                ctx.fillStyle = car.color;
+                roundRect(ctx, -car.length / 2, -car.width / 2, car.length, car.width, 6);
+                ctx.fill();
+                // accent stripe
+                ctx.shadowBlur = 8;
+                ctx.fillStyle = car.accent;
+                roundRect(ctx, -car.length / 2 + 6, -car.width / 2 + 6, car.length - 12, car.width - 12, 4);
+                ctx.fill();
+                // windshield
+                ctx.fillStyle = 'rgba(0,0,0,0.18)';
+                ctx.fillRect(-6, -car.width / 2 + 4, 12, car.width / 2 - 8);
+                // wheels (simple)
+                ctx.fillStyle = '#0b0b0b';
+                ctx.fillRect(-car.length / 2 + 4, -car.width / 2 - 4, 6, 8);
+                ctx.fillRect(car.length / 2 - 10, -car.width / 2 - 4, 6, 8);
+                ctx.fillRect(-car.length / 2 + 4, car.width / 2 - 4, 6, 8);
+                ctx.fillRect(car.length / 2 - 10, car.width / 2 - 4, 6, 8);
+                ctx.restore();
+
+                // Draw small speed glow under car
+                ctx.save();
+                ctx.globalAlpha = 0.12 + Math.min(0.6, Math.abs(car.speed) / 8);
+                ctx.fillStyle = car.color;
+                ctx.beginPath();
+                ctx.ellipse(car.x - Math.cos(car.angle) * 6, car.y - Math.sin(car.angle) * 6, 28 + Math.abs(car.speed) * 3, 10 + Math.abs(car.speed) * 2, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            function roundRect(ctx, x, y, w, h, r) {
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.arcTo(x + w, y, x + w, y + h, r);
+                ctx.arcTo(x + w, y + h, x, y + h, r);
+                ctx.arcTo(x, y + h, x, y, r);
+                ctx.arcTo(x, y, x + w, y, r);
+                ctx.closePath();
+            }
+
+            // Draw trails/particles
+            function drawTrails(car) {
+                for (let i = 0; i < car.trail.length; i++) {
+                    const t = car.trail[i];
+                    const alpha = (1 - i / car.trail.length) * (car.boosting ? 0.9 : 0.45);
+                    ctx.save();
+                    ctx.globalAlpha = alpha;
+                    ctx.shadowColor = car.color;
+                    ctx.shadowBlur = 12 + (car.boosting ? 12 : 0);
+                    ctx.fillStyle = car.color;
+                    ctx.beginPath();
+                    ctx.ellipse(t.x, t.y, 6 + i * 0.4, 3 + i * 0.2, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+
+            // HUD update
+            function updateUI() {
+                p1LapEl.textContent = `Tours: ${p1.laps}`;
+                p2LapEl.textContent = `Tours: ${p2.laps}`;
+                p1LapTimeEl.textContent = `Tour: ${p1.currentLapTime.toFixed(2)}s`;
+                p2LapTimeEl.textContent = `Tour: ${p2.currentLapTime.toFixed(2)}s`;
+                p1BestEl.textContent = `Meilleur: ${p1.bestLap ? p1.bestLap.toFixed(2) + 's' : '—'}`;
+                p2BestEl.textContent = `Meilleur: ${p2.bestLap ? p2.bestLap.toFixed(2) + 's' : '—'}`;
+                // Boost bars
+                p1BoostEl.style.width = `${(1 - p1.boostCooldown / p1.boostMaxCooldown) * 100}%`;
+                p2BoostEl.style.width = `${(1 - p2.boostCooldown / p2.boostMaxCooldown) * 100}%`;
+                // Ranking: compare laps then checkpoint progress
+                const score1 = p1.laps * 1000 + p1.checkIdx;
+                const score2 = p2.laps * 1000 + p2.checkIdx;
+                let first = '—', second = '—';
+                if (score1 > score2) { first = 'Joueur 1'; second = 'Joueur 2'; }
+                else if (score2 > score1) { first = 'Joueur 2'; second = 'Joueur 1'; }
+                else { first = 'Égalité'; second = '—'; }
+                rankingEl.textContent = `1: ${first}   2: ${second}`;
+            }
+
+            // Resize handling
+            window.addEventListener('resize', () => {
+                W = canvas.width = innerWidth;
+                H = canvas.height = innerHeight;
+                canvas.width = W * DPR; canvas.height = H * DPR;
+                canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+                ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+                buildTrack();
+            });
+
+            // Game loop
+            let last = performance.now();
+            let winner = null;
+            function loop(now) {
+                const dt = Math.min(0.05, (now - last) / 1000);
+                last = now;
+
+                // Update cars
+                p1.update(dt, controlsP1);
+                p2.update(dt, controlsP2);
+
+                // Off-road handling
+                handleOffRoad(p1);
+                handleOffRoad(p2);
+
+                // Checkpoints
+                checkCheckpoints(p1);
+                checkCheckpoints(p2);
+
+                // Simple collision between cars (bounce)
+                const dx = p2.x - p1.x, dy = p2.y - p1.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist < 36 && dist > 0) {
+                    const overlap = 36 - dist;
+                    const nx = dx / dist, ny = dy / dist;
+                    p2.x += nx * overlap * 0.5;
+                    p2.y += ny * overlap * 0.5;
+                    p1.x -= nx * overlap * 0.5;
+                    p1.y -= ny * overlap * 0.5;
+                    // exchange some speed
+                    const avg = (p1.speed + p2.speed) * 0.5;
+                    p1.speed = avg * 0.9;
+                    p2.speed = avg * 0.9;
+                }
+
+                // Update UI
+                updateUI();
+
+                // Check win
+                if (!winner) {
+                    if (p1.laps >= totalLapsToWin) { winner = 'Joueur 1'; endGame(winner); }
+                    else if (p2.laps >= totalLapsToWin) { winner = 'Joueur 2'; endGame(winner); }
+                }
+
+                // Render
+                ctx.clearRect(0, 0, W, H);
+                drawBackground();
+                drawTrack();
+
+                // Draw trails first
+                drawTrails(p1);
+                drawTrails(p2);
+
+                // Draw cars
+                drawCar(p1);
+                drawCar(p2);
+
+                // Draw HUD overlays on canvas (lap timers near cars)
+                ctx.save();
+                ctx.font = '12px system-ui,Arial';
+                ctx.fillStyle = '#bfefff';
+                ctx.fillText(`J1 ${p1.currentLapTime.toFixed(2)}s`, p1.x + 18, p1.y - 18);
+                ctx.fillText(`J2 ${p2.currentLapTime.toFixed(2)}s`, p2.x + 18, p2.y - 18);
+                ctx.restore();
+
+                // Flash message fade
+                if (flashTimer > 0) {
+                    flashTimer -= (dt * 1000);
+                    if (flashTimer <= 0) { messageEl.textContent = ''; messageEl.style.opacity = 0; }
+                }
+
+                requestAnimationFrame(loop);
+            }
+
+            function endGame(winnerName) {
+                flash(`${winnerName} a gagné la course !`, 4000);
+                // show big message
+                const el = document.getElementById('message');
+                el.innerHTML = `<div class="winner">${winnerName} GAGNE</div>`;
+                // freeze controls by removing event listeners? We'll just stop updates by setting winner and leaving cars controllable but no further lap counting
+                // Optionally show restart
+                setTimeout(() => {
+                    el.innerHTML += `<div style="font-size:14px;margin-top:8px;opacity:0.9">Appuyez sur R pour recommencer</div>`;
+                    window.addEventListener('keydown', restartHandler);
+                }, 600);
+            }
+
+            function restartHandler(e) {
+                if (e.code === 'KeyR') {
+                    window.removeEventListener('keydown', restartHandler);
+                    resetGame();
+                }
+            }
+
+            function resetGame() {
+                // reset cars
+                const sp = roadCenterPoints[0];
+                p1.x = sp.x - 30; p1.y = sp.y + 60; p1.angle = 0; p1.speed = 0; p1.laps = 0; p1.checkIdx = 0; p1.bestLap = null; p1.lapStartTime = performance.now(); p1.trail = [];
+                p2.x = sp.x + 30; p2.y = sp.y - 60; p2.angle = Math.PI; p2.speed = 0; p2.laps = 0; p2.checkIdx = 0; p2.bestLap = null; p2.lapStartTime = performance.now(); p2.trail = [];
+                winner = null;
+                messageEl.textContent = '';
+            }
+
+            // Start loop
+            last = performance.now();
+            requestAnimationFrame(loop);
+
+            // Small helper: show initial message
+            flash('Prêt ? Course en local — 1v1 • 3 tours', 2200);
+
+            // Prevent context menu on right click
+            window.addEventListener('contextmenu', e => e.preventDefault());
+
+        })();
+    </script>
+</body>
+
+</html>

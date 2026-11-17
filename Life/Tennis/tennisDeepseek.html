@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tennis Arcade - Jeu 2D</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #111;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: 'Courier New', monospace;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 600px;
+        }
+
+        canvas {
+            display: block;
+            border: 2px solid #444;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        #score-board {
+            display: flex;
+            justify-content: space-between;
+            width: 800px;
+            margin-bottom: 20px;
+            font-size: 24px;
+            text-shadow: 0 0 10px #00ffff;
+        }
+
+        .player-score {
+            padding: 10px 20px;
+            border-radius: 5px;
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        #player1-score {
+            color: #ff3366;
+            box-shadow: 0 0 15px rgba(255, 51, 102, 0.7);
+        }
+
+        #player2-score {
+            color: #3366ff;
+            box-shadow: 0 0 15px rgba(51, 102, 255, 0.7);
+        }
+
+        #controls {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 16px;
+            color: #aaa;
+        }
+
+        #game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.7);
+            z-index: 100;
+        }
+
+        #winner {
+            font-size: 32px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 15px #00ffff;
+        }
+
+        button {
+            background: #00ffff;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            font-size: 18px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.7);
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #ff3366;
+            box-shadow: 0 0 15px rgba(255, 51, 102, 0.7);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="score-board">
+        <div id="player1-score" class="player-score">Joueur 1: 0</div>
+        <div id="player2-score" class="player-score">Joueur 2: 0</div>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+        <div id="game-over">
+            <div id="winner"></div>
+            <button id="restart-button">Rejouer</button>
+        </div>
+    </div>
+
+    <div id="controls">
+        <p><span style="color:#ff3366">Joueur 1</span> : Q (gauche), D (droite), Z (avancer), S (reculer), ESPACE
+            (frappe)</p>
+        <p><span style="color:#3366ff">Joueur 2</span> : ← (gauche), → (droite), ↑ (avancer), ↓ (reculer), ENTREE
+            (frappe)</p>
+    </div>
+
+    <script>
+        // Initialisation du canvas
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Variables du jeu
+        let gameRunning = true;
+        let gameState = 'serving'; // 'serving', 'playing', 'point'
+        let servingPlayer = 1;
+        let scores = { player1: 0, player2: 0 };
+        let maxBallSpeed = 5;
+        let gameSpeed = 1;
+
+        // Éléments du jeu
+        const court = {
+            width: canvas.width,
+            height: canvas.height,
+            netHeight: 80,
+            netWidth: 10,
+            perspectiveFactor: 0.3
+        };
+
+        // Joueurs
+        const player1 = {
+            x: canvas.width / 2,
+            y: canvas.height - 50,
+            width: 30,
+            height: 60,
+            color: '#ff3366',
+            speed: 5,
+            moveLeft: false,
+            moveRight: false,
+            moveUp: false,
+            moveDown: false,
+            canHit: true,
+            hitPower: 0
+        };
+
+        const player2 = {
+            x: canvas.width / 2,
+            y: 50,
+            width: 30,
+            height: 60,
+            color: '#3366ff',
+            speed: 5,
+            moveLeft: false,
+            moveRight: false,
+            moveUp: false,
+            moveDown: false,
+            canHit: true,
+            hitPower: 0
+        };
+
+        // Balle
+        const ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 10,
+            speedX: 0,
+            speedY: 0,
+            color: '#00ffff',
+            lastHitBy: null
+        };
+
+        // Initialisation du jeu
+        function initGame() {
+            gameRunning = true;
+            scores = { player1: 0, player2: 0 };
+            maxBallSpeed = 5;
+            gameSpeed = 1;
+            updateScoreDisplay();
+            resetPlayers();
+            resetBall();
+            document.getElementById('game-over').style.display = 'none';
+        }
+
+        // Réinitialiser les joueurs
+        function resetPlayers() {
+            player1.x = canvas.width / 2;
+            player1.y = canvas.height - 50;
+            player2.x = canvas.width / 2;
+            player2.y = 50;
+        }
+
+        // Réinitialiser la balle
+        function resetBall() {
+            ball.x = canvas.width / 2;
+            ball.y = servingPlayer === 1 ? canvas.height - 100 : 100;
+            ball.speedX = 0;
+            ball.speedY = 0;
+            ball.lastHitBy = null;
+        }
+
+        // Mettre à jour l'affichage du score
+        function updateScoreDisplay() {
+            document.getElementById('player1-score').textContent = `Joueur 1: ${scores.player1}`;
+            document.getElementById('player2-score').textContent = `Joueur 2: ${scores.player2}`;
+        }
+
+        // Dessiner le terrain avec perspective
+        function drawCourt() {
+            ctx.fillStyle = '#222';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Lignes du terrain avec perspective
+            ctx.strokeStyle = '#444';
+            ctx.lineWidth = 2;
+
+            // Lignes de fond
+            ctx.beginPath();
+            ctx.moveTo(50, 50);
+            ctx.lineTo(canvas.width - 50, 50);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(50, canvas.height - 50);
+            ctx.lineTo(canvas.width - 50, canvas.height - 50);
+            ctx.stroke();
+
+            // Lignes de côté avec perspective
+            ctx.beginPath();
+            ctx.moveTo(50, 50);
+            ctx.lineTo(100, canvas.height / 2);
+            ctx.lineTo(50, canvas.height - 50);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(canvas.width - 50, 50);
+            ctx.lineTo(canvas.width - 100, canvas.height / 2);
+            ctx.lineTo(canvas.width - 50, canvas.height - 50);
+            ctx.stroke();
+
+            // Filet
+            ctx.fillStyle = '#666';
+            ctx.fillRect(canvas.width / 2 - court.netWidth / 2,
+                canvas.height / 2 - court.netHeight / 2,
+                court.netWidth,
+                court.netHeight);
+
+            // Effet de perspective sur le filet
+            const gradient = ctx.createLinearGradient(0, canvas.height / 2 - court.netHeight / 2,
+                0, canvas.height / 2 + court.netHeight / 2);
+            gradient.addColorStop(0, '#999');
+            gradient.addColorStop(0.5, '#ccc');
+            gradient.addColorStop(1, '#999');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(canvas.width / 2 - court.netWidth / 2,
+                canvas.height / 2 - court.netHeight / 2,
+                court.netWidth,
+                court.netHeight);
+        }
+
+        // Dessiner un joueur
+        function drawPlayer(player) {
+            // Effet de lueur
+            ctx.shadowColor = player.color;
+            ctx.shadowBlur = 15;
+
+            // Corps du joueur
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x - player.width / 2, player.y - player.height / 2, player.width, player.height);
+
+            // Tête
+            ctx.beginPath();
+            ctx.arc(player.x, player.y - player.height / 2 - 10, 10, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Réinitialiser l'effet de lueur
+            ctx.shadowBlur = 0;
+
+            // Raquette
+            ctx.fillStyle = '#fff';
+            if (player === player1) {
+                ctx.fillRect(player.x - 5, player.y - player.height / 2 - 25, 10, 25);
+            } else {
+                ctx.fillRect(player.x - 5, player.y + player.height / 2, 10, 25);
+            }
+        }
+
+        // Dessiner la balle avec effet de perspective
+        function drawBall() {
+            // Calculer la taille de la balle en fonction de sa position Y (perspective)
+            const perspectiveScale = 1 - (ball.y / canvas.height - 0.5) * court.perspectiveFactor;
+            const ballSize = ball.radius * perspectiveScale;
+
+            // Effet de lueur
+            ctx.shadowColor = ball.color;
+            ctx.shadowBlur = 20;
+
+            // Balle
+            ctx.fillStyle = ball.color;
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ballSize, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Réinitialiser l'effet de lueur
+            ctx.shadowBlur = 0;
+        }
+
+        // Mettre à jour les joueurs
+        function updatePlayers() {
+            // Joueur 1
+            if (player1.moveLeft && player1.x > 100) player1.x -= player1.speed;
+            if (player1.moveRight && player1.x < canvas.width - 100) player1.x += player1.speed;
+            if (player1.moveUp && player1.y > canvas.height / 2 + 50) player1.y -= player1.speed;
+            if (player1.moveDown && player1.y < canvas.height - 50) player1.y += player1.speed;
+
+            // Joueur 2
+            if (player2.moveLeft && player2.x > 100) player2.x -= player2.speed;
+            if (player2.moveRight && player2.x < canvas.width - 100) player2.x += player2.speed;
+            if (player2.moveUp && player2.y > 50) player2.y -= player2.speed;
+            if (player2.moveDown && player2.y < canvas.height / 2 - 50) player2.y += player2.speed;
+
+            // Gestion de la frappe
+            if (player1.canHit) player1.hitPower = Math.min(player1.hitPower + 0.1, 1);
+            if (player2.canHit) player2.hitPower = Math.min(player2.hitPower + 0.1, 1);
+        }
+
+        // Mettre à jour la balle
+        function updateBall() {
+            if (gameState === 'serving') {
+                // Position de service
+                if (servingPlayer === 1) {
+                    ball.x = player1.x;
+                    ball.y = player1.y - 40;
+                } else {
+                    ball.x = player2.x;
+                    ball.y = player2.y + 40;
+                }
+                return;
+            }
+
+            // Déplacement de la balle
+            ball.x += ball.speedX * gameSpeed;
+            ball.y += ball.speedY * gameSpeed;
+
+            // Collisions avec les murs
+            if (ball.x - ball.radius < 100 || ball.x + ball.radius > canvas.width - 100) {
+                ball.speedX = -ball.speedX;
+            }
+
+            // Collisions avec les joueurs
+            checkPlayerCollision(player1, 1);
+            checkPlayerCollision(player2, 2);
+
+            // Vérifier si la balle est sortie
+            if (ball.y < 50) {
+                // Point pour le joueur 1
+                scores.player1++;
+                updateScoreDisplay();
+                gameState = 'point';
+                servingPlayer = 2;
+                setTimeout(() => {
+                    resetBall();
+                    gameState = 'serving';
+                }, 1000);
+            } else if (ball.y > canvas.height - 50) {
+                // Point pour le joueur 2
+                scores.player2++;
+                updateScoreDisplay();
+                gameState = 'point';
+                servingPlayer = 1;
+                setTimeout(() => {
+                    resetBall();
+                    gameState = 'serving';
+                }, 1000);
+            }
+
+            // Vérifier si un joueur a gagné
+            if (scores.player1 >= 5 || scores.player2 >= 5) {
+                endGame();
+            }
+        }
+
+        // Vérifier la collision avec un joueur
+        function checkPlayerCollision(player, playerNum) {
+            const playerTop = player.y - player.height / 2;
+            const playerBottom = player.y + player.height / 2;
+            const playerLeft = player.x - player.width / 2;
+            const playerRight = player.x + player.width / 2;
+
+            if (ball.x + ball.radius > playerLeft &&
+                ball.x - ball.radius < playerRight &&
+                ball.y + ball.radius > playerTop &&
+                ball.y - ball.radius < playerBottom) {
+
+                // Vérifier si le joueur peut frapper
+                if (player.canHit && playerNum !== ball.lastHitBy) {
+                    // Calculer l'angle de frappe basé sur la position relative
+                    const hitAngle = (ball.x - player.x) / (player.width / 2);
+
+                    // Appliquer la vitesse en fonction de la puissance de frappe
+                    const speed = maxBallSpeed * (0.5 + player.hitPower * 0.5);
+
+                    // Direction en fonction du joueur
+                    if (playerNum === 1) {
+                        ball.speedY = -Math.cos(hitAngle * Math.PI / 4) * speed;
+                    } else {
+                        ball.speedY = Math.cos(hitAngle * Math.PI / 4) * speed;
+                    }
+
+                    ball.speedX = Math.sin(hitAngle * Math.PI / 4) * speed;
+
+                    // Réinitialiser la puissance de frappe
+                    player.hitPower = 0;
+                    player.canHit = false;
+                    setTimeout(() => {
+                        player.canHit = true;
+                    }, 500);
+
+                    ball.lastHitBy = playerNum;
+
+                    // Augmenter légèrement la vitesse maximale après chaque frappe réussie
+                    maxBallSpeed = Math.min(maxBallSpeed + 0.05, 10);
+                }
+            }
+        }
+
+        // Service
+        function serve(playerNum) {
+            if (gameState === 'serving' && servingPlayer === playerNum) {
+                gameState = 'playing';
+
+                // Direction aléatoire pour le service
+                const angle = (Math.random() * Math.PI / 3) - Math.PI / 6; // -30° à +30°
+                const speed = maxBallSpeed * 0.7;
+
+                if (playerNum === 1) {
+                    ball.speedY = -Math.cos(angle) * speed;
+                } else {
+                    ball.speedY = Math.cos(angle) * speed;
+                }
+
+                ball.speedX = Math.sin(angle) * speed;
+                ball.lastHitBy = playerNum;
+            }
+        }
+
+        // Fin du jeu
+        function endGame() {
+            gameRunning = false;
+            const winner = scores.player1 >= 5 ? "Joueur 1" : "Joueur 2";
+            document.getElementById('winner').textContent = `${winner} a gagné !`;
+            document.getElementById('game-over').style.display = 'block';
+        }
+
+        // Boucle de jeu
+        function gameLoop() {
+            // Effacer le canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dessiner les éléments
+            drawCourt();
+            drawPlayer(player1);
+            drawPlayer(player2);
+            drawBall();
+
+            // Mettre à jour la logique du jeu
+            if (gameRunning) {
+                updatePlayers();
+                updateBall();
+            }
+
+            // Appeler la boucle de jeu suivante
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Gestion des événements clavier
+        document.addEventListener('keydown', (e) => {
+            switch (e.key) {
+                // Joueur 1
+                case 'q':
+                case 'Q':
+                    player1.moveLeft = true;
+                    break;
+                case 'd':
+                case 'D':
+                    player1.moveRight = true;
+                    break;
+                case 'z':
+                case 'Z':
+                    player1.moveUp = true;
+                    break;
+                case 's':
+                case 'S':
+                    player1.moveDown = true;
+                    break;
+                case ' ':
+                    if (gameState === 'serving' && servingPlayer === 1) {
+                        serve(1);
+                    }
+                    break;
+
+                // Joueur 2
+                case 'ArrowLeft':
+                    player2.moveLeft = true;
+                    break;
+                case 'ArrowRight':
+                    player2.moveRight = true;
+                    break;
+                case 'ArrowUp':
+                    player2.moveUp = true;
+                    break;
+                case 'ArrowDown':
+                    player2.moveDown = true;
+                    break;
+                case 'Enter':
+                    if (gameState === 'serving' && servingPlayer === 2) {
+                        serve(2);
+                    }
+                    break;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            switch (e.key) {
+                // Joueur 1
+                case 'q':
+                case 'Q':
+                    player1.moveLeft = false;
+                    break;
+                case 'd':
+                case 'D':
+                    player1.moveRight = false;
+                    break;
+                case 'z':
+                case 'Z':
+                    player1.moveUp = false;
+                    break;
+                case 's':
+                case 'S':
+                    player1.moveDown = false;
+                    break;
+
+                // Joueur 2
+                case 'ArrowLeft':
+                    player2.moveLeft = false;
+                    break;
+                case 'ArrowRight':
+                    player2.moveRight = false;
+                    break;
+                case 'ArrowUp':
+                    player2.moveUp = false;
+                    break;
+                case 'ArrowDown':
+                    player2.moveDown = false;
+                    break;
+            }
+        });
+
+        // Bouton de redémarrage
+        document.getElementById('restart-button').addEventListener('click', initGame);
+
+        // Démarrer le jeu
+        initGame();
+        gameLoop();
+    </script>
+</body>
+
+</html>

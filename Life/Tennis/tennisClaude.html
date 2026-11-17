@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Tennis 2D</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a0a2e 50%, #0a0a0a 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            position: relative;
+            box-shadow: 0 0 40px rgba(255, 0, 255, 0.5), 0 0 80px rgba(0, 255, 255, 0.3);
+        }
+
+        canvas {
+            display: block;
+            background: #0a0515;
+            border: 3px solid #ff00ff;
+        }
+
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            color: #fff;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+            pointer-events: none;
+        }
+
+        .score-panel {
+            display: flex;
+            justify-content: space-between;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .player-score {
+            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+            border: 2px solid;
+        }
+
+        .p1-score {
+            border-color: #ff0066;
+            color: #ff0066;
+            text-shadow: 0 0 15px #ff0066;
+        }
+
+        .p2-score {
+            border-color: #00ffff;
+            color: #00ffff;
+            text-shadow: 0 0 15px #00ffff;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid #ff00ff;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .control-row {
+            margin: 5px 0;
+        }
+
+        .control-row span {
+            color: #00ffff;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="ui">
+            <div class="score-panel">
+                <div class="player-score p1-score">
+                    <div>P1 (Rouge)</div>
+                    <div id="p1Score">0 - 0</div>
+                </div>
+                <div class="player-score p2-score">
+                    <div>P2 (Bleu)</div>
+                    <div id="p2Score">0 - 0</div>
+                </div>
+            </div>
+        </div>
+        <div class="controls">
+            <div class="control-row"><span>P1:</span> Q/D (Déplacement) | Z/S (Avant/Arrière) | ESPACE (Frappe)</div>
+            <div class="control-row"><span>P2:</span> ←/→ (Déplacement) | ↑/↓ (Avant/Arrière) | ENTRÉE (Frappe)</div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width;
+        const H = canvas.height;
+
+        // Game state
+        const game = {
+            baseSpeed: 1.2,
+            speedMultiplier: 1,
+            serving: 1,
+            ballInPlay: false,
+            bounces: 0,
+            lastHitter: 0
+        };
+
+        // Players
+        const p1 = {
+            x: W / 2,
+            y: H - 80,
+            vx: 0,
+            vy: 0,
+            width: 15,
+            height: 25,
+            color: '#ff0066',
+            score: 0,
+            games: 0,
+            points: 0,
+            keys: { left: false, right: false, up: false, down: false, hit: false }
+        };
+
+        const p2 = {
+            x: W / 2,
+            y: 80,
+            vx: 0,
+            vy: 0,
+            width: 12,
+            height: 20,
+            color: '#00ffff',
+            score: 0,
+            games: 0,
+            points: 0,
+            keys: { left: false, right: false, up: false, down: false, hit: false }
+        };
+
+        // Ball
+        const ball = {
+            x: W / 2,
+            y: H - 100,
+            z: 0,
+            vx: 0,
+            vy: 0,
+            vz: 0,
+            radius: 8,
+            gravity: 0.4,
+            bounceDecay: 0.7
+        };
+
+        // Keyboard handling
+        const keys = {};
+
+        window.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+
+            // P1 controls
+            if (e.key.toLowerCase() === 'q') p1.keys.left = true;
+            if (e.key.toLowerCase() === 'd') p1.keys.right = true;
+            if (e.key.toLowerCase() === 'z') p1.keys.up = true;
+            if (e.key.toLowerCase() === 's') p1.keys.down = true;
+            if (e.key === ' ') {
+                e.preventDefault();
+                p1.keys.hit = true;
+            }
+
+            // P2 controls
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                p2.keys.left = true;
+            }
+            if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                p2.keys.right = true;
+            }
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                p2.keys.up = true;
+            }
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                p2.keys.down = true;
+            }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                p2.keys.hit = true;
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+
+            // P1 controls
+            if (e.key.toLowerCase() === 'q') p1.keys.left = false;
+            if (e.key.toLowerCase() === 'd') p1.keys.right = false;
+            if (e.key.toLowerCase() === 'z') p1.keys.up = false;
+            if (e.key.toLowerCase() === 's') p1.keys.down = false;
+            if (e.key === ' ') p1.keys.hit = false;
+
+            // P2 controls
+            if (e.key === 'ArrowLeft') p2.keys.left = false;
+            if (e.key === 'ArrowRight') p2.keys.right = false;
+            if (e.key === 'ArrowUp') p2.keys.up = false;
+            if (e.key === 'ArrowDown') p2.keys.down = false;
+            if (e.key === 'Enter') p2.keys.hit = false;
+        });
+
+        function drawCourt() {
+            // Court background with perspective
+            const courtColor = '#1a4d2e';
+            ctx.fillStyle = courtColor;
+
+            // Main court area (trapezoid for perspective)
+            ctx.beginPath();
+            ctx.moveTo(100, 150); // Top left
+            ctx.lineTo(700, 150); // Top right
+            ctx.lineTo(750, 550); // Bottom right
+            ctx.lineTo(50, 550);  // Bottom left
+            ctx.closePath();
+            ctx.fill();
+
+            // Net
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#ffffff';
+            ctx.beginPath();
+            ctx.moveTo(80, H / 2);
+            ctx.lineTo(720, H / 2);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Court lines
+            ctx.strokeStyle = '#ffff00';
+            ctx.lineWidth = 2;
+            ctx.shadowBlur = 5;
+            ctx.shadowColor = '#ffff00';
+
+            // Baseline P2
+            ctx.beginPath();
+            ctx.moveTo(100, 150);
+            ctx.lineTo(700, 150);
+            ctx.stroke();
+
+            // Baseline P1
+            ctx.beginPath();
+            ctx.moveTo(50, 550);
+            ctx.lineTo(750, 550);
+            ctx.stroke();
+
+            // Side lines
+            ctx.beginPath();
+            ctx.moveTo(100, 150);
+            ctx.lineTo(50, 550);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(700, 150);
+            ctx.lineTo(750, 550);
+            ctx.stroke();
+
+            // Service boxes
+            ctx.beginPath();
+            ctx.moveTo(250, 150);
+            ctx.lineTo(200, 300);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(550, 150);
+            ctx.lineTo(600, 300);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(250, 550);
+            ctx.lineTo(200, 400);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(550, 550);
+            ctx.lineTo(600, 400);
+            ctx.stroke();
+
+            ctx.shadowBlur = 0;
+        }
+
+        function drawPlayer(player) {
+            ctx.save();
+
+            // Shadow effect
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = player.color;
+
+            // Body
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x - player.width / 2, player.y - player.height, player.width, player.height);
+
+            // Head
+            ctx.beginPath();
+            ctx.arc(player.x, player.y - player.height - 8, 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Racket
+            ctx.strokeStyle = player.color;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(player.x + player.width / 2, player.y - player.height / 2);
+            ctx.lineTo(player.x + player.width / 2 + 15, player.y - player.height / 2 - 10);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(player.x + player.width / 2 + 15, player.y - player.height / 2 - 10, 8, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function drawBall() {
+            const scale = 1 - (ball.y / H) * 0.3;
+            const size = ball.radius * scale;
+
+            // Shadow on court
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.beginPath();
+            ctx.ellipse(ball.x, ball.y + ball.z * 0.5, size * 1.2, size * 0.6, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Ball
+            ctx.save();
+            ctx.shadowBlur = 25;
+            ctx.shadowColor = '#ffff00';
+            ctx.fillStyle = '#ffff00';
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y - ball.z, size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function updatePlayer(player) {
+            const speed = 5;
+            const depthSpeed = 2;
+
+            // Horizontal movement
+            if (player.keys.left) player.vx = -speed;
+            else if (player.keys.right) player.vx = speed;
+            else player.vx *= 0.8;
+
+            // Depth movement
+            if (player.keys.up) player.vy = -depthSpeed;
+            else if (player.keys.down) player.vy = depthSpeed;
+            else player.vy *= 0.8;
+
+            player.x += player.vx;
+            player.y += player.vy;
+
+            // Boundaries with perspective
+            const leftBound = 50 + (player.y - 150) * 0.3;
+            const rightBound = 750 - (player.y - 150) * 0.3;
+
+            if (player.x < leftBound) player.x = leftBound;
+            if (player.x > rightBound) player.x = rightBound;
+
+            if (player === p1) {
+                if (player.y < H / 2 + 30) player.y = H / 2 + 30;
+                if (player.y > H - 50) player.y = H - 50;
+            } else {
+                if (player.y < 60) player.y = 60;
+                if (player.y > H / 2 - 30) player.y = H / 2 - 30;
+            }
+        }
+
+        function hitBall(player) {
+            if (!player.keys.hit) return;
+
+            const dist = Math.hypot(ball.x - player.x, ball.y - player.y);
+
+            if (dist < 40 && ball.z < 50) {
+                const angle = Math.atan2(ball.y - player.y, ball.x - player.x);
+                const power = 8 * game.speedMultiplier * game.baseSpeed;
+
+                ball.vx = Math.cos(angle) * power * 0.5;
+                ball.vy = Math.sin(angle) * power;
+                ball.vz = 12;
+
+                game.lastHitter = player === p1 ? 1 : 2;
+                game.bounces = 0;
+
+                player.keys.hit = false;
+            }
+        }
+
+        function updateBall() {
+            if (!game.ballInPlay) return;
+
+            ball.x += ball.vx;
+            ball.y += ball.vy;
+            ball.z += ball.vz;
+            ball.vz -= ball.gravity;
+
+            // Bounce on court
+            if (ball.z <= 0) {
+                ball.z = 0;
+                ball.vz = -ball.vz * ball.bounceDecay;
+                ball.vx *= 0.95;
+                ball.vy *= 0.95;
+
+                game.bounces++;
+
+                if (ball.vz < 1) {
+                    scorePoint();
+                }
+            }
+
+            // Check if ball is out
+            if (ball.x < 40 || ball.x > 760 || ball.y < 140 || ball.y > 560) {
+                if (game.bounces > 0) {
+                    scorePoint();
+                }
+            }
+
+            // Net collision
+            if (Math.abs(ball.y - H / 2) < 10 && ball.z < 30) {
+                ball.vy = -ball.vy * 0.5;
+                ball.vz *= 0.3;
+            }
+        }
+
+        function scorePoint() {
+            game.ballInPlay = false;
+
+            let winner = 0;
+
+            // Determine winner
+            if (ball.y < H / 2) {
+                winner = game.lastHitter === 1 ? 2 : 1;
+            } else {
+                winner = game.lastHitter === 2 ? 1 : 2;
+            }
+
+            if (game.bounces > 1) {
+                winner = game.lastHitter === 1 ? 2 : 1;
+            }
+
+            const p = winner === 1 ? p1 : p2;
+            p.points++;
+
+            // Check for game win
+            if (p.points >= 4 && p.points - (winner === 1 ? p2.points : p1.points) >= 2) {
+                p.games++;
+                p1.points = 0;
+                p2.points = 0;
+
+                // Increase difficulty
+                game.speedMultiplier += 0.15;
+            }
+
+            updateScore();
+
+            setTimeout(() => {
+                serve(winner);
+            }, 1500);
+        }
+
+        function serve(server) {
+            game.serving = server;
+            game.lastHitter = server;
+            game.bounces = 0;
+
+            if (server === 1) {
+                ball.x = p1.x;
+                ball.y = p1.y - 30;
+                ball.z = 0;
+                ball.vx = 0;
+                ball.vy = -6 * game.speedMultiplier * game.baseSpeed;
+                ball.vz = 10;
+            } else {
+                ball.x = p2.x;
+                ball.y = p2.y + 30;
+                ball.z = 0;
+                ball.vx = 0;
+                ball.vy = 6 * game.speedMultiplier * game.baseSpeed;
+                ball.vz = 10;
+            }
+
+            game.ballInPlay = true;
+        }
+
+        function updateScore() {
+            const points = ['0', '15', '30', '40'];
+
+            let p1Score = p1.points < 4 ? points[p1.points] : '40';
+            let p2Score = p2.points < 4 ? points[p2.points] : '40';
+
+            if (p1.points >= 3 && p2.points >= 3) {
+                if (p1.points === p2.points) {
+                    p1Score = 'DEUCE';
+                    p2Score = 'DEUCE';
+                } else if (p1.points > p2.points) {
+                    p1Score = 'ADV';
+                    p2Score = '-';
+                } else {
+                    p1Score = '-';
+                    p2Score = 'ADV';
+                }
+            }
+
+            document.getElementById('p1Score').textContent = `${p1.games} Jeux | ${p1Score}`;
+            document.getElementById('p2Score').textContent = `${p2.games} Jeux | ${p2Score}`;
+        }
+
+        function gameLoop() {
+            ctx.fillStyle = '#0a0515';
+            ctx.fillRect(0, 0, W, H);
+
+            drawCourt();
+
+            updatePlayer(p1);
+            updatePlayer(p2);
+            hitBall(p1);
+            hitBall(p2);
+            updateBall();
+
+            drawPlayer(p2);
+            drawBall();
+            drawPlayer(p1);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Initialize
+        serve(1);
+        updateScore();
+        gameLoop();
+    </script>
+</body>
+
+</html>

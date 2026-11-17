@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Tower Defense – Minimal Strategy</title>
+    <style>
+        body {
+            margin: 0;
+            background: #0f1220;
+            color: #e0e0ff;
+            font-family: Arial, sans-serif;
+            display: flex;
+        }
+
+        #ui {
+            width: 240px;
+            padding: 10px;
+            background: #151a30;
+            box-shadow: inset 0 0 10px #000;
+        }
+
+        canvas {
+            background: #0a0d1a;
+            cursor: pointer;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 5px;
+            padding: 6px;
+            background: #2a2f55;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #3a3f77;
+        }
+
+        .small {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="ui">
+        <h3>Base</h3>
+        <div>❤️ Vies : <span id="lives"></span></div>
+        <div>💰 Or : <span id="gold"></span></div>
+        <div>🌊 Vague : <span id="wave"></span></div>
+        <div>⏱️ Prochaine : <span id="timer"></span></div>
+
+        <h3>Tours</h3>
+        <button onclick="selectTower('gun')">🔫 Mitrailleuse (50)</button>
+        <button onclick="selectTower('ice')">❄️ Glace (70)</button>
+        <button onclick="selectTower('cannon')">💣 Canon (100)</button>
+
+        <h3>Tour sélectionnée</h3>
+        <button onclick="upgradeTower()">⬆️ Améliorer</button>
+        <button onclick="sellTower()">💸 Vendre</button>
+
+        <h3>Recherche</h3>
+        <div>⭐ Points : <span id="research"></span></div>
+        <button onclick="upgradeResearch()">📚 Dégâts +10%</button>
+
+        <p class="small">Clique une case vide pour placer<br>Clique une tour pour gérer</p>
+    </div>
+
+    <canvas id="game" width="800" height="600"></canvas>
+
+    <script>
+        // =======================
+        // CONFIGURATION GLOBALE
+        // =======================
+        const canvas = document.getElementById("game");
+        const ctx = canvas.getContext("2d");
+
+        const TILE = 40;
+        const GRID_W = canvas.width / TILE;
+        const GRID_H = canvas.height / TILE;
+
+        // =======================
+        // ÉTAT DU JEU
+        // =======================
+        let lives = 20;
+        let gold = 150;
+        let wave = 0;
+        let researchPoints = 0;
+        let researchBonus = 1;
+
+        let selectedTowerType = null;
+        let selectedTower = null;
+
+        // =======================
+        // CHEMIN FIXE (WAYPOINTS)
+        // =======================
+        const path = [
+            { x: 0, y: 7 }, { x: 5, y: 7 }, { x: 5, y: 3 },
+            { x: 12, y: 3 }, { x: 12, y: 10 }, { x: 19, y: 10 }
+        ];
+
+        // =======================
+        // TABLEAUX PRINCIPAUX
+        // =======================
+        let enemies = [];
+        let towers = [];
+        let projectiles = [];
+
+        // =======================
+        // ENNEMIS
+        // =======================
+        class Enemy {
+            constructor(type) {
+                this.type = type;
+                this.hp = type.hp;
+                this.speed = type.speed;
+                this.gold = type.gold;
+                this.pathIndex = 0;
+                this.x = path[0].x * TILE + TILE / 2;
+                this.y = path[0].y * TILE + TILE / 2;
+                this.slow = 1;
+            }
+
+            update(dt) {
+                const target = path[this.pathIndex + 1];
+                if (!target) {
+                    lives--;
+                    this.hp = 0;
+                    return;
+                }
+
+                const tx = target.x * TILE + TILE / 2;
+                const ty = target.y * TILE + TILE / 2;
+
+                const dx = tx - this.x;
+                const dy = ty - this.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist < 2) {
+                    this.pathIndex++;
+                } else {
+                    this.x += (dx / dist) * this.speed * this.slow * dt;
+                    this.y += (dy / dist) * this.speed * this.slow * dt;
+                }
+
+                this.slow = 1;
+            }
+
+            draw() {
+                ctx.fillStyle = this.type.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 10, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // =======================
+        // TOURS
+        // =======================
+        class Tower {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.level = 1;
+                this.cooldown = 0;
+            }
+
+            update(dt) {
+                this.cooldown -= dt;
+                if (this.cooldown > 0) return;
+
+                let target = this.getTarget();
+                if (!target) return;
+
+                this.cooldown = this.type.rate;
+                projectiles.push(new Projectile(this, target));
+            }
+
+            getTarget() {
+                let list = enemies.filter(e => {
+                    const d = Math.hypot(e.x - this.x, e.y - this.y);
+                    return d < this.type.range;
+                });
+
+                if (list.length === 0) return null;
+
+                if (this.type.target === "weak") {
+                    list.sort((a, b) => a.hp - b.hp);
+                }
+                if (this.type.target === "advanced") {
+                    list.sort((a, b) => b.pathIndex - a.pathIndex);
+                }
+                return list[0];
+            }
+
+            draw() {
+                ctx.fillStyle = this.type.color;
+                ctx.fillRect(this.x - 15, this.y - 15, 30, 30);
+            }
+        }
+
+        // =======================
+        // PROJECTILES
+        // =======================
+        class Projectile {
+            constructor(tower, enemy) {
+                this.x = tower.x;
+                this.y = tower.y;
+                this.enemy = enemy;
+                this.damage = tower.type.damage * researchBonus;
+                this.slow = tower.type.slow || 1;
+            }
+
+            update(dt) {
+                if (!this.enemy || this.enemy.hp <= 0) return true;
+
+                // Collision cercle-point :
+                // Si la distance entre le projectile (point)
+                // et le centre de l'ennemi (cercle) est < rayon
+                const dx = this.enemy.x - this.x;
+                const dy = this.enemy.y - this.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist < 10) {
+                    this.enemy.hp -= this.damage;
+                    this.enemy.slow = this.slow;
+                    if (this.enemy.hp <= 0) {
+                        gold += this.enemy.gold;
+                    }
+                    return true;
+                }
+
+                this.x += dx * 0.2;
+                this.y += dy * 0.2;
+                return false;
+            }
+
+            draw() {
+                ctx.fillStyle = "#fff";
+                ctx.fillRect(this.x - 2, this.y - 2, 4, 4);
+            }
+        }
+
+        // =======================
+        // TYPES
+        // =======================
+        const ENEMIES = {
+            fast: { hp: 20, speed: 80, gold: 5, color: "#0ff" },
+            tank: { hp: 60, speed: 30, gold: 10, color: "#f0f" },
+            boss: { hp: 300, speed: 20, gold: 50, color: "#f00" }
+        };
+
+        const TOWERS = {
+            gun: { cost: 50, rate: 0.3, range: 120, damage: 8, color: "#4af", target: "closest" },
+            ice: { cost: 70, rate: 0.8, range: 100, damage: 4, slow: 0.5, color: "#6ff", target: "weak" },
+            cannon: { cost: 100, rate: 1.2, range: 140, damage: 25, color: "#fa4", target: "advanced" }
+        };
+
+        // =======================
+        // VAGUES
+        // =======================
+        let waveTimer = 3;
+
+        function spawnWave() {
+            wave++;
+            researchPoints++;
+            for (let i = 0; i < wave * 2; i++) {
+                let type = ENEMIES.fast;
+                if (wave > 3 && i % 3 === 0) type = ENEMIES.tank;
+                if (wave % 5 === 0 && i === 0) type = ENEMIES.boss;
+                enemies.push(new Enemy(type));
+            }
+        }
+
+        // =======================
+        // INPUT
+        // =======================
+        canvas.addEventListener("click", e => {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / TILE) * TILE + TILE / 2;
+            const y = Math.floor((e.clientY - rect.top) / TILE) * TILE + TILE / 2;
+
+            selectedTower = towers.find(t => Math.hypot(t.x - x, t.y - y) < 20);
+            if (selectedTower) return;
+
+            if (!selectedTowerType) return;
+            const cost = TOWERS[selectedTowerType].cost;
+            if (gold < cost) return;
+
+            towers.push(new Tower(x, y, TOWERS[selectedTowerType]));
+            gold -= cost;
+        });
+
+        // =======================
+        // UI ACTIONS
+        // =======================
+        function selectTower(t) { selectedTowerType = t; }
+        function upgradeTower() {
+            if (!selectedTower || gold < 30) return;
+            selectedTower.type.damage *= 1.2;
+            selectedTower.type.range += 10;
+            gold -= 30;
+        }
+        function sellTower() {
+            if (!selectedTower) return;
+            gold += 20;
+            towers = towers.filter(t => t !== selectedTower);
+            selectedTower = null;
+        }
+        function upgradeResearch() {
+            if (researchPoints < 1) return;
+            researchPoints--;
+            researchBonus += 0.1;
+        }
+
+        // =======================
+        // BOUCLE PRINCIPALE
+        // =======================
+        let last = 0;
+        function loop(ts) {
+            const dt = (ts - last) / 1000;
+            last = ts;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // chemin
+            ctx.strokeStyle = "#333";
+            ctx.lineWidth = 20;
+            ctx.beginPath();
+            path.forEach((p, i) => {
+                const px = p.x * TILE + TILE / 2;
+                const py = p.y * TILE + TILE / 2;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            });
+            ctx.stroke();
+
+            enemies = enemies.filter(e => {
+                e.update(dt);
+                e.draw();
+                return e.hp > 0;
+            });
+
+            towers.forEach(t => {
+                t.update(dt);
+                t.draw();
+            });
+
+            projectiles = projectiles.filter(p => {
+                p.draw();
+                return !p.update(dt);
+            });
+
+            waveTimer -= dt;
+            if (waveTimer <= 0) {
+                spawnWave();
+                waveTimer = 8;
+            }
+
+            // HUD
+            livesEl.textContent = lives;
+            goldEl.textContent = gold;
+            waveEl.textContent = wave;
+            timerEl.textContent = waveTimer.toFixed(1);
+            researchEl.textContent = researchPoints;
+
+            requestAnimationFrame(loop);
+        }
+
+        const livesEl = document.getElementById("lives");
+        const goldEl = document.getElementById("gold");
+        const waveEl = document.getElementById("wave");
+        const timerEl = document.getElementById("timer");
+        const researchEl = document.getElementById("research");
+
+        requestAnimationFrame(loop);
+    </script>
+</body>
+
+</html>

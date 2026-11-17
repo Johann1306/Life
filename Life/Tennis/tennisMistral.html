@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tennis 2D en HTML5 Canvas</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const player1 = {
+            x: canvas.width / 2 - 50,
+            y: canvas.height - 50,
+            width: 20,
+            height: 20,
+            color: '#ff0000',
+            score: 0,
+            controls: {
+                left: 'q',
+                right: 'd',
+                up: 'z',
+                down: 's',
+                hit: ' '
+            }
+        };
+
+        const player2 = {
+            x: canvas.width / 2 - 50,
+            y: 50,
+            width: 20,
+            height: 20,
+            color: '#0000ff',
+            score: 0,
+            controls: {
+                left: 'ArrowLeft',
+                right: 'ArrowRight',
+                up: 'ArrowUp',
+                down: 'ArrowDown',
+                hit: 'Enter'
+            }
+        };
+
+        const ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 10,
+            speedX: 0,
+            speedY: 0,
+            color: '#ffff00'
+        };
+
+        let score1 = 0;
+        let score2 = 0;
+        let servingPlayer = 1;
+        let gameSpeed = 1;
+        let gameStarted = false;
+
+        function serveBall() {
+            ball.x = servingPlayer === 1 ? player1.x + player1.width / 2 : player2.x + player2.width / 2;
+            ball.y = servingPlayer === 1 ? player1.y - 20 : player2.y + 20;
+            ball.speedX = (Math.random() - 0.5) * 10;
+            ball.speedY = servingPlayer === 1 ? -5 : 5;
+            gameStarted = true;
+        }
+
+        function updateBall() {
+            if (!gameStarted) return;
+
+            ball.x += ball.speedX * gameSpeed;
+            ball.y += ball.speedY * gameSpeed;
+
+            // Collision avec les murs
+            if (ball.x <= 0 || ball.x >= canvas.width) {
+                ball.speedX = -ball.speedX;
+            }
+
+            // Collision avec le sol et le plafond
+            if (ball.y <= 0) {
+                score2++;
+                gameSpeed += 0.5;
+                gameStarted = false;
+                servingPlayer = 1;
+                setTimeout(serveBall, 1000);
+            } else if (ball.y >= canvas.height) {
+                score1++;
+                gameSpeed += 0.5;
+                gameStarted = false;
+                servingPlayer = 2;
+                setTimeout(serveBall, 1000);
+            }
+
+            // Collision avec les joueurs
+            if (ball.x >= player1.x && ball.x <= player1.x + player1.width &&
+                ball.y >= player1.y && ball.y <= player1.y + player1.height) {
+                ball.speedY = -Math.abs(ball.speedY);
+                ball.speedX = (ball.x - (player1.x + player1.width / 2)) / 10;
+            }
+
+            if (ball.x >= player2.x && ball.x <= player2.x + player2.width &&
+                ball.y >= player2.y && ball.y <= player2.y + player2.height) {
+                ball.speedY = Math.abs(ball.speedY);
+                ball.speedX = (ball.x - (player2.x + player2.width / 2)) / 10;
+            }
+        }
+
+        function draw() {
+            // Dessiner le terrain
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Dessiner le filet avec perspective
+            ctx.strokeStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+
+            // Dessiner les lignes de fond et de côté avec perspective
+            ctx.strokeStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height * 0.8);
+            ctx.lineTo(canvas.width, canvas.height * 0.8);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height * 0.2);
+            ctx.lineTo(canvas.width, canvas.height * 0.2);
+            ctx.stroke();
+
+            // Dessiner les joueurs avec effet de lueur
+            ctx.shadowColor = player1.color;
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = player1.color;
+            ctx.fillRect(player1.x, player1.y, player1.width, player1.height);
+
+            ctx.shadowColor = player2.color;
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = player2.color;
+            ctx.fillRect(player2.x, player2.y, player2.width, player2.height);
+
+            // Dessiner la balle avec effet de lueur et perspective
+            const ballScale = 1 - (ball.y / canvas.height) * 0.5;
+            const ballRadius = ball.radius * ballScale;
+
+            ctx.shadowColor = ball.color;
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = ball.color;
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ballRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Dessiner les scores
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '24px Arial';
+            ctx.fillText(`Player 1: ${score1}`, 20, 30);
+            ctx.fillText(`Player 2: ${score2}`, canvas.width - 150, 30);
+        }
+
+        function gameLoop() {
+            updateBall();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (!gameStarted && (e.key === player1.controls.hit || e.key === player2.controls.hit)) {
+                serveBall();
+                return;
+            }
+
+            switch (e.key) {
+                case player1.controls.left:
+                    if (player1.x > 0) player1.x -= 10;
+                    break;
+                case player1.controls.right:
+                    if (player1.x < canvas.width - player1.width) player1.x += 10;
+                    break;
+                case player1.controls.up:
+                    if (player1.y > canvas.height * 0.5) player1.y -= 10;
+                    break;
+                case player1.controls.down:
+                    if (player1.y < canvas.height - player1.height) player1.y += 10;
+                    break;
+                case player1.controls.hit:
+                    if (ball.x >= player1.x && ball.x <= player1.x + player1.width &&
+                        ball.y >= player1.y && ball.y <= player1.y + player1.height) {
+                        ball.speedY = -Math.abs(ball.speedY);
+                        ball.speedX = (ball.x - (player1.x + player1.width / 2)) / 10;
+                    }
+                    break;
+                case player2.controls.left:
+                    if (player2.x > 0) player2.x -= 10;
+                    break;
+                case player2.controls.right:
+                    if (player2.x < canvas.width - player2.width) player2.x += 10;
+                    break;
+                case player2.controls.up:
+                    if (player2.y > 0) player2.y -= 10;
+                    break;
+                case player2.controls.down:
+                    if (player2.y < canvas.height * 0.5) player2.y += 10;
+                    break;
+                case player2.controls.hit:
+                    if (ball.x >= player2.x && ball.x <= player2.x + player2.width &&
+                        ball.y >= player2.y && ball.y <= player2.y + player2.height) {
+                        ball.speedY = Math.abs(ball.speedY);
+                        ball.speedX = (ball.x - (player2.x + player2.width / 2)) / 10;
+                    }
+                    break;
+            }
+        });
+
+        serveBall();
+        gameLoop();
+    </script>
+</body>
+
+</html>

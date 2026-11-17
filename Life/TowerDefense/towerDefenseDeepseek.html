@@ -1,0 +1,1663 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tower Defense - Économie & Stratégie</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 100%);
+            color: #e0e0ff;
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        h1 {
+            color: #6ee7b7;
+            font-size: 2.8rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(110, 231, 183, 0.5);
+        }
+
+        .subtitle {
+            color: #93c5fd;
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+        }
+
+        .game-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+            justify-content: center;
+        }
+
+        .game-board {
+            flex: 1;
+            min-width: 700px;
+            position: relative;
+            border: 2px solid #3a3a5d;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            background-color: #0f0f23;
+        }
+
+        .game-ui {
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .stats-panel {
+            background-color: rgba(26, 26, 46, 0.8);
+            border: 1px solid #3a3a5d;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .stats-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #3a3a5d;
+        }
+
+        .stat-value {
+            color: #6ee7b7;
+            font-weight: bold;
+        }
+
+        .wave-info {
+            background-color: rgba(30, 30, 60, 0.9);
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+
+        .wave-progress {
+            height: 8px;
+            background-color: #2a2a4a;
+            border-radius: 4px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .wave-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+
+        .tower-shop {
+            background-color: rgba(26, 26, 46, 0.8);
+            border: 1px solid #3a3a5d;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .tower-shop h3 {
+            color: #93c5fd;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .tower-options {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+
+        .tower-option {
+            background-color: #1e1e3a;
+            border: 1px solid #3a3a5d;
+            border-radius: 6px;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .tower-option:hover {
+            border-color: #6ee7b7;
+            transform: translateY(-3px);
+            box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .tower-icon {
+            width: 40px;
+            height: 40px;
+            margin: 0 auto 10px;
+            border-radius: 50%;
+        }
+
+        .tower-1 .tower-icon {
+            background-color: #3b82f6;
+        }
+
+        .tower-2 .tower-icon {
+            background-color: #10b981;
+        }
+
+        .tower-3 .tower-icon {
+            background-color: #ef4444;
+        }
+
+        .tower-cost {
+            color: #fbbf24;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        .tower-info {
+            background-color: rgba(26, 26, 46, 0.8);
+            border: 1px solid #3a3a5d;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .tower-info h3 {
+            color: #93c5fd;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .upgrade-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .upgrade-btn,
+        .sell-btn {
+            padding: 10px;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .upgrade-btn {
+            background-color: #3b82f6;
+            color: white;
+        }
+
+        .upgrade-btn:hover:not(:disabled) {
+            background-color: #2563eb;
+        }
+
+        .upgrade-btn:disabled {
+            background-color: #4b5563;
+            cursor: not-allowed;
+        }
+
+        .sell-btn {
+            background-color: #ef4444;
+            color: white;
+        }
+
+        .sell-btn:hover {
+            background-color: #dc2626;
+        }
+
+        .research-panel {
+            background-color: rgba(26, 26, 46, 0.8);
+            border: 1px solid #3a3a5d;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .research-panel h3 {
+            color: #93c5fd;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .research-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .research-option {
+            background-color: #1e1e3a;
+            border: 1px solid #3a3a5d;
+            border-radius: 6px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .research-option:hover {
+            border-color: #8b5cf6;
+        }
+
+        .research-option.unlocked {
+            border-color: #10b981;
+            background-color: rgba(16, 185, 129, 0.1);
+        }
+
+        .research-cost {
+            color: #8b5cf6;
+            font-weight: bold;
+            float: right;
+        }
+
+        .game-controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .game-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .start-wave-btn {
+            background-color: #10b981;
+            color: white;
+        }
+
+        .start-wave-btn:hover {
+            background-color: #059669;
+        }
+
+        .pause-btn {
+            background-color: #f59e0b;
+            color: white;
+        }
+
+        .pause-btn:hover {
+            background-color: #d97706;
+        }
+
+        .instructions {
+            max-width: 800px;
+            margin-top: 30px;
+            padding: 20px;
+            background-color: rgba(26, 26, 46, 0.6);
+            border-radius: 8px;
+            border: 1px solid #3a3a5d;
+        }
+
+        .instructions h3 {
+            color: #93c5fd;
+            margin-bottom: 15px;
+        }
+
+        .instructions ul {
+            margin-left: 20px;
+            line-height: 1.6;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+        }
+
+        canvas {
+            display: block;
+            background-color: #0a0a1a;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            display: none;
+        }
+
+        .game-over h2 {
+            font-size: 3rem;
+            color: #ef4444;
+            margin-bottom: 20px;
+        }
+
+        .game-over p {
+            font-size: 1.5rem;
+            margin-bottom: 30px;
+        }
+
+        .restart-btn {
+            padding: 15px 30px;
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .restart-btn:hover {
+            background-color: #2563eb;
+            transform: scale(1.05);
+        }
+
+        .selection-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(26, 26, 46, 0.9);
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #3a3a5d;
+            font-size: 0.9rem;
+            max-width: 300px;
+            display: none;
+        }
+
+        @media (max-width: 1100px) {
+            .game-container {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .game-board {
+                min-width: 95%;
+            }
+
+            .game-ui {
+                width: 95%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>TOWER DEFENSE - ÉCONOMIE & STRATÉGIE</h1>
+        <p class="subtitle">Expert en Game Design - Défendez votre base contre les vagues d'ennemis</p>
+    </div>
+
+    <div class="game-container">
+        <div class="game-board">
+            <canvas id="gameCanvas"></canvas>
+            <div class="selection-info" id="selectionInfo"></div>
+            <div class="game-over" id="gameOverScreen">
+                <h2>GAME OVER</h2>
+                <p id="gameOverMessage">Votre base a été détruite !</p>
+                <button class="restart-btn" id="restartBtn">Rejouer</button>
+            </div>
+        </div>
+
+        <div class="game-ui">
+            <div class="stats-panel">
+                <h3>STATISTIQUES</h3>
+                <div class="stats-row">
+                    <span>Vies de la base:</span>
+                    <span class="stat-value" id="baseHealth">100</span>
+                </div>
+                <div class="stats-row">
+                    <span>Or disponible:</span>
+                    <span class="stat-value" id="gold">200</span>
+                </div>
+                <div class="stats-row">
+                    <span>Vague actuelle:</span>
+                    <span class="stat-value" id="currentWave">1</span>
+                </div>
+                <div class="stats-row">
+                    <span>Ennemis restants:</span>
+                    <span class="stat-value" id="enemiesLeft">0</span>
+                </div>
+                <div class="stats-row">
+                    <span>Points de recherche:</span>
+                    <span class="stat-value" id="researchPoints">5</span>
+                </div>
+
+                <div class="wave-info">
+                    <div>Prochaine vague dans: <span id="waveTimer">10</span>s</div>
+                    <div class="wave-progress">
+                        <div class="wave-progress-bar" id="waveProgress"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tower-shop">
+                <h3>MAGASIN DE TOURS</h3>
+                <div class="tower-options">
+                    <div class="tower-option tower-1" data-type="basic">
+                        <div class="tower-icon"></div>
+                        <div>Mitrailleuse</div>
+                        <div class="tower-cost">Coût: 50</div>
+                        <div style="font-size: 0.8rem; margin-top: 5px;">Dégâts modérés, cadence rapide</div>
+                    </div>
+                    <div class="tower-option tower-2" data-type="slow">
+                        <div class="tower-icon"></div>
+                        <div>Tour de Glace</div>
+                        <div class="tower-cost">Coût: 75</div>
+                        <div style="font-size: 0.8rem; margin-top: 5px;">Ralentit les ennemis</div>
+                    </div>
+                    <div class="tower-option tower-3" data-type="cannon">
+                        <div class="tower-icon"></div>
+                        <div>Canon Lourd</div>
+                        <div class="tower-cost">Coût: 120</div>
+                        <div style="font-size: 0.8rem; margin-top: 5px;">Dégâts de zone élevés</div>
+                    </div>
+                    <div class="tower-option" id="targetingOption">
+                        <div
+                            style="width: 40px; height: 40px; margin: 0 auto 10px; border-radius: 50%; background-color: #8b5cf6; display: flex; align-items: center; justify-content: center;">
+                            T</div>
+                        <div>Mode Ciblage</div>
+                        <div id="targetingMode">Plus proche</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tower-info">
+                <h3>INFORMATIONS TOUR</h3>
+                <div id="towerDetails">Cliquez sur une tour pour voir ses détails</div>
+                <div class="upgrade-options" id="upgradeOptions" style="display: none;">
+                    <button class="upgrade-btn" id="upgradeDamage">Améliorer Dégâts (50)</button>
+                    <button class="upgrade-btn" id="upgradeRange">Améliorer Portée (40)</button>
+                    <button class="upgrade-btn" id="upgradeSpeed">Améliorer Cadence (60)</button>
+                    <button class="sell-btn" id="sellTower">Vendre (75% du coût)</button>
+                </div>
+            </div>
+
+            <div class="research-panel">
+                <h3>RECHERCHE</h3>
+                <div class="research-options">
+                    <div class="research-option" data-research="income">
+                        <span>Revenus accrus</span>
+                        <span class="research-cost">Coût: 5 pts</span>
+                        <div style="font-size: 0.8rem; margin-top: 5px;">+10% d'or reçu des ennemis</div>
+                    </div>
+                    <div class="research-option" data-research="damage">
+                        <span>Dégâts améliorés</span>
+                        <span class="research-cost">Coût: 8 pts</span>
+                        <div style="font-size: 0.8rem; margin-top: 5px;">+15% de dégâts pour toutes les tours</div>
+                    </div>
+                    <div class="research-option" data-research="range">
+                        <span>Portée étendue</span>
+                        <span class="research-cost">Coût: 6 pts</span>
+                        <div style="font-size: 0.8rem; margin-top: 5px;">+10% de portée pour toutes les tours</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="game-controls">
+        <button class="game-btn start-wave-btn" id="startWaveBtn">Démarrer la vague</button>
+        <button class="game-btn pause-btn" id="pauseBtn">Pause</button>
+    </div>
+
+    <div class="instructions">
+        <h3>Instructions du jeu</h3>
+        <ul>
+            <li><strong>Objectif:</strong> Défendez votre base contre les vagues d'ennemis. Si votre base perd toutes
+                ses vies, vous perdez.</li>
+            <li><strong>Placement des tours:</strong> Cliquez sur une tour dans le magasin, puis cliquez sur une case
+                vide du terrain pour la placer.</li>
+            <li><strong>Amélioration des tours:</strong> Cliquez sur une tour placée pour voir ses options
+                d'amélioration.</li>
+            <li><strong>Système de recherche:</strong> Utilisez les points de recherche débloqués entre les vagues pour
+                améliorer vos capacités globales.</li>
+            <li><strong>Types d'ennemis:</strong>
+                <ul>
+                    <li><span style="color:#60a5fa;">Rapide:</span> Se déplace vite mais a peu de vie</li>
+                    <li><span style="color:#fbbf24;">Résistant:</span> Se déplace lentement mais a beaucoup de vie</li>
+                    <li><span style="color:#ef4444;">Boss:</span> Très résistant, apparaît toutes les 5 vagues</li>
+                </ul>
+            </li>
+            <li><strong>Conseils:</strong> Équilibrez votre stratégie entre différentes tours et améliorez-les
+                régulièrement.</li>
+        </ul>
+    </div>
+
+    <script>
+        // Initialisation du jeu
+        document.addEventListener('DOMContentLoaded', function () {
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+
+            // Configuration du canvas
+            canvas.width = 800;
+            canvas.height = 600;
+
+            // Variables du jeu
+            let gameState = {
+                gold: 200,
+                baseHealth: 100,
+                currentWave: 1,
+                enemiesLeft: 0,
+                researchPoints: 5,
+                gameOver: false,
+                paused: false,
+                waveActive: false,
+                waveTimer: 10,
+                maxWaveTimer: 10,
+                selectedTowerType: null,
+                selectedTower: null,
+                towers: [],
+                enemies: [],
+                projectiles: [],
+                path: [],
+                gridSize: 40,
+                grid: [],
+                targetingMode: 'nearest', // nearest, weakest, strongest
+                research: {
+                    income: false,
+                    damage: false,
+                    range: false
+                }
+            };
+
+            // Génération du chemin prédéfini
+            function generatePath() {
+                gameState.path = [];
+
+                // Chemin en forme de spirale
+                const startX = 0;
+                const startY = canvas.height / 2;
+
+                // Points du chemin
+                gameState.path.push({ x: startX, y: startY });
+                gameState.path.push({ x: 200, y: startY });
+                gameState.path.push({ x: 200, y: 100 });
+                gameState.path.push({ x: 600, y: 100 });
+                gameState.path.push({ x: 600, y: 500 });
+                gameState.path.push({ x: 400, y: 500 });
+                gameState.path.push({ x: 400, y: 300 });
+                gameState.path.push({ x: canvas.width, y: 300 }); // Sortie (base)
+            }
+
+            // Initialisation de la grille
+            function initializeGrid() {
+                gameState.grid = [];
+                const cols = Math.floor(canvas.width / gameState.gridSize);
+                const rows = Math.floor(canvas.height / gameState.gridSize);
+
+                for (let x = 0; x < cols; x++) {
+                    gameState.grid[x] = [];
+                    for (let y = 0; y < rows; y++) {
+                        // Vérifier si la case est sur le chemin
+                        let onPath = false;
+                        const cellX = x * gameState.gridSize;
+                        const cellY = y * gameState.gridSize;
+
+                        // Vérifier si la case est proche du chemin
+                        for (let i = 0; i < gameState.path.length - 1; i++) {
+                            const pointA = gameState.path[i];
+                            const pointB = gameState.path[i + 1];
+
+                            // Calcul de la distance entre la case et le segment du chemin
+                            const distance = pointToSegmentDistance(
+                                cellX + gameState.gridSize / 2,
+                                cellY + gameState.gridSize / 2,
+                                pointA.x, pointA.y,
+                                pointB.x, pointB.y
+                            );
+
+                            if (distance < gameState.gridSize) {
+                                onPath = true;
+                                break;
+                            }
+                        }
+
+                        gameState.grid[x][y] = {
+                            x: x * gameState.gridSize,
+                            y: y * gameState.gridSize,
+                            occupied: false,
+                            tower: null,
+                            onPath: onPath
+                        };
+                    }
+                }
+            }
+
+            // Fonction utilitaire pour calculer la distance entre un point et un segment
+            function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+                const A = px - x1;
+                const B = py - y1;
+                const C = x2 - x1;
+                const D = y2 - y1;
+
+                const dot = A * C + B * D;
+                const lenSq = C * C + D * D;
+                let param = -1;
+
+                if (lenSq !== 0) param = dot / lenSq;
+
+                let xx, yy;
+
+                if (param < 0) {
+                    xx = x1;
+                    yy = y1;
+                } else if (param > 1) {
+                    xx = x2;
+                    yy = y2;
+                } else {
+                    xx = x1 + param * C;
+                    yy = y1 + param * D;
+                }
+
+                const dx = px - xx;
+                const dy = py - yy;
+
+                return Math.sqrt(dx * dx + dy * dy);
+            }
+
+            // Classe Tour
+            class Tower {
+                constructor(x, y, type) {
+                    this.x = x;
+                    this.y = y;
+                    this.type = type;
+                    this.level = 1;
+                    this.lastShot = 0;
+
+                    // Stats de base selon le type
+                    switch (type) {
+                        case 'basic':
+                            this.damage = 10;
+                            this.range = 150;
+                            this.fireRate = 800; // ms entre les tirs
+                            this.color = '#3b82f6';
+                            this.cost = 50;
+                            this.slowEffect = 0;
+                            break;
+                        case 'slow':
+                            this.damage = 5;
+                            this.range = 120;
+                            this.fireRate = 1500;
+                            this.color = '#10b981';
+                            this.cost = 75;
+                            this.slowEffect = 0.5; // Réduction de vitesse de 50%
+                            break;
+                        case 'cannon':
+                            this.damage = 25;
+                            this.range = 100;
+                            this.fireRate = 2000;
+                            this.color = '#ef4444';
+                            this.cost = 120;
+                            this.slowEffect = 0;
+                            this.splashRadius = 60; // Rayon de l'effet de zone
+                            break;
+                    }
+
+                    // Appliquer les recherches
+                    this.applyResearch();
+                }
+
+                applyResearch() {
+                    // Appliquer les bonus de recherche
+                    if (gameState.research.damage) {
+                        this.damage = Math.floor(this.damage * 1.15);
+                    }
+                    if (gameState.research.range) {
+                        this.range = Math.floor(this.range * 1.1);
+                    }
+                }
+
+                update() {
+                    // Trouver une cible
+                    const target = this.findTarget();
+
+                    if (target && Date.now() - this.lastShot > this.fireRate) {
+                        this.shoot(target);
+                        this.lastShot = Date.now();
+                    }
+                }
+
+                findTarget() {
+                    let target = null;
+
+                    switch (gameState.targetingMode) {
+                        case 'nearest':
+                            target = this.findNearestEnemy();
+                            break;
+                        case 'weakest':
+                            target = this.findWeakestEnemy();
+                            break;
+                        case 'strongest':
+                            target = this.findStrongestEnemy();
+                            break;
+                    }
+
+                    return target;
+                }
+
+                findNearestEnemy() {
+                    let nearest = null;
+                    let nearestDist = this.range;
+
+                    for (const enemy of gameState.enemies) {
+                        const dist = this.distanceTo(enemy);
+                        if (dist < nearestDist) {
+                            nearest = enemy;
+                            nearestDist = dist;
+                        }
+                    }
+
+                    return nearest;
+                }
+
+                findWeakestEnemy() {
+                    let weakest = null;
+                    let lowestHealth = Infinity;
+
+                    for (const enemy of gameState.enemies) {
+                        const dist = this.distanceTo(enemy);
+                        if (dist < this.range && enemy.health < lowestHealth) {
+                            weakest = enemy;
+                            lowestHealth = enemy.health;
+                        }
+                    }
+
+                    return weakest;
+                }
+
+                findStrongestEnemy() {
+                    let strongest = null;
+                    let highestHealth = 0;
+
+                    for (const enemy of gameState.enemies) {
+                        const dist = this.distanceTo(enemy);
+                        if (dist < this.range && enemy.health > highestHealth) {
+                            strongest = enemy;
+                            highestHealth = enemy.health;
+                        }
+                    }
+
+                    return strongest;
+                }
+
+                distanceTo(object) {
+                    const dx = this.x - object.x;
+                    const dy = this.y - object.y;
+                    return Math.sqrt(dx * dx + dy * dy);
+                }
+
+                shoot(target) {
+                    if (this.type === 'cannon') {
+                        // Projectile de canon avec effet de zone
+                        gameState.projectiles.push(new Projectile(
+                            this.x, this.y,
+                            target,
+                            this.damage,
+                            this.color,
+                            this.splashRadius
+                        ));
+                    } else {
+                        // Projectile standard
+                        gameState.projectiles.push(new Projectile(
+                            this.x, this.y,
+                            target,
+                            this.damage,
+                            this.color,
+                            0, // Pas d'effet de zone
+                            this.slowEffect
+                        ));
+                    }
+                }
+
+                draw() {
+                    // Dessiner la tour
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 15, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Dessiner la portée si sélectionnée
+                    if (gameState.selectedTower === this) {
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y, this.range, 0, Math.PI * 2);
+                        ctx.stroke();
+
+                        // Dessiner un indicateur de niveau
+                        ctx.fillStyle = 'white';
+                        ctx.font = '12px Arial';
+                        ctx.fillText(`Niv. ${this.level}`, this.x - 10, this.y - 20);
+                    }
+                }
+
+                upgrade(stat) {
+                    const cost = this.getUpgradeCost(stat);
+
+                    if (gameState.gold >= cost) {
+                        gameState.gold -= cost;
+
+                        switch (stat) {
+                            case 'damage':
+                                this.damage = Math.floor(this.damage * 1.5);
+                                break;
+                            case 'range':
+                                this.range = Math.floor(this.range * 1.3);
+                                break;
+                            case 'speed':
+                                this.fireRate = Math.floor(this.fireRate * 0.8);
+                                break;
+                        }
+
+                        this.level++;
+                        updateUI();
+                        return true;
+                    }
+
+                    return false;
+                }
+
+                getUpgradeCost(stat) {
+                    switch (stat) {
+                        case 'damage': return 50;
+                        case 'range': return 40;
+                        case 'speed': return 60;
+                        default: return 0;
+                    }
+                }
+
+                getSellValue() {
+                    return Math.floor(this.cost * 0.75) + (this.level - 1) * 20;
+                }
+            }
+
+            // Classe Projectile
+            class Projectile {
+                constructor(x, y, target, damage, color, splashRadius = 0, slowEffect = 0) {
+                    this.x = x;
+                    this.y = y;
+                    this.target = target;
+                    this.damage = damage;
+                    this.color = color;
+                    this.speed = 5;
+                    this.splashRadius = splashRadius;
+                    this.slowEffect = slowEffect;
+                    this.active = true;
+                }
+
+                update() {
+                    if (!this.target || !this.target.active) {
+                        this.active = false;
+                        return;
+                    }
+
+                    // Calculer la direction vers la cible
+                    const dx = this.target.x - this.x;
+                    const dy = this.target.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    // Normaliser et déplacer
+                    this.x += (dx / dist) * this.speed;
+                    this.y += (dy / dist) * this.speed;
+
+                    // Vérifier la collision
+                    if (dist < 10) {
+                        this.hit();
+                        this.active = false;
+                    }
+                }
+
+                hit() {
+                    if (this.splashRadius > 0) {
+                        // Effet de zone
+                        for (const enemy of gameState.enemies) {
+                            const dx = enemy.x - this.target.x;
+                            const dy = enemy.y - this.target.y;
+                            const dist = Math.sqrt(dx * dx + dy * dy);
+
+                            if (dist < this.splashRadius) {
+                                // Réduire les dégâts en fonction de la distance
+                                const splashDamage = Math.floor(this.damage * (1 - dist / this.splashRadius));
+                                enemy.takeDamage(splashDamage);
+
+                                // Appliquer l'effet de ralentissement si présent
+                                if (this.slowEffect > 0) {
+                                    enemy.applySlow(this.slowEffect);
+                                }
+                            }
+                        }
+                    } else {
+                        // Cible unique
+                        this.target.takeDamage(this.damage);
+
+                        // Appliquer l'effet de ralentissement si présent
+                        if (this.slowEffect > 0) {
+                            this.target.applySlow(this.slowEffect);
+                        }
+                    }
+                }
+
+                draw() {
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // Classe Ennemi
+            class Enemy {
+                constructor(type, wave) {
+                    this.type = type;
+                    this.pathIndex = 0;
+                    this.x = gameState.path[0].x;
+                    this.y = gameState.path[0].y;
+                    this.speed = 1;
+                    this.baseSpeed = 1;
+                    this.health = 10;
+                    this.maxHealth = 10;
+                    this.value = 10; // Or gagné à la mort
+                    this.active = true;
+                    this.slowEndTime = 0;
+
+                    // Définir les caractéristiques selon le type
+                    switch (type) {
+                        case 'fast':
+                            this.color = '#60a5fa';
+                            this.speed = 2.5;
+                            this.baseSpeed = 2.5;
+                            this.health = 15 + wave;
+                            this.maxHealth = 15 + wave;
+                            this.value = 15;
+                            this.radius = 10;
+                            break;
+                        case 'strong':
+                            this.color = '#fbbf24';
+                            this.speed = 0.8;
+                            this.baseSpeed = 0.8;
+                            this.health = 40 + wave * 3;
+                            this.maxHealth = 40 + wave * 3;
+                            this.value = 25;
+                            this.radius = 15;
+                            break;
+                        case 'boss':
+                            this.color = '#ef4444';
+                            this.speed = 0.5;
+                            this.baseSpeed = 0.5;
+                            this.health = 100 + wave * 10;
+                            this.maxHealth = 100 + wave * 10;
+                            this.value = 100;
+                            this.radius = 20;
+                            break;
+                    }
+
+                    // Appliquer bonus de recherche (pour l'ennemi, cela augmente sa valeur)
+                    if (gameState.research.income) {
+                        this.value = Math.floor(this.value * 1.1);
+                    }
+                }
+
+                update() {
+                    // Gérer le ralentissement
+                    if (Date.now() < this.slowEndTime) {
+                        this.speed = this.baseSpeed * 0.5; // Réduction de 50%
+                    } else {
+                        this.speed = this.baseSpeed;
+                    }
+
+                    // Suivre le chemin
+                    if (this.pathIndex < gameState.path.length - 1) {
+                        const target = gameState.path[this.pathIndex + 1];
+                        const dx = target.x - this.x;
+                        const dy = target.y - this.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+
+                        // Se déplacer vers le point suivant
+                        if (dist > 1) {
+                            this.x += (dx / dist) * this.speed;
+                            this.y += (dy / dist) * this.speed;
+                        } else {
+                            this.pathIndex++;
+                        }
+                    } else {
+                        // L'ennemi a atteint la fin (la base)
+                        this.reachBase();
+                    }
+                }
+
+                reachBase() {
+                    this.active = false;
+                    gameState.baseHealth -= this.type === 'boss' ? 20 : 10;
+                    gameState.enemiesLeft--;
+
+                    if (gameState.baseHealth <= 0) {
+                        gameState.baseHealth = 0;
+                        gameOver();
+                    }
+
+                    updateUI();
+                }
+
+                takeDamage(damage) {
+                    this.health -= damage;
+
+                    if (this.health <= 0) {
+                        this.active = false;
+                        gameState.gold += this.value;
+                        gameState.enemiesLeft--;
+
+                        // Gagner des points de recherche à la fin de la vague
+                        if (gameState.enemiesLeft === 0 && !gameState.waveActive) {
+                            gameState.researchPoints += 2;
+                        }
+
+                        updateUI();
+                    }
+                }
+
+                applySlow(effect) {
+                    this.slowEndTime = Date.now() + 2000; // Ralentissement pendant 2 secondes
+                }
+
+                draw() {
+                    // Dessiner l'ennemi
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Dessiner la barre de vie
+                    const healthWidth = 30;
+                    const healthPercent = this.health / this.maxHealth;
+
+                    ctx.fillStyle = '#4b5563';
+                    ctx.fillRect(this.x - healthWidth / 2, this.y - this.radius - 10, healthWidth, 5);
+
+                    ctx.fillStyle = healthPercent > 0.5 ? '#10b981' : (healthPercent > 0.25 ? '#fbbf24' : '#ef4444');
+                    ctx.fillRect(this.x - healthWidth / 2, this.y - this.radius - 10, healthWidth * healthPercent, 5);
+                }
+            }
+
+            // Génération de vagues
+            function generateWave(waveNumber) {
+                const enemies = [];
+                const baseCount = 5 + waveNumber * 2;
+
+                // Générer des ennemis normaux
+                for (let i = 0; i < baseCount; i++) {
+                    const type = Math.random() < 0.7 ? 'fast' : 'strong';
+                    enemies.push(new Enemy(type, waveNumber));
+                }
+
+                // Ajouter un boss toutes les 5 vagues
+                if (waveNumber % 5 === 0) {
+                    enemies.push(new Enemy('boss', waveNumber));
+                }
+
+                return enemies;
+            }
+
+            // Démarrer une vague
+            function startWave() {
+                if (gameState.waveActive || gameState.gameOver) return;
+
+                gameState.waveActive = true;
+                gameState.enemies = generateWave(gameState.currentWave);
+                gameState.enemiesLeft = gameState.enemies.length;
+
+                document.getElementById('startWaveBtn').textContent = 'Vague en cours...';
+                document.getElementById('startWaveBtn').disabled = true;
+
+                updateUI();
+            }
+
+            // Fin de vague
+            function endWave() {
+                gameState.waveActive = false;
+                gameState.currentWave++;
+                gameState.waveTimer = gameState.maxWaveTimer;
+
+                document.getElementById('startWaveBtn').textContent = 'Démarrer la vague ' + gameState.currentWave;
+                document.getElementById('startWaveBtn').disabled = false;
+
+                updateUI();
+            }
+
+            // Game Over
+            function gameOver() {
+                gameState.gameOver = true;
+                document.getElementById('gameOverMessage').textContent = `Votre base a été détruite ! Vous avez atteint la vague ${gameState.currentWave}.`;
+                document.getElementById('gameOverScreen').style.display = 'flex';
+            }
+
+            // Redémarrer le jeu
+            function restartGame() {
+                // Réinitialiser l'état du jeu
+                gameState = {
+                    gold: 200,
+                    baseHealth: 100,
+                    currentWave: 1,
+                    enemiesLeft: 0,
+                    researchPoints: 5,
+                    gameOver: false,
+                    paused: false,
+                    waveActive: false,
+                    waveTimer: 10,
+                    maxWaveTimer: 10,
+                    selectedTowerType: null,
+                    selectedTower: null,
+                    towers: [],
+                    enemies: [],
+                    projectiles: [],
+                    path: [],
+                    gridSize: 40,
+                    grid: [],
+                    targetingMode: 'nearest',
+                    research: {
+                        income: false,
+                        damage: false,
+                        range: false
+                    }
+                };
+
+                // Regénérer le chemin et la grille
+                generatePath();
+                initializeGrid();
+
+                // Réinitialiser l'UI
+                document.getElementById('gameOverScreen').style.display = 'none';
+                document.getElementById('startWaveBtn').textContent = 'Démarrer la vague 1';
+                document.getElementById('startWaveBtn').disabled = false;
+                document.getElementById('selectionInfo').style.display = 'none';
+                document.getElementById('upgradeOptions').style.display = 'none';
+
+                updateUI();
+            }
+
+            // Mise à jour de l'UI
+            function updateUI() {
+                document.getElementById('gold').textContent = gameState.gold;
+                document.getElementById('baseHealth').textContent = gameState.baseHealth;
+                document.getElementById('currentWave').textContent = gameState.currentWave;
+                document.getElementById('enemiesLeft').textContent = gameState.enemiesLeft;
+                document.getElementById('researchPoints').textContent = gameState.researchPoints;
+                document.getElementById('waveTimer').textContent = Math.ceil(gameState.waveTimer);
+
+                // Mettre à jour la barre de progression de la vague
+                const progressPercent = (1 - gameState.waveTimer / gameState.maxWaveTimer) * 100;
+                document.getElementById('waveProgress').style.width = progressPercent + '%';
+
+                // Mettre à jour le mode de ciblage
+                document.getElementById('targetingMode').textContent =
+                    gameState.targetingMode === 'nearest' ? 'Plus proche' :
+                        gameState.targetingMode === 'weakest' ? 'Plus faible' : 'Plus fort';
+
+                // Mettre à jour les boutons d'amélioration
+                if (gameState.selectedTower) {
+                    document.getElementById('upgradeDamage').textContent =
+                        `Améliorer Dégâts (${gameState.selectedTower.getUpgradeCost('damage')})`;
+                    document.getElementById('upgradeRange').textContent =
+                        `Améliorer Portée (${gameState.selectedTower.getUpgradeCost('range')})`;
+                    document.getElementById('upgradeSpeed').textContent =
+                        `Améliorer Cadence (${gameState.selectedTower.getUpgradeCost('speed')})`;
+
+                    // Désactiver les boutons si pas assez d'or
+                    document.getElementById('upgradeDamage').disabled =
+                        gameState.gold < gameState.selectedTower.getUpgradeCost('damage');
+                    document.getElementById('upgradeRange').disabled =
+                        gameState.gold < gameState.selectedTower.getUpgradeCost('range');
+                    document.getElementById('upgradeSpeed').disabled =
+                        gameState.gold < gameState.selectedTower.getUpgradeCost('speed');
+                }
+
+                // Mettre à jour les options de recherche
+                const researchOptions = document.querySelectorAll('.research-option');
+                researchOptions.forEach(option => {
+                    const researchType = option.dataset.research;
+                    const cost = parseInt(option.querySelector('.research-cost').textContent.match(/\d+/)[0]);
+
+                    if (gameState.research[researchType]) {
+                        option.classList.add('unlocked');
+                        option.querySelector('.research-cost').textContent = 'Débloqué';
+                    } else {
+                        option.classList.remove('unlocked');
+                        option.querySelector('.research-cost').textContent = `Coût: ${cost} pts`;
+
+                        // Désactiver visuellement si pas assez de points
+                        if (gameState.researchPoints < cost) {
+                            option.style.opacity = '0.5';
+                        } else {
+                            option.style.opacity = '1';
+                        }
+                    }
+                });
+            }
+
+            // Dessiner le chemin
+            function drawPath() {
+                ctx.strokeStyle = '#4b5563';
+                ctx.lineWidth = 4;
+                ctx.setLineDash([10, 10]);
+                ctx.beginPath();
+
+                for (let i = 0; i < gameState.path.length; i++) {
+                    if (i === 0) {
+                        ctx.moveTo(gameState.path[i].x, gameState.path[i].y);
+                    } else {
+                        ctx.lineTo(gameState.path[i].x, gameState.path[i].y);
+                    }
+                }
+
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Dessiner les points du chemin
+                for (const point of gameState.path) {
+                    ctx.fillStyle = '#6b7280';
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Dessiner la base (fin du chemin)
+                const basePoint = gameState.path[gameState.path.length - 1];
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(basePoint.x, basePoint.y, 20, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Ajouter un indicateur de base
+                ctx.fillStyle = 'white';
+                ctx.font = '12px Arial';
+                ctx.fillText('BASE', basePoint.x - 15, basePoint.y + 30);
+            }
+
+            // Dessiner la grille
+            function drawGrid() {
+                ctx.strokeStyle = 'rgba(75, 85, 99, 0.3)';
+                ctx.lineWidth = 1;
+
+                // Lignes verticales
+                for (let x = 0; x <= canvas.width; x += gameState.gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, canvas.height);
+                    ctx.stroke();
+                }
+
+                // Lignes horizontales
+                for (let y = 0; y <= canvas.height; y += gameState.gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(canvas.width, y);
+                    ctx.stroke();
+                }
+
+                // Marquer les cases occupées et sur le chemin
+                for (let x = 0; x < gameState.grid.length; x++) {
+                    for (let y = 0; y < gameState.grid[x].length; y++) {
+                        const cell = gameState.grid[x][y];
+
+                        if (cell.onPath) {
+                            ctx.fillStyle = 'rgba(75, 85, 99, 0.2)';
+                            ctx.fillRect(cell.x, cell.y, gameState.gridSize, gameState.gridSize);
+                        }
+
+                        if (cell.occupied) {
+                            ctx.fillStyle = 'rgba(239, 68, 68, 0.1)';
+                            ctx.fillRect(cell.x, cell.y, gameState.gridSize, gameState.gridSize);
+                        }
+                    }
+                }
+            }
+
+            // Boucle de jeu principale
+            function gameLoop() {
+                // Effacer le canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Dessiner la grille
+                drawGrid();
+
+                // Dessiner le chemin
+                drawPath();
+
+                // Mettre à jour et dessiner les tours
+                for (const tower of gameState.towers) {
+                    if (!gameState.paused) {
+                        tower.update();
+                    }
+                    tower.draw();
+                }
+
+                // Mettre à jour et dessiner les projectiles
+                for (let i = gameState.projectiles.length - 1; i >= 0; i--) {
+                    const projectile = gameState.projectiles[i];
+
+                    if (!gameState.paused) {
+                        projectile.update();
+                    }
+
+                    if (projectile.active) {
+                        projectile.draw();
+                    } else {
+                        gameState.projectiles.splice(i, 1);
+                    }
+                }
+
+                // Mettre à jour et dessiner les ennemis
+                for (let i = gameState.enemies.length - 1; i >= 0; i--) {
+                    const enemy = gameState.enemies[i];
+
+                    if (!gameState.paused) {
+                        enemy.update();
+                    }
+
+                    if (enemy.active) {
+                        enemy.draw();
+                    } else {
+                        gameState.enemies.splice(i, 1);
+                    }
+                }
+
+                // Gérer le timer entre les vagues
+                if (!gameState.paused && !gameState.waveActive && !gameState.gameOver) {
+                    gameState.waveTimer -= 0.016; // 60 FPS
+
+                    if (gameState.waveTimer <= 0) {
+                        startWave();
+                    }
+                }
+
+                // Vérifier si la vague est terminée
+                if (gameState.waveActive && gameState.enemies.length === 0) {
+                    endWave();
+                }
+
+                // Mettre à jour l'UI
+                updateUI();
+
+                // Continuer la boucle
+                if (!gameState.gameOver) {
+                    requestAnimationFrame(gameLoop);
+                }
+            }
+
+            // Gestion des événements
+            function setupEventListeners() {
+                // Clic sur le canvas
+                canvas.addEventListener('click', function (e) {
+                    if (gameState.gameOver || gameState.paused) return;
+
+                    const rect = canvas.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+
+                    // Trouver la case de grille correspondante
+                    const gridX = Math.floor(x / gameState.gridSize);
+                    const gridY = Math.floor(y / gameState.gridSize);
+
+                    // Vérifier si la case est valide
+                    if (gridX >= 0 && gridX < gameState.grid.length &&
+                        gridY >= 0 && gridY < gameState.grid[0].length) {
+
+                        const cell = gameState.grid[gridX][gridY];
+
+                        // Si une tour est sélectionnée dans le magasin
+                        if (gameState.selectedTowerType) {
+                            // Vérifier si la case est libre et pas sur le chemin
+                            if (!cell.occupied && !cell.onPath) {
+                                // Vérifier si le joueur a assez d'or
+                                const cost = getTowerCost(gameState.selectedTowerType);
+
+                                if (gameState.gold >= cost) {
+                                    // Créer la tour
+                                    const towerX = cell.x + gameState.gridSize / 2;
+                                    const towerY = cell.y + gameState.gridSize / 2;
+                                    const newTower = new Tower(towerX, towerY, gameState.selectedTowerType);
+
+                                    gameState.towers.push(newTower);
+                                    gameState.gold -= cost;
+
+                                    // Marquer la case comme occupée
+                                    cell.occupied = true;
+                                    cell.tower = newTower;
+
+                                    // Désélectionner le type de tour
+                                    gameState.selectedTowerType = null;
+
+                                    // Mettre à jour l'info de sélection
+                                    document.getElementById('selectionInfo').style.display = 'none';
+
+                                    updateUI();
+                                } else {
+                                    alert("Pas assez d'or !");
+                                }
+                            } else {
+                                alert("Case invalide ! Vous ne pouvez pas placer de tour sur le chemin ou sur une case occupée.");
+                            }
+                        } else {
+                            // Vérifier si le joueur a cliqué sur une tour existante
+                            let clickedTower = null;
+
+                            for (const tower of gameState.towers) {
+                                const dx = x - tower.x;
+                                const dy = y - tower.y;
+                                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                                if (dist < 20) {
+                                    clickedTower = tower;
+                                    break;
+                                }
+                            }
+
+                            // Sélectionner/désélectionner la tour
+                            if (clickedTower) {
+                                gameState.selectedTower = clickedTower;
+
+                                // Afficher les informations de la tour
+                                document.getElementById('towerDetails').innerHTML = `
+                                    <strong>${getTowerName(clickedTower.type)} Niv. ${clickedTower.level}</strong><br>
+                                    Dégâts: ${clickedTower.damage}<br>
+                                    Portée: ${clickedTower.range}<br>
+                                    Cadence: ${Math.floor(1000 / clickedTower.fireRate)}/sec<br>
+                                    <em>Cliquez ailleurs pour désélectionner</em>
+                                `;
+
+                                // Afficher les options d'amélioration
+                                document.getElementById('upgradeOptions').style.display = 'block';
+                            } else {
+                                gameState.selectedTower = null;
+                                document.getElementById('towerDetails').textContent = 'Cliquez sur une tour pour voir ses détails';
+                                document.getElementById('upgradeOptions').style.display = 'none';
+                            }
+                        }
+                    }
+                });
+
+                // Clic sur les options de tour dans le magasin
+                document.querySelectorAll('.tower-option').forEach(option => {
+                    option.addEventListener('click', function () {
+                        if (this.id === 'targetingOption') {
+                            // Changer le mode de ciblage
+                            const modes = ['nearest', 'weakest', 'strongest'];
+                            const currentIndex = modes.indexOf(gameState.targetingMode);
+                            const nextIndex = (currentIndex + 1) % modes.length;
+                            gameState.targetingMode = modes[nextIndex];
+
+                            // Mettre à jour l'affichage
+                            document.getElementById('targetingMode').textContent =
+                                gameState.targetingMode === 'nearest' ? 'Plus proche' :
+                                    gameState.targetingMode === 'weakest' ? 'Plus faible' : 'Plus fort';
+                        } else {
+                            // Sélectionner un type de tour
+                            const towerType = this.dataset.type;
+                            gameState.selectedTowerType = towerType;
+                            gameState.selectedTower = null;
+
+                            // Afficher l'info de sélection
+                            document.getElementById('selectionInfo').innerHTML = `
+                                <strong>${getTowerName(towerType)} sélectionnée</strong><br>
+                                Coût: ${getTowerCost(towerType)} or<br>
+                                Cliquez sur une case vide pour placer la tour<br>
+                                <em>Cliquez sur une autre tour pour annuler</em>
+                            `;
+                            document.getElementById('selectionInfo').style.display = 'block';
+
+                            // Cacher les options d'amélioration
+                            document.getElementById('upgradeOptions').style.display = 'none';
+                            document.getElementById('towerDetails').textContent = 'Placez la tour sur le terrain';
+                        }
+                    });
+                });
+
+                // Boutons d'amélioration
+                document.getElementById('upgradeDamage').addEventListener('click', function () {
+                    if (gameState.selectedTower && gameState.selectedTower.upgrade('damage')) {
+                        updateUI();
+                    }
+                });
+
+                document.getElementById('upgradeRange').addEventListener('click', function () {
+                    if (gameState.selectedTower && gameState.selectedTower.upgrade('range')) {
+                        updateUI();
+                    }
+                });
+
+                document.getElementById('upgradeSpeed').addEventListener('click', function () {
+                    if (gameState.selectedTower && gameState.selectedTower.upgrade('speed')) {
+                        updateUI();
+                    }
+                });
+
+                // Bouton de vente
+                document.getElementById('sellTower').addEventListener('click', function () {
+                    if (gameState.selectedTower) {
+                        // Trouver la tour dans la grille
+                        for (let x = 0; x < gameState.grid.length; x++) {
+                            for (let y = 0; y < gameState.grid[x].length; y++) {
+                                if (gameState.grid[x][y].tower === gameState.selectedTower) {
+                                    // Libérer la case
+                                    gameState.grid[x][y].occupied = false;
+                                    gameState.grid[x][y].tower = null;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Ajouter l'or de vente
+                        const sellValue = gameState.selectedTower.getSellValue();
+                        gameState.gold += sellValue;
+
+                        // Retirer la tour
+                        const index = gameState.towers.indexOf(gameState.selectedTower);
+                        if (index !== -1) {
+                            gameState.towers.splice(index, 1);
+                        }
+
+                        // Désélectionner la tour
+                        gameState.selectedTower = null;
+                        document.getElementById('towerDetails').textContent = 'Cliquez sur une tour pour voir ses détails';
+                        document.getElementById('upgradeOptions').style.display = 'none';
+
+                        updateUI();
+                    }
+                });
+
+                // Options de recherche
+                document.querySelectorAll('.research-option').forEach(option => {
+                    option.addEventListener('click', function () {
+                        const researchType = this.dataset.research;
+                        const cost = parseInt(this.querySelector('.research-cost').textContent.match(/\d+/)[0]);
+
+                        // Vérifier si la recherche n'est pas déjà débloquée et si le joueur a assez de points
+                        if (!gameState.research[researchType] && gameState.researchPoints >= cost) {
+                            // Débloquer la recherche
+                            gameState.research[researchType] = true;
+                            gameState.researchPoints -= cost;
+
+                            // Appliquer la recherche aux tours existantes
+                            for (const tower of gameState.towers) {
+                                tower.applyResearch();
+                            }
+
+                            updateUI();
+                        }
+                    });
+                });
+
+                // Bouton de démarrage de vague
+                document.getElementById('startWaveBtn').addEventListener('click', startWave);
+
+                // Bouton de pause
+                document.getElementById('pauseBtn').addEventListener('click', function () {
+                    gameState.paused = !gameState.paused;
+                    this.textContent = gameState.paused ? 'Reprendre' : 'Pause';
+                });
+
+                // Bouton de redémarrage
+                document.getElementById('restartBtn').addEventListener('click', restartGame);
+            }
+
+            // Fonctions utilitaires
+            function getTowerCost(type) {
+                switch (type) {
+                    case 'basic': return 50;
+                    case 'slow': return 75;
+                    case 'cannon': return 120;
+                    default: return 0;
+                }
+            }
+
+            function getTowerName(type) {
+                switch (type) {
+                    case 'basic': return 'Mitrailleuse';
+                    case 'slow': return 'Tour de Glace';
+                    case 'cannon': return 'Canon Lourd';
+                    default: return 'Tour inconnue';
+                }
+            }
+
+            // Initialisation du jeu
+            function initGame() {
+                generatePath();
+                initializeGrid();
+                setupEventListeners();
+                updateUI();
+                gameLoop();
+            }
+
+            // Démarrer le jeu
+            initGame();
+        });
+    </script>
+</body>
+
+</html>

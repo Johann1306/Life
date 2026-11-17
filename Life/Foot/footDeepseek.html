@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Football 5 contre 5</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(to bottom, #1a3a1a, #0d1f0d);
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+            width: 100%;
+        }
+
+        h1 {
+            font-size: 2.8rem;
+            margin-bottom: 10px;
+            color: #4CAF50;
+            text-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+            letter-spacing: 1px;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            color: #aaa;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            max-width: 900px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+        }
+
+        #gameCanvas {
+            display: block;
+            background-color: #2a5c2a;
+            width: 100%;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 25px;
+            width: 100%;
+        }
+
+        .control-section {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 15px;
+            border-radius: 8px;
+            min-width: 250px;
+        }
+
+        .control-section h3 {
+            color: #4CAF50;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #4CAF50;
+            padding-bottom: 5px;
+        }
+
+        .control-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .key {
+            display: inline-block;
+            background: #333;
+            color: white;
+            padding: 5px 10px;
+            margin-right: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            min-width: 50px;
+            text-align: center;
+            border: 1px solid #555;
+        }
+
+        .score-board {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 900px;
+            margin-bottom: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 10px;
+            padding: 15px;
+            font-size: 1.5rem;
+        }
+
+        .team {
+            display: flex;
+            align-items: center;
+        }
+
+        .team-name {
+            font-weight: bold;
+            margin-right: 15px;
+        }
+
+        .blue .team-name {
+            color: #64b5f6;
+        }
+
+        .red .team-name {
+            color: #f44336;
+        }
+
+        .score {
+            font-size: 2.2rem;
+            font-weight: bold;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 5px 20px;
+            border-radius: 5px;
+        }
+
+        .instructions {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 900px;
+            margin-top: 10px;
+            line-height: 1.6;
+        }
+
+        .instructions h3 {
+            color: #4CAF50;
+            margin-bottom: 10px;
+        }
+
+        .instructions ul {
+            padding-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+        }
+
+        .footer {
+            margin-top: 20px;
+            text-align: center;
+            color: #777;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .control-section {
+                width: 100%;
+                max-width: 400px;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .score-board {
+                flex-direction: column;
+                align-items: center;
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>FOOTBALL 5 CONTRE 5</h1>
+        <div class="subtitle">Contrôlez votre équipe et marquez des buts !</div>
+    </header>
+
+    <div class="game-container">
+        <div class="score-board">
+            <div class="team blue">
+                <div class="team-name">ÉQUIPE BLEUE</div>
+                <div class="score" id="scoreBlue">0</div>
+            </div>
+            <div class="team red">
+                <div class="team-name">ÉQUIPE ROUGE</div>
+                <div class="score" id="scoreRed">0</div>
+            </div>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="gameCanvas" width="900" height="600"></canvas>
+        </div>
+
+        <div class="controls">
+            <div class="control-section">
+                <h3>DÉPLACEMENT</h3>
+                <div class="control-item">
+                    <div class="key">Z</div>
+                    <div>Avancer</div>
+                </div>
+                <div class="control-item">
+                    <div class="key">Q</div>
+                    <div>Gauche</div>
+                </div>
+                <div class="control-item">
+                    <div class="key">S</div>
+                    <div>Reculer</div>
+                </div>
+                <div class="control-item">
+                    <div class="key">D</div>
+                    <div>Droite</div>
+                </div>
+                <div class="control-item">
+                    <div class="key">FLÈCHES</div>
+                    <div>Alternative</div>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <h3>ACTIONS</h3>
+                <div class="control-item">
+                    <div class="key">CLIC</div>
+                    <div>Tirer/Passer (vers curseur)</div>
+                </div>
+                <div class="control-item">
+                    <div class="key">ESPACE</div>
+                    <div>Changer de joueur</div>
+                </div>
+                <div class="control-item">
+                    <div class="key">R</div>
+                    <div>Remise en jeu</div>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <h3>STATUT DU JEU</h3>
+                <div class="control-item">
+                    <div id="gameStatus">En jeu</div>
+                </div>
+                <div class="control-item">
+                    <div id="controlledPlayer">Joueur contrôlé: #5 (Milieu)</div>
+                </div>
+                <div class="control-item">
+                    <div id="possession">Possession: Équipe Bleue</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h3>COMMENT JOUER</h3>
+            <ul>
+                <li>Contrôlez le joueur bleu avec les touches ZQSD ou les flèches directionnelles.</li>
+                <li>Cliquez avec la souris pour tirer ou passer la balle en direction du curseur.</li>
+                <li>Appuyez sur ESPACE pour changer le joueur que vous contrôlez automatiquement.</li>
+                <li>Les joueurs de votre équipe (bleue) se déplacent automatiquement pour se placer stratégiquement.
+                </li>
+                <li>L'équipe rouge est entièrement contrôlée par l'IA.</li>
+                <li>Marquez des buts dans les cages adverses pour gagner des points !</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Jeu de football 5 contre 5 - Développé avec Canvas et JavaScript natif</p>
+    </div>
+
+    <script>
+        // ============================================
+        // INITIALISATION DU CANVAS ET CONTEXTE
+        // ============================================
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Éléments d'interface
+        const scoreBlueElement = document.getElementById('scoreBlue');
+        const scoreRedElement = document.getElementById('scoreRed');
+        const gameStatusElement = document.getElementById('gameStatus');
+        const controlledPlayerElement = document.getElementById('controlledPlayer');
+        const possessionElement = document.getElementById('possession');
+
+        // ============================================
+        // CONSTANTES ET CONFIGURATION DU JEU
+        // ============================================
+        const FIELD_WIDTH = 900;
+        const FIELD_HEIGHT = 600;
+        const GOAL_WIDTH = 80;
+        const GOAL_DEPTH = 20;
+        const PENALTY_AREA_WIDTH = 200;
+        const PENALTY_AREA_HEIGHT = 100;
+        const CENTER_CIRCLE_RADIUS = 80;
+
+        // Dimensions des joueurs et de la balle
+        const PLAYER_RADIUS = 15;
+        const GOALKEEPER_RADIUS = 12;
+        const BALL_RADIUS = 8;
+
+        // Vitesses et forces
+        const PLAYER_SPEED = 3;
+        const AI_PLAYER_SPEED = 2.5;
+        const BALL_FRICTION = 0.98;
+        const PLAYER_FRICTION = 0.92;
+        const KICK_FORCE = 12;
+        const PASS_FORCE = 8;
+
+        // Couleurs des équipes
+        const TEAM_BLUE = {
+            primary: '#2196F3',
+            secondary: '#0D47A1',
+            goalkeeper: '#1565C0'
+        };
+
+        const TEAM_RED = {
+            primary: '#F44336',
+            secondary: '#B71C1C',
+            goalkeeper: '#C62828'
+        };
+
+        // Positions initiales des joueurs (formation 1-2-1)
+        const INITIAL_POSITIONS_BLUE = [
+            // Gardien
+            { x: 80, y: FIELD_HEIGHT / 2, isGoalkeeper: true },
+            // Défenseurs
+            { x: 200, y: FIELD_HEIGHT / 2 - 70, isGoalkeeper: false },
+            { x: 200, y: FIELD_HEIGHT / 2 + 70, isGoalkeeper: false },
+            // Milieu
+            { x: 350, y: FIELD_HEIGHT / 2, isGoalkeeper: false },
+            // Attaquant
+            { x: 500, y: FIELD_HEIGHT / 2, isGoalkeeper: false }
+        ];
+
+        const INITIAL_POSITIONS_RED = [
+            // Gardien
+            { x: FIELD_WIDTH - 80, y: FIELD_HEIGHT / 2, isGoalkeeper: true },
+            // Défenseurs
+            { x: FIELD_WIDTH - 200, y: FIELD_HEIGHT / 2 - 70, isGoalkeeper: false },
+            { x: FIELD_WIDTH - 200, y: FIELD_HEIGHT / 2 + 70, isGoalkeeper: false },
+            // Milieu
+            { x: FIELD_WIDTH - 350, y: FIELD_HEIGHT / 2, isGoalkeeper: false },
+            // Attaquant
+            { x: FIELD_WIDTH - 500, y: FIELD_HEIGHT / 2, isGoalkeeper: false }
+        ];
+
+        // ============================================
+        // CLASSES DU JEU
+        // ============================================
+
+        // Classe Vector pour les calculs de position et de vitesse
+        class Vector {
+            constructor(x = 0, y = 0) {
+                this.x = x;
+                this.y = y;
+            }
+
+            add(v) {
+                return new Vector(this.x + v.x, this.y + v.y);
+            }
+
+            subtract(v) {
+                return new Vector(this.x - v.x, this.y - v.y);
+            }
+
+            multiply(scalar) {
+                return new Vector(this.x * scalar, this.y * scalar);
+            }
+
+            distance(v) {
+                const dx = this.x - v.x;
+                const dy = this.y - v.y;
+                return Math.sqrt(dx * dx + dy * dy);
+            }
+
+            magnitude() {
+                return Math.sqrt(this.x * this.x + this.y * this.y);
+            }
+
+            normalize() {
+                const mag = this.magnitude();
+                if (mag === 0) return new Vector(0, 0);
+                return new Vector(this.x / mag, this.y / mag);
+            }
+        }
+
+        // Classe représentant un joueur
+        class Player {
+            constructor(x, y, team, isGoalkeeper = false, id) {
+                this.position = new Vector(x, y);
+                this.velocity = new Vector(0, 0);
+                this.team = team;
+                this.isGoalkeeper = isGoalkeeper;
+                this.id = id;
+                this.radius = isGoalkeeper ? GOALKEEPER_RADIUS : PLAYER_RADIUS;
+                this.targetPosition = new Vector(x, y);
+                this.isControlled = false;
+                this.hasBall = false;
+                this.kickCooldown = 0;
+                this.role = this.assignRole(id);
+            }
+
+            // Attribue un rôle en fonction de l'ID
+            assignRole(id) {
+                if (this.isGoalkeeper) return "Gardien";
+                if (id === 1 || id === 2) return "Défenseur";
+                if (id === 3) return "Milieu";
+                return "Attaquant";
+            }
+
+            // Met à jour la position du joueur
+            update(ball) {
+                // Appliquer la friction
+                this.velocity.x *= PLAYER_FRICTION;
+                this.velocity.y *= PLAYER_FRICTION;
+
+                // Si le joueur est contrôlé par l'utilisateur, les contrôles sont gérés ailleurs
+                if (this.isControlled) {
+                    this.position.x += this.velocity.x;
+                    this.position.y += this.velocity.y;
+                }
+                // Sinon, c'est un joueur IA
+                else {
+                    this.aiUpdate(ball);
+                }
+
+                // Garder le joueur dans les limites du terrain
+                this.keepInBounds();
+
+                // Réduire le cooldown de tir
+                if (this.kickCooldown > 0) this.kickCooldown--;
+            }
+
+            // Comportement de l'IA
+            aiUpdate(ball) {
+                // Calculer la distance avec la balle
+                const distanceToBall = this.position.distance(ball.position);
+
+                // Si le joueur est proche de la balle et que son équipe a la possession, il peut tirer
+                if (distanceToBall < this.radius + BALL_RADIUS + 5 && ball.lastTouchedBy === this.team && this.kickCooldown === 0) {
+                    // Déterminer la direction du tir
+                    let target;
+
+                    if (this.team === 'blue') {
+                        // L'équipe bleue tire vers le but rouge
+                        target = new Vector(FIELD_WIDTH - 20, FIELD_HEIGHT / 2 + (Math.random() * 60 - 30));
+                    } else {
+                        // L'équipe rouge tire vers le but bleu
+                        target = new Vector(20, FIELD_HEIGHT / 2 + (Math.random() * 60 - 30));
+                    }
+
+                    // Calculer la direction
+                    const direction = target.subtract(this.position).normalize();
+
+                    // Appliquer une force à la balle
+                    ball.velocity = direction.multiply(KICK_FORCE);
+                    ball.lastTouchedBy = this.team;
+                    this.kickCooldown = 30; // Cooldown de 30 frames
+
+                    // Le joueur n'a plus la balle après le tir
+                    this.hasBall = false;
+                }
+
+                // Système de vecteurs d'attraction/répulsion pour le placement
+                let desiredVelocity = new Vector(0, 0);
+
+                // 1. Attraction vers la position cible (position stratégique)
+                const toTarget = this.targetPosition.subtract(this.position);
+                const distanceToTarget = toTarget.magnitude();
+
+                if (distanceToTarget > 10) {
+                    desiredVelocity = desiredVelocity.add(toTarget.normalize().multiply(0.5));
+                }
+
+                // 2. Attraction vers la balle si c'est un attaquant ou milieu et que son équipe a la possession
+                if ((this.role === "Attaquant" || this.role === "Milieu") && ball.lastTouchedBy === this.team) {
+                    const toBall = ball.position.subtract(this.position);
+                    const ballDistance = toBall.magnitude();
+
+                    // S'approcher de la balle mais pas trop près pour ne pas tout bloquer
+                    if (ballDistance > 50 && ballDistance < 300) {
+                        desiredVelocity = desiredVelocity.add(toBall.normalize().multiply(0.7));
+                    }
+                }
+
+                // 3. Pour les défenseurs et gardiens : attraction vers leur position défensive
+                if (this.role === "Défenseur" || this.role === "Gardien") {
+                    const toDefensivePos = this.getDefensivePosition(ball).subtract(this.position);
+                    desiredVelocity = desiredVelocity.add(toDefensivePos.normalize().multiply(0.8));
+                }
+
+                // 4. Répulsion des coéquipiers (pour éviter le regroupement)
+                const players = this.team === 'blue' ? blueTeam : redTeam;
+                for (const player of players) {
+                    if (player !== this) {
+                        const toPlayer = this.position.subtract(player.position);
+                        const playerDistance = toPlayer.magnitude();
+
+                        // Si trop proche, s'éloigner
+                        if (playerDistance < 40) {
+                            desiredVelocity = desiredVelocity.add(toPlayer.normalize().multiply(1.5));
+                        }
+                    }
+                }
+
+                // 5. Pour l'équipe adverse : poursuite du porteur de balle ou de la balle
+                if (ball.lastTouchedBy !== this.team) {
+                    // Si la balle est proche, aller vers elle
+                    if (distanceToBall < 300) {
+                        const toBall = ball.position.subtract(this.position);
+                        desiredVelocity = desiredVelocity.add(toBall.normalize().multiply(0.9));
+                    }
+                }
+
+                // Limiter la vitesse et l'appliquer
+                if (desiredVelocity.magnitude() > 0) {
+                    desiredVelocity = desiredVelocity.normalize().multiply(AI_PLAYER_SPEED);
+                }
+
+                this.velocity = this.velocity.add(desiredVelocity.multiply(0.1));
+
+                // Limiter la vitesse maximale
+                const speed = this.velocity.magnitude();
+                if (speed > AI_PLAYER_SPEED) {
+                    this.velocity = this.velocity.normalize().multiply(AI_PLAYER_SPEED);
+                }
+
+                // Appliquer la vélocité
+                this.position.x += this.velocity.x;
+                this.position.y += this.velocity.y;
+            }
+
+            // Calcule la position défensive en fonction de la position de la balle
+            getDefensivePosition(ball) {
+                if (this.isGoalkeeper) {
+                    // Le gardien reste près du but mais suit la balle sur l'axe Y
+                    const goalY = Math.max(240, Math.min(360, ball.position.y));
+                    return new Vector(
+                        this.team === 'blue' ? 60 : FIELD_WIDTH - 60,
+                        goalY
+                    );
+                }
+
+                // Défenseurs : se placent entre la balle et le but
+                const goalX = this.team === 'blue' ? 60 : FIELD_WIDTH - 60;
+                const goalY = FIELD_HEIGHT / 2;
+
+                // Calculer la position sur la ligne entre le but et la balle
+                const t = 0.3; // Position à 30% de la distance entre le but et la balle
+                const defensiveX = goalX + (ball.position.x - goalX) * t;
+                const defensiveY = goalY + (ball.position.y - goalY) * t;
+
+                // Ajuster en fonction du rôle et de l'ID
+                let offsetY = 0;
+                if (this.id === 1) offsetY = -60;
+                if (this.id === 2) offsetY = 60;
+
+                return new Vector(defensiveX, defensiveY + offsetY);
+            }
+
+            // Garde le joueur dans les limites du terrain
+            keepInBounds() {
+                // Limites latérales
+                if (this.position.x - this.radius < 0) this.position.x = this.radius;
+                if (this.position.x + this.radius > FIELD_WIDTH) this.position.x = FIELD_WIDTH - this.radius;
+
+                // Limites verticales
+                if (this.position.y - this.radius < 0) this.position.y = this.radius;
+                if (this.position.y + this.radius > FIELD_HEIGHT) this.position.y = FIELD_HEIGHT - this.radius;
+
+                // Restrictions pour les gardiens (zone de but)
+                if (this.isGoalkeeper) {
+                    const goalAreaTop = FIELD_HEIGHT / 2 - GOAL_WIDTH / 2 - 20;
+                    const goalAreaBottom = FIELD_HEIGHT / 2 + GOAL_WIDTH / 2 + 20;
+
+                    if (this.position.y < goalAreaTop) this.position.y = goalAreaTop;
+                    if (this.position.y > goalAreaBottom) this.position.y = goalAreaBottom;
+
+                    // Gardiens ne peuvent pas quitter leur surface
+                    if (this.team === 'blue' && this.position.x > 120) this.position.x = 120;
+                    if (this.team === 'red' && this.position.x < FIELD_WIDTH - 120) this.position.x = FIELD_WIDTH - 120;
+                }
+            }
+
+            // Dessine le joueur sur le canvas
+            draw() {
+                // Corps du joueur
+                ctx.beginPath();
+                ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2);
+
+                // Couleur selon l'équipe
+                const teamColors = this.team === 'blue' ? TEAM_BLUE : TEAM_RED;
+                ctx.fillStyle = this.isGoalkeeper ? teamColors.goalkeeper : teamColors.primary;
+                ctx.fill();
+
+                // Contour
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = this.isControlled ? '#FFEB3B' : teamColors.secondary;
+                ctx.stroke();
+
+                // Numéro du joueur
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.id, this.position.x, this.position.y);
+
+                // Indicateur de joueur contrôlé
+                if (this.isControlled) {
+                    ctx.beginPath();
+                    ctx.arc(this.position.x, this.position.y, this.radius + 5, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#FFEB3B';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                // Indicateur de possession de balle
+                if (this.hasBall) {
+                    ctx.beginPath();
+                    ctx.arc(this.position.x, this.position.y, this.radius + 8, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#4CAF50';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // Classe représentant la balle
+        class Ball {
+            constructor(x, y) {
+                this.position = new Vector(x, y);
+                this.velocity = new Vector(0, 0);
+                this.lastTouchedBy = null; // 'blue', 'red' ou null
+            }
+
+            // Met à jour la position de la balle
+            update() {
+                // Appliquer la friction
+                this.velocity.x *= BALL_FRICTION;
+                this.velocity.y *= BALL_FRICTION;
+
+                // Arrêter la balle si elle va très lentement
+                if (this.velocity.magnitude() < 0.1) {
+                    this.velocity.x = 0;
+                    this.velocity.y = 0;
+                }
+
+                // Appliquer la vélocité
+                this.position.x += this.velocity.x;
+                this.position.y += this.velocity.y;
+
+                // Vérifier les collisions avec les limites du terrain
+                this.handleBoundaryCollision();
+            }
+
+            // Gère les collisions avec les limites du terrain
+            handleBoundaryCollision() {
+                // Collision avec les bords latéraux (buts)
+                if (this.position.x - BALL_RADIUS < 0) {
+                    // Vérifier si c'est un but
+                    if (this.position.y > FIELD_HEIGHT / 2 - GOAL_WIDTH / 2 && this.position.y < FIELD_HEIGHT / 2 + GOAL_WIDTH / 2) {
+                        // But pour l'équipe rouge
+                        if (this.lastTouchedBy === 'blue') {
+                            scoreRed++;
+                            scoreRedElement.textContent = scoreRed;
+                            resetGame('red');
+                        }
+                    } else {
+                        // Rebond sur le poteau
+                        this.position.x = BALL_RADIUS;
+                        this.velocity.x *= -0.7;
+                    }
+                }
+
+                if (this.position.x + BALL_RADIUS > FIELD_WIDTH) {
+                    // Vérifier si c'est un but
+                    if (this.position.y > FIELD_HEIGHT / 2 - GOAL_WIDTH / 2 && this.position.y < FIELD_HEIGHT / 2 + GOAL_WIDTH / 2) {
+                        // But pour l'équipe bleue
+                        if (this.lastTouchedBy === 'red') {
+                            scoreBlue++;
+                            scoreBlueElement.textContent = scoreBlue;
+                            resetGame('blue');
+                        }
+                    } else {
+                        // Rebond sur le poteau
+                        this.position.x = FIELD_WIDTH - BALL_RADIUS;
+                        this.velocity.x *= -0.7;
+                    }
+                }
+
+                // Collision avec les bords haut et bas
+                if (this.position.y - BALL_RADIUS < 0) {
+                    this.position.y = BALL_RADIUS;
+                    this.velocity.y *= -0.7;
+                }
+
+                if (this.position.y + BALL_RADIUS > FIELD_HEIGHT) {
+                    this.position.y = FIELD_HEIGHT - BALL_RADIUS;
+                    this.velocity.y *= -0.7;
+                }
+            }
+
+            // Dessine la balle sur le canvas
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.position.x, this.position.y, BALL_RADIUS, 0, Math.PI * 2);
+
+                // Créer un dégradé pour la balle
+                const gradient = ctx.createRadialGradient(
+                    this.position.x - 3, this.position.y - 3, 1,
+                    this.position.x, this.position.y, BALL_RADIUS
+                );
+                gradient.addColorStop(0, '#FFFFFF');
+                gradient.addColorStop(1, '#E0E0E0');
+
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // Dessiner des motifs sur la balle
+                ctx.beginPath();
+                ctx.arc(this.position.x, this.position.y, BALL_RADIUS - 2, 0, Math.PI * 2);
+                ctx.strokeStyle = '#555';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // Dessiner les panneaux de la balle
+                ctx.beginPath();
+                ctx.arc(this.position.x, this.position.y, BALL_RADIUS / 2, 0, Math.PI * 2);
+                ctx.fillStyle = '#555';
+                ctx.fill();
+            }
+        }
+
+        // ============================================
+        // INITIALISATION DU JEU
+        // ============================================
+
+        let blueTeam = [];
+        let redTeam = [];
+        let ball = new Ball(FIELD_WIDTH / 2, FIELD_HEIGHT / 2);
+        let controlledPlayerIndex = 4; // Commence avec l'attaquant bleu
+        let scoreBlue = 0;
+        let scoreRed = 0;
+        let isGameActive = true;
+
+        // Initialiser les équipes
+        function initializeTeams() {
+            blueTeam = [];
+            redTeam = [];
+
+            // Créer l'équipe bleue
+            for (let i = 0; i < 5; i++) {
+                const pos = INITIAL_POSITIONS_BLUE[i];
+                const player = new Player(pos.x, pos.y, 'blue', pos.isGoalkeeper, i + 1);
+
+                if (i === controlledPlayerIndex) {
+                    player.isControlled = true;
+                }
+
+                blueTeam.push(player);
+            }
+
+            // Créer l'équipe rouge
+            for (let i = 0; i < 5; i++) {
+                const pos = INITIAL_POSITIONS_RED[i];
+                const player = new Player(pos.x, pos.y, 'red', pos.isGoalkeeper, i + 1);
+                redTeam.push(player);
+            }
+
+            // Mettre à jour l'affichage du joueur contrôlé
+            updateControlledPlayerDisplay();
+        }
+
+        // Réinitialiser le jeu après un but
+        function resetGame(scoringTeam) {
+            isGameActive = false;
+
+            // Afficher le message de but
+            gameStatusElement.textContent = `BUT pour l'équipe ${scoringTeam === 'blue' ? 'BLEUE' : 'ROUGE'} !`;
+            gameStatusElement.style.color = scoringTeam === 'blue' ? TEAM_BLUE.primary : TEAM_RED.primary;
+
+            // Réinitialiser les positions
+            setTimeout(() => {
+                ball = new Ball(FIELD_WIDTH / 2, FIELD_HEIGHT / 2);
+                initializeTeams();
+                isGameActive = true;
+                gameStatusElement.textContent = "En jeu";
+                gameStatusElement.style.color = "#4CAF50";
+            }, 2000);
+        }
+
+        // Mettre à jour l'affichage du joueur contrôlé
+        function updateControlledPlayerDisplay() {
+            const player = blueTeam[controlledPlayerIndex];
+            controlledPlayerElement.textContent = `Joueur contrôlé: #${player.id} (${player.role})`;
+        }
+
+        // Mettre à jour l'affichage de la possession
+        function updatePossessionDisplay() {
+            if (ball.lastTouchedBy === 'blue') {
+                possessionElement.textContent = "Possession: Équipe Bleue";
+                possessionElement.style.color = TEAM_BLUE.primary;
+            } else if (ball.lastTouchedBy === 'red') {
+                possessionElement.textContent = "Possession: Équipe Rouge";
+                possessionElement.style.color = TEAM_RED.primary;
+            } else {
+                possessionElement.textContent = "Possession: Aucune";
+                possessionElement.style.color = "#aaa";
+            }
+        }
+
+        // ============================================
+        // GESTION DES ENTREES UTILISATEUR
+        // ============================================
+
+        const keys = {};
+        let mousePosition = new Vector(FIELD_WIDTH / 2, FIELD_HEIGHT / 2);
+
+        // Gestion des touches du clavier
+        document.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+
+            // Changement de joueur avec ESPACE
+            if (e.key === ' ' && isGameActive) {
+                // Trouver le joueur bleu le plus proche de la balle qui n'est pas déjà contrôlé
+                let closestPlayerIndex = -1;
+                let closestDistance = Infinity;
+
+                for (let i = 0; i < blueTeam.length; i++) {
+                    if (i !== controlledPlayerIndex) {
+                        const distance = blueTeam[i].position.distance(ball.position);
+                        if (distance < closestDistance) {
+                            closestDistance = distance;
+                            closestPlayerIndex = i;
+                        }
+                    }
+                }
+
+                if (closestPlayerIndex !== -1) {
+                    // Désactiver le contrôle sur l'ancien joueur
+                    blueTeam[controlledPlayerIndex].isControlled = false;
+
+                    // Activer le contrôle sur le nouveau joueur
+                    controlledPlayerIndex = closestPlayerIndex;
+                    blueTeam[controlledPlayerIndex].isControlled = true;
+
+                    // Mettre à jour l'affichage
+                    updateControlledPlayerDisplay();
+                }
+            }
+
+            // Remise en jeu avec R
+            if (e.key === 'r' || e.key === 'R') {
+                ball = new Ball(FIELD_WIDTH / 2, FIELD_HEIGHT / 2);
+                initializeTeams();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+
+        // Gestion de la souris
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mousePosition.x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            mousePosition.y = (e.clientY - rect.top) * (canvas.height / rect.height);
+        });
+
+        canvas.addEventListener('click', (e) => {
+            if (!isGameActive) return;
+
+            const controlledPlayer = blueTeam[controlledPlayerIndex];
+            const distanceToBall = controlledPlayer.position.distance(ball.position);
+
+            // Si le joueur est assez proche de la balle, il peut tirer
+            if (distanceToBall < controlledPlayer.radius + BALL_RADIUS + 20 && controlledPlayer.kickCooldown === 0) {
+                // Calculer la direction du tir
+                const direction = mousePosition.subtract(controlledPlayer.position).normalize();
+
+                // Déterminer la force du tir en fonction de la distance au curseur
+                const distanceToMouse = controlledPlayer.position.distance(mousePosition);
+                const force = Math.min(KICK_FORCE, distanceToMouse / 20);
+
+                // Appliquer la force à la balle
+                ball.velocity = direction.multiply(force);
+                ball.lastTouchedBy = 'blue';
+                controlledPlayer.kickCooldown = 20; // Cooldown de 20 frames
+                controlledPlayer.hasBall = false;
+            }
+        });
+
+        // ============================================
+        // DESSIN DU TERRAIN
+        // ============================================
+
+        function drawField() {
+            // Fond du terrain
+            ctx.fillStyle = '#2a5c2a';
+            ctx.fillRect(0, 0, FIELD_WIDTH, FIELD_HEIGHT);
+
+            // Lignes du terrain
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 3;
+
+            // Contour du terrain
+            ctx.strokeRect(10, 10, FIELD_WIDTH - 20, FIELD_HEIGHT - 20);
+
+            // Ligne médiane
+            ctx.beginPath();
+            ctx.moveTo(FIELD_WIDTH / 2, 10);
+            ctx.lineTo(FIELD_WIDTH / 2, FIELD_HEIGHT - 10);
+            ctx.stroke();
+
+            // Cercle central
+            ctx.beginPath();
+            ctx.arc(FIELD_WIDTH / 2, FIELD_HEIGHT / 2, CENTER_CIRCLE_RADIUS, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Point central
+            ctx.beginPath();
+            ctx.arc(FIELD_WIDTH / 2, FIELD_HEIGHT / 2, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fill();
+
+            // Zones de but bleues
+            // Grande surface
+            ctx.strokeRect(10, FIELD_HEIGHT / 2 - PENALTY_AREA_HEIGHT / 2, PENALTY_AREA_WIDTH, PENALTY_AREA_HEIGHT);
+
+            // Petite surface
+            const smallAreaWidth = 60;
+            const smallAreaHeight = 120;
+            ctx.strokeRect(10, FIELD_HEIGHT / 2 - smallAreaHeight / 2, smallAreaWidth, smallAreaHeight);
+
+            // But bleu
+            ctx.fillStyle = TEAM_BLUE.primary;
+            ctx.fillRect(0, FIELD_HEIGHT / 2 - GOAL_WIDTH / 2, GOAL_DEPTH, GOAL_WIDTH);
+
+            // Zones de but rouges
+            // Grande surface
+            ctx.strokeRect(FIELD_WIDTH - 10 - PENALTY_AREA_WIDTH, FIELD_HEIGHT / 2 - PENALTY_AREA_HEIGHT / 2, PENALTY_AREA_WIDTH, PENALTY_AREA_HEIGHT);
+
+            // Petite surface
+            ctx.strokeRect(FIELD_WIDTH - 10 - smallAreaWidth, FIELD_HEIGHT / 2 - smallAreaHeight / 2, smallAreaWidth, smallAreaHeight);
+
+            // But rouge
+            ctx.fillStyle = TEAM_RED.primary;
+            ctx.fillRect(FIELD_WIDTH - GOAL_DEPTH, FIELD_HEIGHT / 2 - GOAL_WIDTH / 2, GOAL_DEPTH, GOAL_WIDTH);
+
+            // Point de penalty bleu
+            ctx.beginPath();
+            ctx.arc(10 + PENALTY_AREA_WIDTH - 20, FIELD_HEIGHT / 2, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Point de penalty rouge
+            ctx.beginPath();
+            ctx.arc(FIELD_WIDTH - 10 - PENALTY_AREA_WIDTH + 20, FIELD_HEIGHT / 2, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // ============================================
+        // BOUCLE DE JEU PRINCIPALE
+        // ============================================
+
+        function gameLoop() {
+            // Effacer le canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dessiner le terrain
+            drawField();
+
+            if (isGameActive) {
+                // Mettre à jour les positions cibles des joueurs IA
+                updatePlayerTargets();
+
+                // Gérer les contrôles du joueur
+                handlePlayerControls();
+
+                // Mettre à jour tous les joueurs
+                const allPlayers = [...blueTeam, ...redTeam];
+                allPlayers.forEach(player => player.update(ball));
+
+                // Mettre à jour la balle
+                ball.update();
+
+                // Vérifier les collisions entre la balle et les joueurs
+                checkBallCollisions();
+
+                // Mettre à jour l'affichage de la possession
+                updatePossessionDisplay();
+            }
+
+            // Dessiner tous les éléments
+            ball.draw();
+            [...blueTeam, ...redTeam].forEach(player => player.draw());
+
+            // Dessiner le viseur (curseur de tir)
+            if (isGameActive) {
+                ctx.beginPath();
+                ctx.arc(mousePosition.x, mousePosition.y, 10, 0, Math.PI * 2);
+                ctx.strokeStyle = '#FFEB3B';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Ligne entre le joueur contrôlé et le curseur
+                const controlledPlayer = blueTeam[controlledPlayerIndex];
+                const distanceToBall = controlledPlayer.position.distance(ball.position);
+
+                if (distanceToBall < controlledPlayer.radius + BALL_RADIUS + 20) {
+                    ctx.beginPath();
+                    ctx.moveTo(controlledPlayer.position.x, controlledPlayer.position.y);
+                    ctx.lineTo(mousePosition.x, mousePosition.y);
+                    ctx.strokeStyle = '#FFEB3B';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([5, 5]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+            }
+
+            // Demander la prochaine frame
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Met à jour les positions cibles des joueurs IA
+        function updatePlayerTargets() {
+            // Pour l'équipe bleue (sauf le joueur contrôlé)
+            for (let i = 0; i < blueTeam.length; i++) {
+                if (i !== controlledPlayerIndex) {
+                    const player = blueTeam[i];
+
+                    // Position cible basée sur le rôle et la position de la balle
+                    if (player.role === "Gardien") {
+                        player.targetPosition = player.getDefensivePosition(ball);
+                    } else if (player.role === "Défenseur") {
+                        player.targetPosition = player.getDefensivePosition(ball);
+                    } else if (player.role === "Milieu") {
+                        // Le milieu se place entre la défense et l'attaque
+                        const midfieldX = FIELD_WIDTH / 4;
+                        const offsetY = (i === 2) ? 0 : (i === 1 ? -40 : 40);
+                        player.targetPosition = new Vector(midfieldX, FIELD_HEIGHT / 2 + offsetY);
+                    } else if (player.role === "Attaquant") {
+                        // L'attaquant essaie de se démarquer pour recevoir une passe
+                        const attackX = FIELD_WIDTH * 3 / 4;
+                        const offsetY = Math.sin(Date.now() / 1000 + i) * 60;
+                        player.targetPosition = new Vector(attackX, FIELD_HEIGHT / 2 + offsetY);
+                    }
+                }
+            }
+
+            // Pour l'équipe rouge
+            for (let i = 0; i < redTeam.length; i++) {
+                const player = redTeam[i];
+
+                // Position cible basée sur le rôle et la position de la balle
+                if (player.role === "Gardien") {
+                    player.targetPosition = player.getDefensivePosition(ball);
+                } else if (player.role === "Défenseur") {
+                    player.targetPosition = player.getDefensivePosition(ball);
+                } else if (player.role === "Milieu") {
+                    // Le milieu se place entre la défense et l'attaque
+                    const midfieldX = FIELD_WIDTH * 3 / 4;
+                    const offsetY = (i === 2) ? 0 : (i === 1 ? -40 : 40);
+                    player.targetPosition = new Vector(midfieldX, FIELD_HEIGHT / 2 + offsetY);
+                } else if (player.role === "Attaquant") {
+                    // L'attaquant essaie de se démarquer pour recevoir une passe
+                    const attackX = FIELD_WIDTH / 4;
+                    const offsetY = Math.sin(Date.now() / 1000 + i) * 60;
+                    player.targetPosition = new Vector(attackX, FIELD_HEIGHT / 2 + offsetY);
+                }
+            }
+        }
+
+        // Gère les contrôles du joueur
+        function handlePlayerControls() {
+            const player = blueTeam[controlledPlayerIndex];
+            player.velocity.x = 0;
+            player.velocity.y = 0;
+
+            // Contrôles ZQSD
+            if (keys['z'] || keys['arrowup']) player.velocity.y = -PLAYER_SPEED;
+            if (keys['s'] || keys['arrowdown']) player.velocity.y = PLAYER_SPEED;
+            if (keys['q'] || keys['arrowleft']) player.velocity.x = -PLAYER_SPEED;
+            if (keys['d'] || keys['arrowright']) player.velocity.x = PLAYER_SPEED;
+
+            // Normaliser la vitesse en diagonale
+            if (player.velocity.x !== 0 && player.velocity.y !== 0) {
+                player.velocity.x *= 0.707; // 1/√2
+                player.velocity.y *= 0.707;
+            }
+        }
+
+        // Vérifie les collisions entre la balle et les joueurs
+        function checkBallCollisions() {
+            const allPlayers = [...blueTeam, ...redTeam];
+            let ballTouched = false;
+
+            for (const player of allPlayers) {
+                const distance = player.position.distance(ball.position);
+                const minDistance = player.radius + BALL_RADIUS;
+
+                if (distance < minDistance) {
+                    // Collision détectée
+                    ballTouched = true;
+
+                    // Calculer la direction de repoussement
+                    const angle = Math.atan2(ball.position.y - player.position.y, ball.position.x - player.position.x);
+                    const overlap = minDistance - distance;
+
+                    // Déplacer la balle pour éviter la superposition
+                    ball.position.x += Math.cos(angle) * overlap * 0.5;
+                    ball.position.y += Math.sin(angle) * overlap * 0.5;
+
+                    // Appliquer une force à la balle basée sur la vitesse du joueur
+                    const forceX = player.velocity.x * 0.5;
+                    const forceY = player.velocity.y * 0.5;
+
+                    ball.velocity.x += forceX;
+                    ball.velocity.y += forceY;
+
+                    // Marquer quel joueur a touché la balle en dernier
+                    ball.lastTouchedBy = player.team;
+
+                    // Mettre à jour l'état "hasBall" des joueurs
+                    player.hasBall = true;
+
+                    // Réinitialiser l'état "hasBall" pour les autres joueurs
+                    for (const otherPlayer of allPlayers) {
+                        if (otherPlayer !== player) {
+                            otherPlayer.hasBall = false;
+                        }
+                    }
+                }
+            }
+
+            // Si personne n'a touché la balle, réinitialiser l'état "hasBall" pour tous
+            if (!ballTouched) {
+                for (const player of allPlayers) {
+                    player.hasBall = false;
+                }
+            }
+        }
+
+        // ============================================
+        // DÉMARRAGE DU JEU
+        // ============================================
+
+        initializeTeams();
+        gameLoop();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tennis Néon — Multijoueur Local (1 vs 1)</title>
+    <style>
+        :root {
+            --bg: #05040a;
+            --neon-court: #00ffc6;
+            --neon-accent: #ff3d81;
+            --neon-blue: #3da9ff;
+            --panel: rgba(255, 255, 255, 0.03);
+            --glass: rgba(255, 255, 255, 0.04);
+            --font: "Segoe UI", Roboto, "Helvetica Neue", Arial;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            background: linear-gradient(180deg, #03030a 0%, #060510 60%, #0f0214 100%);
+            font-family: var(--font);
+            color: #e6f7ff;
+        }
+
+        .wrap {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            gap: 8px;
+            padding: 12px;
+            box-sizing: border-box;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 18px;
+            letter-spacing: 1px;
+            color: #fff;
+        }
+
+        .info {
+            font-size: 13px;
+            opacity: 0.9
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: calc(100% - 120px);
+            background: linear-gradient(180deg, rgba(0, 0, 0, 0.02) 0%, rgba(255, 255, 255, 0.01) 100%);
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+        }
+
+        .hud {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 8px;
+        }
+
+        .panel {
+            background: var(--panel);
+            padding: 10px;
+            border-radius: 8px;
+            backdrop-filter: blur(4px);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+        }
+
+        .controls {
+            font-size: 13px;
+            line-height: 1.4
+        }
+
+        .big {
+            font-size: 16px;
+            font-weight: 700
+        }
+
+        .center {
+            display: flex;
+            align-items: center;
+            gap: 8px
+        }
+
+        button {
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
+            color: #fff;
+            cursor: pointer
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            transition: 0.12s
+        }
+
+        .score {
+            display: flex;
+            gap: 12px;
+            align-items: center
+        }
+
+        .playerBox {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 6px 10px;
+            border-radius: 8px;
+            min-width: 120px
+        }
+
+        .p1 {
+            background: linear-gradient(135deg, rgba(255, 50, 80, 0.06), transparent);
+            border: 1px solid rgba(255, 50, 80, 0.06)
+        }
+
+        .p2 {
+            background: linear-gradient(135deg, rgba(60, 150, 255, 0.06), transparent);
+            border: 1px solid rgba(60, 150, 255, 0.06)
+        }
+
+        .small {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.8)
+        }
+
+        @media (max-width:700px) {
+            canvas {
+                height: 60vh
+            }
+
+            .playerBox {
+                min-width: 90px;
+                padding: 6px
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <header>
+            <h1>🎾 Tennis Néon — Multijoueur Local (1 vs 1)</h1>
+            <div class="info">Style néon rétro • Joueurs: Bas = Rouge (Q/D/Z/S/Espace) — Haut = Bleu (←/→/↑/↓/Entrée)
+            </div>
+        </header>
+
+        <canvas id="game"></canvas>
+
+        <div class="hud">
+            <div class="panel score center">
+                <div class="playerBox p1">
+                    <div class="small">Joueur 1 (Bas)</div>
+                    <div id="score1" class="big">0</div>
+                    <div class="small">Jeux: <span id="games1">0</span></div>
+                </div>
+                <div style="font-size:13px;color:rgba(255,255,255,0.85)">|</div>
+                <div class="playerBox p2">
+                    <div class="small">Joueur 2 (Haut)</div>
+                    <div id="score2" class="big">0</div>
+                    <div class="small">Jeux: <span id="games2">0</span></div>
+                </div>
+                <div style="margin-left:12px;font-size:13px;color:rgba(255,255,255,0.9)">Service: <span
+                        id="server">J1</span></div>
+            </div>
+
+            <div class="panel center">
+                <div style="margin-right:12px" class="small">Vitesse max actuelle: <span id="vmax">6</span></div>
+                <button id="restart">Redémarrer match</button>
+                <div style="width:8px"></div>
+                <button id="toggleHints">Touches / Aide</button>
+            </div>
+
+            <div style="width:16px"></div>
+        </div>
+
+        <div id="hints" class="panel controls" style="margin-top:6px;">
+            <strong>Contrôles — Joueur 1 (Rouge, Bas)</strong><br>
+            Déplacement horizontal: Q / D • Approche/net: Z (vers le filet) / S (vers la ligne de fond) • Frapper:
+            Espace<br>
+            <strong>Contrôles — Joueur 2 (Bleu, Haut)</strong><br>
+            Déplacement horizontal: ← / → • Approche/net: ↑ (vers le filet) / ↓ (vers la ligne de fond) • Frapper:
+            Entrée<br>
+            Service: alterné à chaque jeu ; appuie sur la touche de frappe (Espace ou Entrée) pour servir.
+        </div>
+    </div>
+
+    <script>
+        /*
+          Tennis Néon — 1 fichier HTML.
+          - Perspective simple via projection world->screen (x in [0,1], y in [0,1])
+          - Ball has world.x, world.y, and z (hauteur). Collision simple avec raquettes.
+          - Service alterné, scoring tennis, vitesse max augmente par jeu.
+        */
+
+        // === Canvas & utilitaires ===
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        let W = 0, H = 0;
+        function resize() {
+            const ratio = window.devicePixelRatio || 1;
+            W = canvas.clientWidth;
+            H = canvas.clientHeight;
+            canvas.width = Math.floor(W * ratio);
+            canvas.height = Math.floor(H * ratio);
+            ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Projection (perspective simple)
+        // world.x: 0..1 (gauche -> droite)
+        // world.y: 0..1 (haut du court -> bas du court)
+        function worldToScreen(wx, wy) {
+            // compute width available depending on wy (shrinks toward top)
+            const marginX = 40;
+            const minWidth = (W - marginX * 2) * 0.56; // width at top
+            const maxWidth = (W - marginX * 2) * 0.98; // width at bottom
+            const width = minWidth + (maxWidth - minWidth) * (wy); // linear interpolation
+            const centerX = W / 2;
+            const sx = centerX + (wx - 0.5) * width;
+            const topY = 40;
+            const bottomY = H - 40;
+            const sy = topY + wy * (bottomY - topY);
+            return { x: sx, y: sy, width: width };
+        }
+
+        // Color & neon helper
+        function neon(color, glow = 16) {
+            ctx.shadowBlur = glow;
+            ctx.shadowColor = color;
+        }
+        function resetShadow() { ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; }
+
+        // === Game variables ===
+        const court = {
+            netY: 0.485, // world y where net stands (slightly above center)
+            serviceLineTop: 0.35,
+            serviceLineBottom: 0.65
+        };
+
+        const playerRadiusBase = 10; // base size (will scale with y)
+        const ballBaseRadius = 6; // base radius at bottom; smaller when far
+        let maxBallSpeedBase = 6;
+        let maxBallSpeed = maxBallSpeedBase; // increases after each game
+
+        let scoringValues = ['0', '15', '30', '40', 'A', 'G']; // G = game (internal)
+
+        // players
+        const players = [
+            { // Player 1 - bas (rouge)
+                id: 0, color: '#ff416c', x: 0.5, y: 0.85, vx: 0, vy: 0, speed: 0.012, approachStep: 0.018, name: 'J1',
+                scoreIdx: 0, games: 0
+            },
+            { // Player 2 - haut (bleu)
+                id: 1, color: '#3fb0ff', x: 0.5, y: 0.15, vx: 0, vy: 0, speed: 0.012, approachStep: 0.018, name: 'J2',
+                scoreIdx: 0, games: 0
+            }
+        ];
+
+        let servingPlayer = 0; // 0 or 1
+        let inServeMode = true;
+        let paused = false;
+
+        const ball = {
+            x: 0.5, y: 0.5, z: 0, vx: 0, vy: 0, vz: 0, radius: 6,
+            lastHitBy: null, // 0 or 1
+            inPlay: false
+        };
+
+        // keys
+        const keys = {};
+
+        // UI elements
+        const score1El = document.getElementById('score1');
+        const score2El = document.getElementById('score2');
+        const games1El = document.getElementById('games1');
+        const games2El = document.getElementById('games2');
+        const serverEl = document.getElementById('server');
+        const vmaxEl = document.getElementById('vmax');
+        const hints = document.getElementById('hints');
+
+        document.getElementById('restart').addEventListener('click', resetMatch);
+        document.getElementById('toggleHints').addEventListener('click', () => { hints.style.display = (hints.style.display === 'none' ? 'block' : 'none') })
+
+        function resetMatch() {
+            players[0].scoreIdx = 0; players[1].scoreIdx = 0;
+            players[0].games = 0; players[1].games = 0;
+            maxBallSpeed = maxBallSpeedBase;
+            servingPlayer = 0;
+            startNewPoint(true);
+            updateUI();
+        }
+        resetMatch();
+
+        // keyboard handling
+        window.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            // prevent default scrolling for arrow keys/space
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Spacebar', 'Enter'].includes(e.key) || e.code === 'Space') e.preventDefault();
+            handleKeyPress(e);
+        });
+        window.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // map controls
+        function handleKeyPress(e) {
+            // Serve: if in serve mode, pressing the player's hit key triggers serve
+            if (inServeMode) {
+                if (servingPlayer === 0 && (e.key === ' ' || e.code === 'Space')) serveBy(0);
+                if (servingPlayer === 1 && e.key === 'Enter') serveBy(1);
+                return;
+            }
+            // Regular hit: check if press hit key and ball is hittable
+            if (e.key === ' ') { tryHit(0) } // player 1
+            if (e.key === 'Enter') { tryHit(1) } // player 2
+        }
+
+        // Serve logic
+        function serveBy(pid) {
+            // place ball near server and set initial velocities toward opponent
+            const p = players[pid];
+            ball.x = p.x;
+            ball.y = pid === 0 ? p.y - 0.03 : p.y + 0.03;
+            ball.z = 0.02;
+            // direction toward opponent middle
+            const targetY = pid === 0 ? 0.18 : 0.82;
+            const dx = 0.5 - p.x;
+            const dy = targetY - ball.y;
+            const speed = Math.min(maxBallSpeed, maxBallSpeed * 0.9);
+            ball.vx = dx * speed * 0.9;
+            ball.vy = dy * speed;
+            ball.vz = 0.28 + Math.random() * 0.08;
+            ball.inPlay = true;
+            ball.lastHitBy = pid;
+            inServeMode = false;
+            updateUI();
+        }
+
+        // Attempt to hit: if player close to ball (x+y proximity) and ball z low (near ground)
+        // hitting computes new vx, vy, vz based on where on player's 'face' the ball was hit
+        function tryHit(pid) {
+            const p = players[pid];
+            // proximity threshold scales with perspective (bigger when near)
+            const dx = Math.abs(ball.x - p.x);
+            const dy = Math.abs(ball.y - p.y);
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 0.09 && ball.z < 0.20 && ball.inPlay) {
+                // compute outgoing velocities
+                // horizontal target depends on where on player's horizontal position relative to center
+                const hitOffsetX = (ball.x - p.x); // -0.5..0.5
+                // player timing: small bonus if ball.z small -> stronger hit
+                const timingBonus = Math.max(0, 0.3 - ball.z);
+                // base speed
+                const speed = Math.min(maxBallSpeed, maxBallSpeed * (0.9 + timingBonus * 0.6));
+                // set direction toward opponent half; some angle from hitOffsetX and player's current movement
+                const directionY = pid === 0 ? -1 : 1;
+                ball.vy = directionY * (0.6 + Math.abs(hitOffsetX) * 1.8) * speed;
+                ball.vx = hitOffsetX * 5 * speed + (p.vx || 0) * 3;
+                ball.vz = 0.26 + Math.random() * 0.12 + timingBonus * 0.3;
+                ball.lastHitBy = pid;
+                // small "smash" if near net and timing low
+                if (Math.abs(ball.y - court.netY) < 0.12 && ball.z < 0.06) {
+                    ball.vz += 0.2; ball.vy *= 1.2;
+                }
+                // clamp velocities
+                const clamp = (v, m) => Math.max(-m, Math.min(m, v));
+                ball.vx = clamp(ball.vx, maxBallSpeed * 1.6);
+                ball.vy = clamp(ball.vy, maxBallSpeed * 1.6);
+            }
+        }
+
+        // Physics loop
+        const gravity = -0.015; // z-axis gravity (negative because z increases upward)
+        function physics(dt) {
+            // players movement
+            // P1 controls: Q/D - left/right ; Z/S approach (toward net/back)
+            // P2 controls: ArrowLeft/ArrowRight ; ArrowUp/ArrowDown approach
+            // update velocities and positions
+            // P1
+            const p1 = players[0], p2 = players[1];
+            // horizontal
+            if (keys['q'] || keys['Q']) p1.x -= p1.speed * dt;
+            if (keys['d'] || keys['D']) p1.x += p1.speed * dt;
+            // approach
+            if (keys['z'] || keys['Z']) p1.y -= p1.approachStep * dt;
+            if (keys['s'] || keys['S']) p1.y += p1.approachStep * dt;
+
+            // P2
+            if (keys['ArrowLeft']) p2.x -= p2.speed * dt;
+            if (keys['ArrowRight']) p2.x += p2.speed * dt;
+            if (keys['ArrowUp']) p2.y += -p2.approachStep * dt; // up -> toward net (decrease y)
+            if (keys['ArrowDown']) p2.y += p2.approachStep * dt;
+
+            // clamp within court bounds horizontally
+            players.forEach(pl => {
+                pl.x = Math.max(0.08, Math.min(0.92, pl.x));
+            });
+            // clamp y within their half plus some movement range
+            p1.y = Math.max(0.68, Math.min(0.95, p1.y));
+            p2.y = Math.max(0.05, Math.min(0.32, p2.y));
+
+            if (!ball.inPlay) return;
+
+            // integrate ball in world coords
+            ball.x += ball.vx * (dt / 16);
+            ball.y += ball.vy * (dt / 16);
+            ball.z += ball.vz * (dt / 16);
+            ball.vz += gravity * (dt / 16);
+
+            // boundaries in x (bounce off side fences)
+            if (ball.x < 0.02) { ball.x = 0.02; ball.vx *= -0.7; }
+            if (ball.x > 0.98) { ball.x = 0.98; ball.vx *= -0.7; }
+
+            // ground contact (z <= 0) -> bounce
+            if (ball.z <= 0) {
+                ball.z = 0;
+                // bounce only if vertical speed was downward moderately large
+                if (Math.abs(ball.vz) > 0.07) {
+                    ball.vz = -ball.vz * 0.6; // energy loss
+                    // horizontal friction reduces vx/vy
+                    ball.vx *= 0.86;
+                    ball.vy *= 0.86;
+                    // count bounce to detect point if bounce occurs twice or bounce on own side?
+                    handleBounce();
+                } else {
+                    // essentially ball stays on ground: small stop and consider rally end if not hit soon
+                    ball.vz = 0;
+                    ball.vx *= 0.995;
+                    ball.vy *= 0.995;
+                }
+            }
+
+            // if ball travels beyond one player's baseline without being returned -> point
+            // We'll check if ball hits ground on either half and wasn't last hit by opponent
+        }
+
+        // bounce handling to determine faults/points
+        function handleBounce() {
+            // determine which half of court the bounce occurred in (y < 0.5 = top half)
+            const half = ball.y < court.netY ? 1 : 0; // half=1 -> top half (player2 side)
+            // if lastHitBy equals player on same half? For tennis, bounce on opponent's side means opponent failed to return => point to hitter
+            // lastHitBy is the player who hit the ball last
+            // if lastHitBy is null, it's initial serve bounce logic handled elsewhere
+            if (ball.lastHitBy !== null) {
+                // bounce on same side as last hitter? then it likely bounced twice and point goes to other player
+                const last = ball.lastHitBy;
+                // side of last hitter: last===0 -> bottom; last===1 -> top
+                const sideOfLast = last === 0 ? 0 : 1;
+                if (half === sideOfLast) {
+                    // ball bounced on hitter side after being hit -> opponent wins the point
+                    awardPoint(1 - last);
+                } else {
+                    // bounce on opponent side after hit -> good bounce, rally continues (no immediate point), but if bounce happens and ball not returned before second bounce we handle next bounce
+                    // We mark a "bounceOccurred" and if a second bounce occurs on same side -> point
+                    // let's set a flag to count bounces per side by timestamp
+                    const now = performance.now();
+                    if (!ball._lastBounceTime || (now - ball._lastBounceTime) > 600) {
+                        // first bounce recorded for this rally
+                        ball._lastBounceSide = half;
+                        ball._lastBounceTime = now;
+                    } else {
+                        // second bounce within time window -> point to other side (who didn't return)
+                        if (ball._lastBounceSide === half) {
+                            // second bounce on same side -> award to hitter
+                            awardPoint(ball.lastHitBy);
+                        } else {
+                            // second bounce on opposite side -> ambiguous, award to last hitter
+                            awardPoint(ball.lastHitBy);
+                        }
+                        delete ball._lastBounceTime;
+                        delete ball._lastBounceSide;
+                    }
+                }
+            } else {
+                // no one had hit yet (serve in serve mode) -> if serve bounce is out of service box then fault -> give point to receiver or fault logic
+                // For simplicity: if serve bounce not in service box -> fault -> receiver point (or double fault if repeated). We'll keep simple: award receiver point.
+                // But this case will rarely happen because serveBy sets inServeMode false and lastHitBy set.
+            }
+        }
+
+        // awardPoint logic with tennis scoring (15/30/40/AD/Jeu)
+        function awardPoint(pid) {
+            // stop ball
+            ball.inPlay = false;
+            inServeMode = true;
+            // scoring: implement 15,30,40,A,Game
+            const opponent = 1 - pid;
+            // reset bounce markers
+            delete ball._lastBounceTime;
+            delete ball._lastBounceSide;
+
+            // if opponent had advantage and pid wins -> reset to 40-40 (deuce)
+            // We'll encode scores as follows: indices 0:'0',1:'15',2:'30',3:'40',4:'A',5:'G'
+            const p = players[pid], o = players[opponent];
+
+            // handle advantage rules:
+            if (p.scoreIdx >= 3 && o.scoreIdx >= 3) {
+                // both at least 40
+                if (p.scoreIdx === 4) {
+                    // p already had advantage -> wins game
+                    giveGameTo(pid);
+                    return;
+                } else if (o.scoreIdx === 4) {
+                    // opponent had advantage, remove it -> back to deuce (both 40)
+                    o.scoreIdx = 3;
+                    p.scoreIdx = 3;
+                    updateUI();
+                    startNewPoint(false);
+                    return;
+                } else {
+                    // deuce -> give advantage to p
+                    p.scoreIdx = 4;
+                    updateUI();
+                    startNewPoint(false);
+                    return;
+                }
+            } else {
+                // normal scoring progression
+                if (p.scoreIdx < 3) {
+                    p.scoreIdx++;
+                    updateUI();
+                    startNewPoint(false);
+                    return;
+                } else if (p.scoreIdx === 3) {
+                    // wins game
+                    giveGameTo(pid);
+                    return;
+                }
+            }
+        }
+
+        function giveGameTo(pid) {
+            players[pid].games++;
+            // increase ball max speed as progression
+            maxBallSpeed *= 1.09;
+            // reset point scores
+            players[0].scoreIdx = 0; players[1].scoreIdx = 0;
+            // alternate server
+            servingPlayer = 1 - servingPlayer;
+            // reflect in UI
+            updateUI();
+            // check for match end? not required; continue
+            startNewPoint(true);
+        }
+
+        // startNewPoint(resetPositions)
+        // if resetPositions true: place players in starting zones
+        function startNewPoint(resetPositions) {
+            // place players
+            if (resetPositions) {
+                players[0].x = 0.5; players[0].y = 0.85;
+                players[1].x = 0.5; players[1].y = 0.15;
+            } else {
+                // keep players positions (quick continuation)
+            }
+            // ball pre-serve placement near server and inServeMode
+            inServeMode = true;
+            ball.inPlay = false;
+            const sp = players[servingPlayer];
+            ball.x = sp.x;
+            ball.y = sp.y + (servingPlayer === 0 ? -0.03 : 0.03);
+            ball.z = 0;
+            ball.vx = ball.vy = ball.vz = 0;
+            ball.lastHitBy = null;
+            updateUI();
+        }
+
+        // UI updates
+        function updateUI() {
+            const s1 = players[0].scoreIdx;
+            const s2 = players[1].scoreIdx;
+            function displayScore(idx) {
+                if (idx <= 3) return scoringValues[idx];
+                if (idx === 4) return 'Ad';
+                return '';
+            }
+            score1El.textContent = displayScore(s1);
+            score2El.textContent = displayScore(s2);
+            games1El.textContent = players[0].games;
+            games2El.textContent = players[1].games;
+            serverEl.textContent = servingPlayer === 0 ? 'J1' : 'J2';
+            vmaxEl.textContent = maxBallSpeed.toFixed(2);
+        }
+
+        // Rendering court & players & ball
+        function draw() {
+            // clear
+            ctx.clearRect(0, 0, W, H);
+
+            // background grid subtle
+            for (let i = 0; i < 12; i++) {
+                ctx.beginPath();
+                ctx.moveTo(0, H * (i / 12));
+                ctx.lineTo(W, H * (i / 12));
+                ctx.strokeStyle = (i % 3 === 0) ? 'rgba(255,255,255,0.015)' : 'rgba(255,255,255,0.008)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            // draw court trapezoid
+            const topLeft = worldToScreen(0.06, 0.02);
+            const topRight = worldToScreen(0.94, 0.02);
+            const botLeft = worldToScreen(0.02, 0.98);
+            const botRight = worldToScreen(0.98, 0.98);
+
+            // court fill (dark neon)
+            const grd = ctx.createLinearGradient(0, topLeft.y, 0, botLeft.y);
+            grd.addColorStop(0, 'rgba(6,24,50,0.85)');
+            grd.addColorStop(1, 'rgba(2,8,18,0.95)');
+            ctx.fillStyle = grd;
+            ctx.beginPath();
+            ctx.moveTo(topLeft.x, topLeft.y);
+            ctx.lineTo(topRight.x, topRight.y);
+            ctx.lineTo(botRight.x, botRight.y);
+            ctx.lineTo(botLeft.x, botLeft.y);
+            ctx.closePath();
+            ctx.fill();
+
+            // court border glow
+            neon('rgba(0,255,198,0.14)', 24);
+            ctx.strokeStyle = 'rgba(0,255,198,0.9)';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.moveTo(topLeft.x, topLeft.y);
+            ctx.lineTo(topRight.x, topRight.y);
+            ctx.lineTo(botRight.x, botRight.y);
+            ctx.lineTo(botLeft.x, botLeft.y);
+            ctx.closePath();
+            ctx.stroke();
+            resetShadow();
+
+            // draw sidelines and baselines in perspective
+            function drawLine(wx1, wy1, wx2, wy2, col, lw, blur) {
+                const a = worldToScreen(wx1, wy1);
+                const b = worldToScreen(wx2, wy2);
+                neon(col, blur || 12);
+                ctx.strokeStyle = col;
+                ctx.lineWidth = lw;
+                ctx.beginPath();
+                ctx.moveTo(a.x, a.y);
+                ctx.lineTo(b.x, b.y);
+                ctx.stroke();
+                resetShadow();
+            }
+            // center line (net)
+            const netLeft = worldToScreen(0.06, court.netY);
+            const netRight = worldToScreen(0.94, court.netY);
+            drawLine(0.06, court.netY, 0.94, court.netY, 'rgba(255,255,255,0.90)', 2, 14);
+
+            // service lines (left/right)
+            drawLine(0.06, court.serviceLineTop, 0.94, court.serviceLineTop, 'rgba(80,255,200,0.7)', 1.2, 6);
+            drawLine(0.06, court.serviceLineBottom, 0.94, court.serviceLineBottom, 'rgba(80,255,200,0.7)', 1.2, 6);
+
+            // center service verticals (simulate midline to top/bottom)
+            drawLine(0.5, court.serviceLineTop, 0.5, court.serviceLineBottom, 'rgba(120,255,210,0.5)', 1, 6);
+
+            // side lines
+            drawLine(0.06, 0.02, 0.06, 0.98, 'rgba(255,255,255,0.08)', 1, 4);
+            drawLine(0.94, 0.02, 0.94, 0.98, 'rgba(255,255,255,0.08)', 1, 4);
+
+            // perspective grid on court (some horizontal stripes)
+            for (let i = 0; i < 8; i++) {
+                const y = 0.05 + i * (0.9 / 7);
+                const left = worldToScreen(0.08, y);
+                const right = worldToScreen(0.92, y);
+                ctx.strokeStyle = 'rgba(255,255,255,0.02)';
+                ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(left.x, left.y); ctx.lineTo(right.x, right.y); ctx.stroke();
+            }
+
+            // draw net visual (dashed)
+            ctx.setLineDash([6, 8]);
+            drawLine(0.06, court.netY, 0.94, court.netY, 'rgba(0,0,0,0.35)', 4, 12);
+            ctx.setLineDash([]);
+
+            // draw players (stylized stickmen)
+            for (const pl of players) {
+                const s = worldToScreen(pl.x, pl.y);
+                const scale = 0.9 + (pl.y) * 1.6; // player size larger when near bottom
+                const rad = playerRadiusBase * (0.9 + (pl.y * 1.2));
+                // body
+                neon(pl.color, 20);
+                ctx.fillStyle = pl.color;
+                ctx.beginPath();
+                ctx.arc(s.x, s.y - 10 * (1 - pl.y), rad, 0, Math.PI * 2);
+                ctx.fill();
+                // stick body
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = pl.color;
+                ctx.beginPath();
+                ctx.moveTo(s.x, s.y + rad * 0.2);
+                ctx.lineTo(s.x, s.y + rad * 2.6);
+                ctx.stroke();
+                // arms
+                ctx.beginPath();
+                ctx.moveTo(s.x - rad * 0.9, s.y + rad * 0.6);
+                ctx.lineTo(s.x + rad * 0.9, s.y + rad * 0.2);
+                ctx.stroke();
+                // racket (small neon rect)
+                const racketX = pl.x < 0.5 ? s.x + rad * 1.1 : s.x - rad * 1.1;
+                ctx.fillStyle = 'rgba(255,255,255,0.06)';
+                ctx.fillRect(racketX - 4, s.y + rad * 0.4, 8, 28);
+                neon(pl.color, 18);
+                ctx.fillStyle = pl.color;
+                ctx.fillRect(racketX - 3, s.y + rad * 0.4, 6, 20);
+                resetShadow();
+
+                // name label
+                ctx.font = '12px Arial';
+                ctx.fillStyle = 'rgba(255,255,255,0.9)';
+                ctx.textAlign = 'center';
+                ctx.fillText(pl.name, s.x, s.y - rad - 12);
+            }
+
+            // draw ball with perspective size and shadow
+            const bScreen = worldToScreen(ball.x, ball.y);
+            // radius scales: near bottom => bigger, top => smaller
+            const radiusScale = 0.5 + 1.5 * (ball.y); // 0.5..2.0
+            const br = ballBaseRadius * radiusScale * (1 + Math.max(0, ball.z * 0.8));
+            ball.radius = br;
+            neon('rgba(255,255,255,0.9)', 20);
+            // color depending on lastHit
+            const col = ball.lastHitBy === 0 ? 'rgba(255,80,100,1)' : (ball.lastHitBy === 1 ? 'rgba(100,200,255,1)' : 'rgba(255,255,255,0.95)');
+            ctx.fillStyle = col;
+            ctx.beginPath();
+            ctx.arc(bScreen.x, bScreen.y - ball.z * 220, br, 0, Math.PI * 2);
+            ctx.fill();
+            resetShadow();
+
+            // stroke halo
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+            ctx.beginPath();
+            ctx.arc(bScreen.x, bScreen.y - ball.z * 220, br, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Service indicator
+            if (inServeMode) {
+                ctx.font = '14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = 'rgba(255,255,255,0.9)';
+                ctx.fillText(`Serve: ${servingPlayer === 0 ? 'Joueur 1 (Espace)' : 'Joueur 2 (Entrée)'}`, W / 2, 28);
+            }
+
+            // debug: draw coordinates optionally
+            //ctx.fillText(`ball: ${ball.x.toFixed(2)}, ${ball.y.toFixed(2)}, z=${ball.z.toFixed(2)}`, 120, 24);
+        }
+
+        // update loop
+        let last = performance.now();
+        function loop(now) {
+            const dt = Math.min(40, now - last);
+            last = now;
+            if (!paused) {
+                physics(dt);
+            }
+            draw();
+            requestAnimationFrame(loop);
+        }
+        requestAnimationFrame(loop);
+
+        // initial UI update
+        updateUI();
+
+        /* Small improvement: auto-serve initial point after brief pause - but we require player to press serve key.
+           We keep inServeMode true and wait for player's serve key press.
+        */
+
+        // friendly tip: allow clicking 'Space' on screen to trigger P1 serve for touch devices
+        window.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (inServeMode && servingPlayer === 0) {
+                serveBy(0);
+            }
+        }, { passive: false });
+
+        // Add simple keyboard hint and ensure focus
+        canvas.tabIndex = 0;
+        canvas.style.outline = 'none';
+        canvas.addEventListener('click', () => canvas.focus());
+
+    </script>
+</body>
+
+</html>

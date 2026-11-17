@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Racers</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            color: #fff;
+        }
+
+        #gameCanvas {
+            display: block;
+            background: #111;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .player-ui {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid;
+            min-width: 250px;
+        }
+
+        .p1-ui {
+            border-color: #ff4500;
+            box-shadow: 0 0 20px rgba(255, 69, 0, 0.5);
+        }
+
+        .p2-ui {
+            border-color: #00d4ff;
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+        }
+
+        .player-name {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .stat {
+            font-size: 14px;
+            margin: 5px 0;
+        }
+
+        #winner {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            display: none;
+            z-index: 20;
+            border: 3px solid #fff;
+            box-shadow: 0 0 50px rgba(255, 255, 255, 0.5);
+        }
+
+        #winner h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px currentColor;
+        }
+
+        #winner button {
+            margin-top: 20px;
+            padding: 15px 30px;
+            font-size: 18px;
+            background: #333;
+            color: #fff;
+            border: 2px solid #fff;
+            border-radius: 10px;
+            cursor: pointer;
+            pointer-events: all;
+        }
+
+        #winner button:hover {
+            background: #555;
+        }
+
+        .boost-bar {
+            width: 100%;
+            height: 10px;
+            background: #333;
+            border-radius: 5px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+
+        .boost-fill {
+            height: 100%;
+            transition: width 0.1s;
+            border-radius: 5px;
+        }
+
+        .p1-boost {
+            background: linear-gradient(90deg, #ff4500, #ff8c00);
+            box-shadow: 0 0 10px #ff4500;
+        }
+
+        .p2-boost {
+            background: linear-gradient(90deg, #00d4ff, #00ffff);
+            box-shadow: 0 0 10px #00d4ff;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui">
+        <div class="player-ui p1-ui">
+            <div class="player-name" style="color: #ff4500;">🏎️ JOUEUR 1</div>
+            <div class="stat">Tour: <span id="p1-lap">1</span>/3</div>
+            <div class="stat">Temps: <span id="p1-time">0.00</span>s</div>
+            <div class="stat">Meilleur: <span id="p1-best">--</span></div>
+            <div class="stat">Position: <span id="p1-pos">-</span></div>
+            <div class="stat">Boost:</div>
+            <div class="boost-bar">
+                <div class="boost-fill p1-boost" id="p1-boost" style="width: 100%"></div>
+            </div>
+        </div>
+
+        <div class="player-ui p2-ui">
+            <div class="player-name" style="color: #00d4ff;">🏎️ JOUEUR 2</div>
+            <div class="stat">Tour: <span id="p2-lap">1</span>/3</div>
+            <div class="stat">Temps: <span id="p2-time">0.00</span>s</div>
+            <div class="stat">Meilleur: <span id="p2-best">--</span></div>
+            <div class="stat">Position: <span id="p2-pos">-</span></div>
+            <div class="stat">Boost:</div>
+            <div class="boost-bar">
+                <div class="boost-fill p2-boost" id="p2-boost" style="width: 100%"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="winner">
+        <h1 id="winner-text"></h1>
+        <p id="winner-stats"></p>
+        <button onclick="location.reload()">Rejouer</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Piste de course (circuit ovale complexe)
+        const track = {
+            outer: [],
+            inner: [],
+            checkpoints: []
+        };
+
+        function generateTrack() {
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const radiusX = canvas.width * 0.4;
+            const radiusY = canvas.height * 0.35;
+            const innerRadiusX = radiusX * 0.6;
+            const innerRadiusY = radiusY * 0.6;
+
+            // Générer les points de piste
+            for (let i = 0; i < 100; i++) {
+                const angle = (i / 100) * Math.PI * 2;
+
+                // Variation pour rendre la piste plus intéressante
+                const variation = Math.sin(angle * 3) * 20;
+
+                track.outer.push({
+                    x: cx + Math.cos(angle) * (radiusX + variation),
+                    y: cy + Math.sin(angle) * (radiusY + variation)
+                });
+
+                track.inner.push({
+                    x: cx + Math.cos(angle) * (innerRadiusX + variation * 0.5),
+                    y: cy + Math.sin(angle) * (innerRadiusY + variation * 0.5)
+                });
+            }
+
+            // Checkpoints pour détecter les tours
+            track.checkpoints = [
+                { x: cx, y: cy - radiusY, w: 50, h: 100, passed: [false, false] },
+                { x: cx + radiusX, y: cy, w: 100, h: 50, passed: [false, false] },
+                { x: cx, y: cy + radiusY, w: 50, h: 100, passed: [false, false] },
+                { x: cx - radiusX, y: cy, w: 100, h: 50, passed: [false, false] }
+            ];
+        }
+
+        generateTrack();
+
+        // Gestion des touches
+        const keys = {};
+        window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+        // Voitures
+        class Car {
+            constructor(x, y, color, controls) {
+                this.x = x;
+                this.y = y;
+                this.angle = 0;
+                this.speed = 0;
+                this.color = color;
+                this.controls = controls;
+                this.width = 20;
+                this.height = 35;
+                this.maxSpeed = 8;
+                this.acceleration = 0.3;
+                this.friction = 0.95;
+                this.turnSpeed = 0.08;
+                this.boostPower = 15;
+                this.boostCooldown = 0;
+                this.boostDuration = 0;
+                this.trail = [];
+                this.lap = 1;
+                this.lapStartTime = Date.now();
+                this.lapTimes = [];
+                this.checkpointsPassed = 0;
+            }
+
+            update() {
+                // Accélération
+                if (keys[this.controls.forward]) {
+                    this.speed += this.acceleration;
+                }
+                if (keys[this.controls.backward]) {
+                    this.speed -= this.acceleration * 0.7;
+                }
+
+                // Direction
+                if (keys[this.controls.left]) {
+                    this.angle -= this.turnSpeed * Math.abs(this.speed) / this.maxSpeed;
+                }
+                if (keys[this.controls.right]) {
+                    this.angle += this.turnSpeed * Math.abs(this.speed) / this.maxSpeed;
+                }
+
+                // Boost
+                if (keys[this.controls.boost] && this.boostCooldown === 0) {
+                    this.boostDuration = 20;
+                    this.boostCooldown = 180;
+                }
+
+                if (this.boostDuration > 0) {
+                    this.speed = this.boostPower;
+                    this.boostDuration--;
+                }
+
+                if (this.boostCooldown > 0) {
+                    this.boostCooldown--;
+                }
+
+                // Limiter la vitesse
+                const currentMax = this.boostDuration > 0 ? this.boostPower : this.maxSpeed;
+                this.speed = Math.max(-this.maxSpeed * 0.5, Math.min(currentMax, this.speed));
+
+                // Friction
+                this.speed *= this.friction;
+
+                // Mouvement
+                this.x += Math.sin(this.angle) * this.speed;
+                this.y -= Math.cos(this.angle) * this.speed;
+
+                // Collision avec les bords de piste
+                if (!this.isOnTrack()) {
+                    this.speed *= 0.7;
+                }
+
+                // Traînée
+                if (Math.abs(this.speed) > 2) {
+                    this.trail.push({
+                        x: this.x,
+                        y: this.y,
+                        life: 20
+                    });
+                }
+
+                this.trail = this.trail.filter(t => {
+                    t.life--;
+                    return t.life > 0;
+                });
+
+                // Vérifier les checkpoints
+                this.checkCheckpoints();
+            }
+
+            isOnTrack() {
+                let onTrack = false;
+
+                // Vérifier si le point est entre l'intérieur et l'extérieur
+                const cx = canvas.width / 2;
+                const cy = canvas.height / 2;
+                const dist = Math.sqrt((this.x - cx) ** 2 + (this.y - cy) ** 2);
+
+                const angle = Math.atan2(this.y - cy, this.x - cx);
+                const idx = Math.floor(((angle + Math.PI) / (Math.PI * 2)) * track.outer.length);
+
+                if (idx >= 0 && idx < track.outer.length) {
+                    const outerDist = Math.sqrt((track.outer[idx].x - cx) ** 2 + (track.outer[idx].y - cy) ** 2);
+                    const innerDist = Math.sqrt((track.inner[idx].x - cx) ** 2 + (track.inner[idx].y - cy) ** 2);
+
+                    onTrack = dist <= outerDist + 30 && dist >= innerDist - 30;
+                }
+
+                return onTrack;
+            }
+
+            checkCheckpoints() {
+                track.checkpoints.forEach((cp, idx) => {
+                    if (Math.abs(this.x - cp.x) < cp.w && Math.abs(this.y - cp.y) < cp.h) {
+                        if (!cp.passed[this.controls.id]) {
+                            cp.passed[this.controls.id] = true;
+                            this.checkpointsPassed++;
+
+                            // Si tous les checkpoints passés, nouveau tour
+                            if (this.checkpointsPassed === track.checkpoints.length) {
+                                this.completeLap();
+                                this.checkpointsPassed = 0;
+                                track.checkpoints.forEach(c => c.passed[this.controls.id] = false);
+                            }
+                        }
+                    }
+                });
+            }
+
+            completeLap() {
+                const lapTime = (Date.now() - this.lapStartTime) / 1000;
+                this.lapTimes.push(lapTime);
+                this.lap++;
+                this.lapStartTime = Date.now();
+
+                if (this.lap > 3) {
+                    endGame(this);
+                }
+            }
+
+            draw() {
+                // Traînée
+                this.trail.forEach((t, i) => {
+                    const alpha = t.life / 20;
+                    ctx.save();
+                    ctx.globalAlpha = alpha * 0.5;
+                    ctx.fillStyle = this.color;
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = this.color;
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                });
+
+                // Voiture
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                // Effet de boost
+                if (this.boostDuration > 0) {
+                    ctx.shadowBlur = 40;
+                    ctx.shadowColor = this.color;
+
+                    // Flammes de boost
+                    for (let i = 0; i < 3; i++) {
+                        ctx.fillStyle = i === 0 ? '#ffff00' : (i === 1 ? '#ff8800' : this.color);
+                        ctx.globalAlpha = 0.7;
+                        ctx.beginPath();
+                        ctx.moveTo(-8 + i * 8, this.height / 2);
+                        ctx.lineTo(-5 + i * 4, this.height / 2 + 20 + Math.random() * 10);
+                        ctx.lineTo(5 + i * 4, this.height / 2 + 20 + Math.random() * 10);
+                        ctx.lineTo(8 + i * 8, this.height / 2);
+                        ctx.fill();
+                    }
+                    ctx.globalAlpha = 1;
+                }
+
+                // Corps de la voiture
+                ctx.shadowBlur = 25;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+
+                // Détails
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(-this.width / 2 + 3, -this.height / 2 + 5, this.width - 6, 8);
+
+                // Bandes de couleur
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = 0.5;
+                ctx.fillRect(-this.width / 2, -5, this.width, 3);
+                ctx.fillRect(-this.width / 2, 2, this.width, 3);
+
+                ctx.restore();
+            }
+        }
+
+        const player1 = new Car(canvas.width / 2 - 30, canvas.height / 2 + 200, '#ff4500', {
+            forward: 'z',
+            backward: 's',
+            left: 'q',
+            right: 'd',
+            boost: ' ',
+            id: 0
+        });
+
+        const player2 = new Car(canvas.width / 2 + 30, canvas.height / 2 + 200, '#00d4ff', {
+            forward: 'arrowup',
+            backward: 'arrowdown',
+            left: 'arrowleft',
+            right: 'arrowright',
+            boost: 'enter',
+            id: 1
+        });
+
+        function drawTrack() {
+            // Herbe/fond
+            ctx.fillStyle = '#1a3a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Piste externe
+            ctx.fillStyle = '#2a2a2a';
+            ctx.shadowBlur = 0;
+            ctx.beginPath();
+            track.outer.forEach((p, i) => {
+                if (i === 0) ctx.moveTo(p.x, p.y);
+                else ctx.lineTo(p.x, p.y);
+            });
+            ctx.closePath();
+            ctx.fill();
+
+            // Piste interne (herbe centrale)
+            ctx.fillStyle = '#1a3a1a';
+            ctx.beginPath();
+            track.inner.forEach((p, i) => {
+                if (i === 0) ctx.moveTo(p.x, p.y);
+                else ctx.lineTo(p.x, p.y);
+            });
+            ctx.closePath();
+            ctx.fill();
+
+            // Bordures néon
+            ctx.strokeStyle = '#00ff00';
+            ctx.lineWidth = 3;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#00ff00';
+            ctx.beginPath();
+            track.outer.forEach((p, i) => {
+                if (i === 0) ctx.moveTo(p.x, p.y);
+                else ctx.lineTo(p.x, p.y);
+            });
+            ctx.closePath();
+            ctx.stroke();
+
+            ctx.strokeStyle = '#ff0000';
+            ctx.shadowColor = '#ff0000';
+            ctx.beginPath();
+            track.inner.forEach((p, i) => {
+                if (i === 0) ctx.moveTo(p.x, p.y);
+                else ctx.lineTo(p.x, p.y);
+            });
+            ctx.closePath();
+            ctx.stroke();
+
+            // Ligne de départ
+            const startIdx = 75;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 5;
+            ctx.shadowColor = '#fff';
+            ctx.shadowBlur = 15;
+            ctx.beginPath();
+            ctx.moveTo(track.outer[startIdx].x, track.outer[startIdx].y);
+            ctx.lineTo(track.inner[startIdx].x, track.inner[startIdx].y);
+            ctx.stroke();
+        }
+
+        function updateUI() {
+            const p1Time = (Date.now() - player1.lapStartTime) / 1000;
+            const p2Time = (Date.now() - player2.lapStartTime) / 1000;
+
+            document.getElementById('p1-lap').textContent = player1.lap;
+            document.getElementById('p2-lap').textContent = player2.lap;
+            document.getElementById('p1-time').textContent = p1Time.toFixed(2);
+            document.getElementById('p2-time').textContent = p2Time.toFixed(2);
+
+            if (player1.lapTimes.length > 0) {
+                document.getElementById('p1-best').textContent = Math.min(...player1.lapTimes).toFixed(2) + 's';
+            }
+            if (player2.lapTimes.length > 0) {
+                document.getElementById('p2-best').textContent = Math.min(...player2.lapTimes).toFixed(2) + 's';
+            }
+
+            // Position
+            if (player1.lap > player2.lap) {
+                document.getElementById('p1-pos').textContent = '1er 🥇';
+                document.getElementById('p2-pos').textContent = '2ème';
+            } else if (player2.lap > player1.lap) {
+                document.getElementById('p1-pos').textContent = '2ème';
+                document.getElementById('p2-pos').textContent = '1er 🥇';
+            } else {
+                document.getElementById('p1-pos').textContent = player1.checkpointsPassed > player2.checkpointsPassed ? '1er 🥇' : '2ème';
+                document.getElementById('p2-pos').textContent = player2.checkpointsPassed > player1.checkpointsPassed ? '1er 🥇' : '2ème';
+            }
+
+            // Boost
+            document.getElementById('p1-boost').style.width = ((180 - player1.boostCooldown) / 180 * 100) + '%';
+            document.getElementById('p2-boost').style.width = ((180 - player2.boostCooldown) / 180 * 100) + '%';
+        }
+
+        function endGame(winner) {
+            const winnerDiv = document.getElementById('winner');
+            const winnerText = document.getElementById('winner-text');
+            const winnerStats = document.getElementById('winner-stats');
+
+            const playerNum = winner === player1 ? 1 : 2;
+            const bestLap = Math.min(...winner.lapTimes).toFixed(2);
+
+            winnerText.textContent = `🏆 JOUEUR ${playerNum} GAGNE! 🏆`;
+            winnerText.style.color = winner.color;
+            winnerStats.textContent = `Meilleur tour: ${bestLap}s`;
+
+            winnerDiv.style.display = 'block';
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawTrack();
+
+            player1.update();
+            player2.update();
+
+            player1.draw();
+            player2.draw();
+
+            updateUI();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            generateTrack();
+        });
+    </script>
+</body>
+
+</html>

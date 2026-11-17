@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Football 5v5 - Vue de dessus</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            background: #0a1929;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        #gameCanvas {
+            border: 3px solid #3a5f8f;
+            border-radius: 8px;
+            display: block;
+            cursor: crosshair;
+        }
+
+        #ui {
+            color: white;
+            text-align: center;
+            margin-top: 15px;
+            font-size: 18px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+        }
+
+        .score {
+            font-size: 32px;
+            font-weight: bold;
+            padding: 10px 25px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            min-width: 80px;
+        }
+
+        .team-blue {
+            color: #4FC3F7;
+        }
+
+        .team-red {
+            color: #EF5350;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 8px;
+            max-width: 250px;
+        }
+
+        .controls div {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="controls">
+        <div><strong>Contrôles :</strong></div>
+        <div>🎮 ZQSD ou Flèches : Déplacer</div>
+        <div>🖱️ Clic : Tirer/Passer</div>
+        <div>⌨️ Espace : Changer de joueur</div>
+        <div>📍 Curseur : Direction du tir</div>
+    </div>
+
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="1000" height="700"></canvas>
+        <div id="ui">
+            <div class="score team-blue" id="scoreBlue">0</div>
+            <div style="font-size: 14px;">Temps: <span id="timer">00:00</span></div>
+            <div class="score team-red" id="scoreRed">0</div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // CONFIGURATION DU JEU
+        // ============================================
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const FIELD = {
+            width: 1000,
+            height: 700,
+            lineWidth: 3,
+            goalWidth: 150,
+            goalDepth: 20,
+            penaltyBoxWidth: 200,
+            penaltyBoxHeight: 120
+        };
+
+        // ============================================
+        // CLASSE VECTEUR 2D (Pour physique et déplacements)
+        // ============================================
+        class Vector2 {
+            constructor(x = 0, y = 0) {
+                this.x = x;
+                this.y = y;
+            }
+            add(v) {
+                return new Vector2(this.x + v.x, this.y + v.y);
+            }
+            sub(v) {
+                return new Vector2(this.x - v.x, this.y - v.y);
+            }
+            mult(scalar) {
+                return new Vector2(this.x * scalar, this.y * scalar);
+            }
+            length() {
+                return Math.sqrt(this.x * this.x + this.y * this.y);
+            }
+            normalize() {
+                const len = this.length();
+                return len > 0 ? new Vector2(this.x / len, this.y / len) : new Vector2(0, 0);
+            }
+            distance(v) {
+                return Math.sqrt((this.x - v.x) ** 2 + (this.y - v.y) ** 2);
+            }
+        }
+
+        // ============================================
+        // CLASSE BALLE (Physique avec friction)
+        // ============================================
+        class Ball {
+            constructor() {
+                this.pos = new Vector2(FIELD.width / 2, FIELD.height / 2);
+                this.vel = new Vector2(0, 0);
+                this.radius = 8;
+                this.friction = 0.98; // Friction pour ralentir progressivement
+                this.owner = null; // Joueur possédant la balle
+            }
+
+            update() {
+                // Application de la friction
+                this.vel = this.vel.mult(this.friction);
+
+                // Arrêt si vitesse trop faible
+                if (this.vel.length() < 0.1) {
+                    this.vel = new Vector2(0, 0);
+                }
+
+                // Déplacement
+                this.pos = this.pos.add(this.vel);
+
+                // Collisions avec les bords du terrain
+                if (this.pos.x - this.radius < 0 || this.pos.x + this.radius > FIELD.width) {
+                    this.vel.x *= -0.7;
+                    this.pos.x = Math.max(this.radius, Math.min(FIELD.width - this.radius, this.pos.x));
+                }
+
+                // Vérification des buts
+                const goalY = (FIELD.height - FIELD.goalWidth) / 2;
+                const isInGoalHeight = this.pos.y > goalY && this.pos.y < goalY + FIELD.goalWidth;
+
+                if (this.pos.y - this.radius < 0) {
+                    if (isInGoalHeight && this.pos.x < FIELD.goalDepth) {
+                        game.goal('red'); // But pour l'équipe rouge
+                    } else {
+                        this.vel.y *= -0.7;
+                        this.pos.y = this.radius;
+                    }
+                }
+
+                if (this.pos.y + this.radius > FIELD.height) {
+                    if (isInGoalHeight && this.pos.x > FIELD.width - FIELD.goalDepth) {
+                        game.goal('blue'); // But pour l'équipe bleue
+                    } else {
+                        this.vel.y *= -0.7;
+                        this.pos.y = FIELD.height - this.radius;
+                    }
+                }
+            }
+
+            kick(direction, power) {
+                // Application d'une force à la balle
+                this.vel = direction.normalize().mult(power);
+                this.owner = null;
+            }
+
+            draw() {
+                ctx.save();
+                // Ombre de la balle
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.beginPath();
+                ctx.arc(this.pos.x + 3, this.pos.y + 3, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Balle avec dégradé
+                const gradient = ctx.createRadialGradient(
+                    this.pos.x - 3, this.pos.y - 3, 1,
+                    this.pos.x, this.pos.y, this.radius
+                );
+                gradient.addColorStop(0, '#ffffff');
+                gradient.addColorStop(1, '#e0e0e0');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Contour noir
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        // ============================================
+        // CLASSE JOUEUR (IA avec Machine à États)
+        // ============================================
+        class Player {
+            constructor(team, role, startPos) {
+                this.team = team; // 'blue' ou 'red'
+                this.role = role; // 'GK', 'DEF', 'MID', 'ATT'
+                this.pos = new Vector2(startPos.x, startPos.y);
+                this.vel = new Vector2(0, 0);
+                this.homePos = new Vector2(startPos.x, startPos.y); // Position de base
+                this.radius = 15;
+                this.speed = role === 'GK' ? 2 : 3.5;
+                this.controlled = false;
+
+                // États de l'IA : 'IDLE', 'CHASE_BALL', 'DEFEND', 'SUPPORT', 'RETURN'
+                this.state = 'IDLE';
+            }
+
+            // IA : Décision de l'action à effectuer
+            updateAI(ball, allPlayers) {
+                if (this.controlled) return;
+
+                const distToBall = this.pos.distance(ball.pos);
+                const teamHasBall = allPlayers.some(p =>
+                    p.team === this.team && p.pos.distance(ball.pos) < 25
+                );
+
+                // Machine à états finis pour l'IA
+                if (this.role === 'GK') {
+                    // Gardien : reste dans sa zone et suit la balle latéralement
+                    this.defendGoal(ball);
+                } else if (distToBall < 50 && ball.vel.length() < 2) {
+                    // Si proche de la balle et qu'elle est presque arrêtée : aller vers elle
+                    this.state = 'CHASE_BALL';
+                    this.moveTowards(ball.pos);
+                } else if (teamHasBall) {
+                    // Si mon équipe a la balle : se placer pour recevoir une passe
+                    this.state = 'SUPPORT';
+                    this.supportPosition(ball, allPlayers);
+                } else {
+                    // Sinon : retour en défense ou position de base
+                    this.state = 'DEFEND';
+                    this.moveTowards(this.homePos);
+                }
+            }
+
+            // Gardien : défense du but
+            defendGoal(ball) {
+                const goalX = this.team === 'blue' ? 40 : FIELD.width - 40;
+                const targetY = Math.max(FIELD.height * 0.3, Math.min(FIELD.height * 0.7, ball.pos.y));
+                this.moveTowards(new Vector2(goalX, targetY));
+            }
+
+            // Position de soutien offensif
+            supportPosition(ball, allPlayers) {
+                // Se placer en avant de la balle pour recevoir une passe
+                const offsetX = this.team === 'blue' ? 100 : -100;
+                const targetPos = new Vector2(
+                    ball.pos.x + offsetX,
+                    ball.pos.y + (Math.random() - 0.5) * 100
+                );
+
+                // Éviter les regroupements
+                allPlayers.forEach(p => {
+                    if (p !== this && p.team === this.team) {
+                        const dist = this.pos.distance(p.pos);
+                        if (dist < 60) {
+                            const away = this.pos.sub(p.pos).normalize().mult(2);
+                            this.vel = this.vel.add(away);
+                        }
+                    }
+                });
+
+                this.moveTowards(targetPos);
+            }
+
+            // Déplacement vers une position cible
+            moveTowards(target) {
+                const direction = target.sub(this.pos);
+                const distance = direction.length();
+
+                if (distance > 10) {
+                    this.vel = direction.normalize().mult(this.speed);
+                } else {
+                    this.vel = this.vel.mult(0.9);
+                }
+            }
+
+            // Mise à jour de la position
+            update(ball, allPlayers) {
+                this.pos = this.pos.add(this.vel);
+
+                // Contraintes de terrain
+                this.pos.x = Math.max(this.radius, Math.min(FIELD.width - this.radius, this.pos.x));
+                this.pos.y = Math.max(this.radius, Math.min(FIELD.height - this.radius, this.pos.y));
+
+                // Collisions avec autres joueurs
+                allPlayers.forEach(other => {
+                    if (other !== this) {
+                        const dist = this.pos.distance(other.pos);
+                        if (dist < this.radius + other.radius) {
+                            const pushDir = this.pos.sub(other.pos).normalize().mult(2);
+                            this.pos = this.pos.add(pushDir);
+                        }
+                    }
+                });
+
+                // Contrôle de la balle si assez proche
+                const distToBall = this.pos.distance(ball.pos);
+                if (distToBall < this.radius + ball.radius + 5 && ball.vel.length() < 5) {
+                    ball.owner = this;
+                    ball.pos = this.pos.add(this.vel.normalize().mult(this.radius + ball.radius + 2));
+                }
+            }
+
+            draw() {
+                const color = this.team === 'blue' ? '#4FC3F7' : '#EF5350';
+                const darkColor = this.team === 'blue' ? '#0277BD' : '#C62828';
+
+                ctx.save();
+
+                // Ombre
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.beginPath();
+                ctx.arc(this.pos.x + 2, this.pos.y + 2, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Corps du joueur
+                const gradient = ctx.createRadialGradient(
+                    this.pos.x - 5, this.pos.y - 5, 2,
+                    this.pos.x, this.pos.y, this.radius
+                );
+                gradient.addColorStop(0, color);
+                gradient.addColorStop(1, darkColor);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Contour
+                ctx.strokeStyle = this.controlled ? '#FFD700' : '#ffffff';
+                ctx.lineWidth = this.controlled ? 3 : 2;
+                ctx.stroke();
+
+                // Numéro de maillot
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const roleNum = { 'GK': '1', 'DEF': '2', 'MID': '3', 'ATT': '4' }[this.role] || '5';
+                ctx.fillText(roleNum, this.pos.x, this.pos.y);
+
+                ctx.restore();
+            }
+        }
+
+        // ============================================
+        // CLASSE PRINCIPALE DU JEU
+        // ============================================
+        class Game {
+            constructor() {
+                this.ball = new Ball();
+                this.players = [];
+                this.scores = { blue: 0, red: 0 };
+                this.gameTime = 0;
+                this.mousePos = new Vector2(FIELD.width / 2, FIELD.height / 2);
+                this.controlledPlayer = null;
+
+                this.init();
+                this.setupControls();
+            }
+
+            init() {
+                // Création des équipes avec positions de départ
+                const formations = {
+                    blue: [
+                        { role: 'GK', x: 50, y: FIELD.height / 2 },
+                        { role: 'DEF', x: 150, y: FIELD.height / 2 - 100 },
+                        { role: 'DEF', x: 150, y: FIELD.height / 2 + 100 },
+                        { role: 'MID', x: 300, y: FIELD.height / 2 },
+                        { role: 'ATT', x: 450, y: FIELD.height / 2 }
+                    ],
+                    red: [
+                        { role: 'GK', x: FIELD.width - 50, y: FIELD.height / 2 },
+                        { role: 'DEF', x: FIELD.width - 150, y: FIELD.height / 2 - 100 },
+                        { role: 'DEF', x: FIELD.width - 150, y: FIELD.height / 2 + 100 },
+                        { role: 'MID', x: FIELD.width - 300, y: FIELD.height / 2 },
+                        { role: 'ATT', x: FIELD.width - 450, y: FIELD.height / 2 }
+                    ]
+                };
+
+                formations.blue.forEach(f => {
+                    this.players.push(new Player('blue', f.role, { x: f.x, y: f.y }));
+                });
+
+                formations.red.forEach(f => {
+                    this.players.push(new Player('red', f.role, { x: f.x, y: f.y }));
+                });
+
+                // Joueur contrôlé par défaut (attaquant de l'équipe bleue)
+                this.controlledPlayer = this.players.find(p => p.team === 'blue' && p.role === 'ATT');
+                if (this.controlledPlayer) {
+                    this.controlledPlayer.controlled = true;
+                }
+            }
+
+            setupControls() {
+                const keys = {};
+
+                window.addEventListener('keydown', (e) => {
+                    keys[e.key.toLowerCase()] = true;
+
+                    // Changement de joueur avec Espace
+                    if (e.key === ' ') {
+                        e.preventDefault();
+                        this.switchPlayer();
+                    }
+                });
+
+                window.addEventListener('keyup', (e) => {
+                    keys[e.key.toLowerCase()] = false;
+                });
+
+                canvas.addEventListener('mousemove', (e) => {
+                    const rect = canvas.getBoundingClientRect();
+                    this.mousePos = new Vector2(
+                        e.clientX - rect.left,
+                        e.clientY - rect.top
+                    );
+                });
+
+                // Tir au clic
+                canvas.addEventListener('click', () => {
+                    if (this.controlledPlayer && this.ball.owner === this.controlledPlayer) {
+                        const direction = this.mousePos.sub(this.controlledPlayer.pos);
+                        const power = Math.min(direction.length() / 20, 15);
+                        this.ball.kick(direction, power);
+                    }
+                });
+
+                // Mise à jour des contrôles du joueur
+                setInterval(() => {
+                    if (!this.controlledPlayer) return;
+
+                    let vx = 0, vy = 0;
+
+                    if (keys['z'] || keys['arrowup']) vy = -1;
+                    if (keys['s'] || keys['arrowdown']) vy = 1;
+                    if (keys['q'] || keys['arrowleft']) vx = -1;
+                    if (keys['d'] || keys['arrowright']) vx = 1;
+
+                    if (vx !== 0 || vy !== 0) {
+                        const dir = new Vector2(vx, vy).normalize();
+                        this.controlledPlayer.vel = dir.mult(this.controlledPlayer.speed);
+                    } else {
+                        this.controlledPlayer.vel = this.controlledPlayer.vel.mult(0.85);
+                    }
+                }, 16);
+            }
+
+            switchPlayer() {
+                // Change pour le joueur le plus proche de la balle dans l'équipe bleue
+                if (this.controlledPlayer) {
+                    this.controlledPlayer.controlled = false;
+                }
+
+                const bluePlayers = this.players.filter(p => p.team === 'blue');
+                bluePlayers.sort((a, b) =>
+                    a.pos.distance(this.ball.pos) - b.pos.distance(this.ball.pos)
+                );
+
+                this.controlledPlayer = bluePlayers[0];
+                this.controlledPlayer.controlled = true;
+            }
+
+            goal(scoringTeam) {
+                this.scores[scoringTeam]++;
+                document.getElementById('scoreBlue').textContent = this.scores.blue;
+                document.getElementById('scoreRed').textContent = this.scores.red;
+
+                // Réinitialisation des positions
+                setTimeout(() => {
+                    this.ball.pos = new Vector2(FIELD.width / 2, FIELD.height / 2);
+                    this.ball.vel = new Vector2(0, 0);
+                    this.players.forEach(p => {
+                        p.pos = new Vector2(p.homePos.x, p.homePos.y);
+                        p.vel = new Vector2(0, 0);
+                    });
+                }, 1000);
+            }
+
+            update() {
+                this.gameTime += 1 / 60;
+
+                // Mise à jour timer
+                const minutes = Math.floor(this.gameTime / 60);
+                const seconds = Math.floor(this.gameTime % 60);
+                document.getElementById('timer').textContent =
+                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+                // Mise à jour IA et joueurs
+                this.players.forEach(p => {
+                    p.updateAI(this.ball, this.players);
+                    p.update(this.ball, this.players);
+                });
+
+                this.ball.update();
+            }
+
+            drawField() {
+                // Fond du terrain
+                const grassGradient = ctx.createLinearGradient(0, 0, 0, FIELD.height);
+                grassGradient.addColorStop(0, '#2d5016');
+                grassGradient.addColorStop(1, '#1a3d0f');
+                ctx.fillStyle = grassGradient;
+                ctx.fillRect(0, 0, FIELD.width, FIELD.height);
+
+                // Lignes du terrain
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = FIELD.lineWidth;
+
+                // Contour
+                ctx.strokeRect(0, 0, FIELD.width, FIELD.height);
+
+                // Ligne médiane
+                ctx.beginPath();
+                ctx.moveTo(FIELD.width / 2, 0);
+                ctx.lineTo(FIELD.width / 2, FIELD.height);
+                ctx.stroke();
+
+                // Cercle central
+                ctx.beginPath();
+                ctx.arc(FIELD.width / 2, FIELD.height / 2, 80, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Point central
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(FIELD.width / 2, FIELD.height / 2, 5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Surfaces de réparation
+                const goalY = (FIELD.height - FIELD.goalWidth) / 2;
+
+                // Surface bleue
+                ctx.strokeRect(0, goalY - FIELD.penaltyBoxHeight / 2 + FIELD.goalWidth / 2,
+                    FIELD.penaltyBoxWidth, FIELD.penaltyBoxHeight);
+
+                // Surface rouge
+                ctx.strokeRect(FIELD.width - FIELD.penaltyBoxWidth,
+                    goalY - FIELD.penaltyBoxHeight / 2 + FIELD.goalWidth / 2,
+                    FIELD.penaltyBoxWidth, FIELD.penaltyBoxHeight);
+
+                // Buts
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.fillRect(-FIELD.goalDepth, goalY, FIELD.goalDepth, FIELD.goalWidth);
+                ctx.fillRect(FIELD.width, goalY, FIELD.goalDepth, FIELD.goalWidth);
+
+                ctx.strokeStyle = '#ffffff';
+                ctx.strokeRect(-FIELD.goalDepth, goalY, FIELD.goalDepth, FIELD.goalWidth);
+                ctx.strokeRect(FIELD.width, goalY, FIELD.goalDepth, FIELD.goalWidth);
+            }
+
+            draw() {
+                ctx.clearRect(0, 0, FIELD.width, FIELD.height);
+
+                this.drawField();
+                this.players.forEach(p => p.draw());
+                this.ball.draw();
+
+                // Indicateur de tir
+                if (this.controlledPlayer && this.ball.owner === this.controlledPlayer) {
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(255, 215, 0, 0.6)';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath();
+                    ctx.moveTo(this.controlledPlayer.pos.x, this.controlledPlayer.pos.y);
+                    ctx.lineTo(this.mousePos.x, this.mousePos.y);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+
+            loop() {
+                this.update();
+                this.draw();
+                requestAnimationFrame(() => this.loop());
+            }
+        }
+
+        // ============================================
+        // DÉMARRAGE DU JEU
+        // ============================================
+        const game = new Game();
+        game.loop();
+    </script>
+</body>
+
+</html>

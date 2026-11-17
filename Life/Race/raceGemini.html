@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arcade Racer - Top-Down 1v1</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Audiowide&display=swap');
+
+        body {
+            background-color: #0d0d1a;
+            /* Fond très sombre */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Audiowide', cursive;
+            color: #ffffff;
+            overflow: hidden;
+        }
+
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 95vw;
+            max-width: 1200px;
+            padding: 10px;
+        }
+
+        canvas {
+            border: 4px solid #4a00e0;
+            box-shadow: 0 0 25px rgba(74, 0, 224, 0.8), 0 0 10px rgba(255, 255, 255, 0.5);
+            /* Bordure néon */
+            background-color: #000000;
+            touch-action: none;
+            /* Empêche le défilement mobile */
+        }
+
+        .ui-panel {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            margin-top: 10px;
+            gap: 10px;
+        }
+
+        .player-info {
+            flex: 1;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 0 15px;
+            min-width: 0;
+            /* Permet la réduction sur mobile */
+        }
+
+        #p1-info {
+            background-color: rgba(255, 69, 0, 0.15);
+            /* Rouge/Orange transparent */
+            box-shadow: 0 0 15px rgba(255, 69, 0, 0.7);
+            border: 2px solid #ff4500;
+        }
+
+        #p2-info {
+            background-color: rgba(0, 206, 209, 0.15);
+            /* Bleu/Cyan transparent */
+            box-shadow: 0 0 15px rgba(0, 206, 209, 0.7);
+            border: 2px solid #00ced1;
+        }
+
+        .key-text {
+            font-size: 0.8rem;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+
+        .stat-label {
+            text-align: right;
+            opacity: 0.8;
+        }
+
+        .stat-value {
+            text-align: left;
+            font-weight: bold;
+        }
+
+        #message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 30px 50px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 5px solid #ff00ff;
+            box-shadow: 0 0 40px #ff00ff, 0 0 20px #ffffff;
+            color: #ffffff;
+            text-align: center;
+            z-index: 100;
+            border-radius: 12px;
+            font-size: 2rem;
+            line-height: 1.5;
+            display: none;
+        }
+
+        .boost-bar {
+            width: 90%;
+            height: 10px;
+            background-color: #333;
+            border-radius: 5px;
+            margin: 5px auto 0;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .boost-fill {
+            height: 100%;
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div class="ui-panel">
+            <!-- Informations du Joueur 1 -->
+            <div id="p1-info" class="player-info">
+                <h2 class="text-xl text-orange-400">Joueur 1 (Orange)</h2>
+                <p class="key-text">Accélérer: Z, Frein: S, Gauche: Q, Droite: D</p>
+                <div class="stats-grid">
+                    <span class="stat-label">Tour:</span> <span id="p1-lap" class="stat-value text-orange-300">1 /
+                        3</span>
+                    <span class="stat-label">Temps Tour:</span> <span id="p1-lap-time"
+                        class="stat-value text-orange-300">00:00.00</span>
+                    <span class="stat-label">Meilleur Tour:</span> <span id="p1-best-time"
+                        class="stat-value text-orange-300">--:--.--</span>
+                    <span class="stat-label">Boost (Espace):</span>
+                </div>
+                <div class="boost-bar">
+                    <div id="p1-boost-fill" class="boost-fill" style="width: 100%; background-color: #ff8c00;"></div>
+                </div>
+            </div>
+
+            <!-- Informations du Jeu Central -->
+            <div class="player-info bg-gray-900 border-2 border-purple-500 shadow-purple-500/70 hidden sm:block"
+                style="flex: 0.5;">
+                <h2 class="text-xl text-purple-400 mb-2">Classement</h2>
+                <p id="rank-display" class="text-3xl font-bold text-yellow-300">--</p>
+            </div>
+
+            <!-- Informations du Joueur 2 -->
+            <div id="p2-info" class="player-info">
+                <h2 class="text-xl text-cyan-400">Joueur 2 (Cyan)</h2>
+                <p class="key-text">Accélérer: &uarr;, Frein: &darr;, Gauche: &larr;, Droite: &rarr;</p>
+                <div class="stats-grid">
+                    <span class="stat-label">Tour:</span> <span id="p2-lap" class="stat-value text-cyan-300">1 /
+                        3</span>
+                    <span class="stat-label">Temps Tour:</span> <span id="p2-lap-time"
+                        class="stat-value text-cyan-300">00:00.00</span>
+                    <span class="stat-label">Meilleur Tour:</span> <span id="p2-best-time"
+                        class="stat-value text-cyan-300">--:--.--</span>
+                    <span class="stat-label">Boost (Entrée):</span>
+                </div>
+                <div class="boost-bar">
+                    <div id="p2-boost-fill" class="boost-fill" style="width: 100%; background-color: #00ffff;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="message-box" class="hidden">
+        <h3 id="message-title" class="text-4xl mb-4"></h3>
+        <p id="message-text" class="text-2xl mb-4"></p>
+        <button onclick="resetGame()"
+            class="px-6 py-3 bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-xl rounded-lg shadow-lg transition duration-200">Rejouer</button>
+    </div>
+
+    <script>
+        // Configuration du jeu
+        const CANVAS_WIDTH = 1000;
+        const CANVAS_HEIGHT = 600;
+        const WIN_LAPS = 3;
+
+        // Récupération des éléments du DOM
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const messageBox = document.getElementById('message-box');
+        const messageTitle = document.getElementById('message-title');
+        const messageText = document.getElementById('message-text');
+
+        // Mise en place de la taille du Canvas
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+
+        // Variables du jeu
+        let lastTime = 0;
+        let gameTime = 0;
+        let gameRunning = false;
+        let winner = null;
+
+        // Définition de la piste (un tableau de points pour la polygone)
+        // La piste est définie par deux boucles de points : la bordure extérieure et la bordure intérieure
+        const trackOuterPoints = [
+            { x: 50, y: 50 }, { x: 950, y: 50 }, { x: 950, y: 550 }, { x: 50, y: 550 },
+            { x: 50, y: 50 } // Fermer le polygone
+        ];
+        const trackInnerPoints = [
+            { x: 150, y: 150 }, { x: 850, y: 150 }, { x: 850, y: 450 }, { x: 150, y: 450 },
+            { x: 150, y: 150 } // Fermer le polygone
+        ];
+
+        // Définition de la ligne de départ/arrivée (une ligne droite)
+        const startFinishLine = {
+            x1: 50, y1: 100,
+            x2: 150, y2: 100
+        };
+        // Segment de détection du tour (doit être traversé dans une seule direction)
+        const lapGate = {
+            x1: 150, y1: 75,
+            x2: 50, y2: 75,
+            y_min: 75, y_max: 100
+        };
+        // Zone de départ pour le placement initial
+        const spawnPos = [
+            { x: 100, y: 80, angle: Math.PI / 2 }, // P1, intérieur
+            { x: 70, y: 80, angle: Math.PI / 2 }   // P2, extérieur
+        ];
+
+        // Fonction d'aide pour le formatage du temps
+        function formatTime(ms) {
+            if (ms === Infinity || ms === 0) return "--:--.--";
+            const totalSeconds = ms / 1000;
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = Math.floor(totalSeconds % 60);
+            const centiseconds = Math.floor((ms % 1000) / 10);
+            return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(centiseconds).padStart(2, '0')}`;
+        }
+
+        // Classe Car
+        class Car {
+            constructor(id, x, y, angle, color, controls, boostColor) {
+                this.id = id;
+                this.x = x;
+                this.y = y;
+                this.angle = angle; // en radians
+                this.color = color;
+                this.boostColor = boostColor;
+
+                // Propriétés de physique
+                this.maxSpeed = 4;
+                this.acceleration = 0.08;
+                this.deceleration = 0.02;
+                this.maxTurnSpeed = 0.04;
+                this.friction = 0.01;
+                this.currentSpeed = 0;
+                this.isBoosting = false;
+                this.boostDuration = 500; // ms
+                this.boostCooldown = 4000; // ms
+                this.boostTimer = 0;
+                this.boostReady = true;
+
+                // Propriétés de jeu
+                this.controls = controls;
+                this.keysPressed = {};
+                this.currentLap = 1;
+                this.lapStartTime = 0;
+                this.currentLapTime = 0;
+                this.bestLapTime = Infinity;
+                this.lastLapTime = 0;
+                this.gateCrossed = false; // Pour vérifier le passage du tour
+                this.finished = false;
+
+                // Dimensions de la voiture pour la collision
+                this.width = 15;
+                this.height = 25;
+                this.hitbox = { x: 0, y: 0, w: this.width, h: this.height }; // Pour les collisions entre voitures
+            }
+
+            update(deltaTime) {
+                if (this.finished) return;
+
+                const dt = deltaTime / 16.66; // Normalisation par rapport à 60 FPS
+
+                // 1. Contrôles et Accélération
+                let accelerationFactor = 0;
+                if (this.keysPressed[this.controls.forward]) {
+                    accelerationFactor = 1;
+                } else if (this.keysPressed[this.controls.backward]) {
+                    accelerationFactor = -0.5; // Moins rapide en marche arrière
+                }
+
+                // 2. Vitesse et Boost
+                let maxCurrentSpeed = this.maxSpeed;
+                let currentAcceleration = this.acceleration;
+                let collisionFactor = 1.0; // Facteur de ralentissement en cas de collision
+
+                // Vérification de la collision avec la piste (fonction globale ci-dessous)
+                if (isOutsideTrack(this.x, this.y)) {
+                    collisionFactor = 0.2; // Ralentissement sévère sur l'herbe/sable
+                }
+
+                if (this.isBoosting) {
+                    maxCurrentSpeed *= 2.5; // Boost de vitesse
+                    currentAcceleration *= 1.5;
+                    this.boostTimer -= deltaTime;
+                    if (this.boostTimer <= 0) {
+                        this.isBoosting = false;
+                    }
+                } else {
+                    // Cooldown du Boost
+                    if (!this.boostReady) {
+                        this.boostTimer += deltaTime;
+                        if (this.boostTimer >= this.boostCooldown) {
+                            this.boostReady = true;
+                            this.boostTimer = this.boostCooldown;
+                        }
+                    }
+                }
+
+                // Mise à jour de la vitesse
+                this.currentSpeed += currentAcceleration * accelerationFactor * collisionFactor * dt;
+
+                // Application de la friction (Ralentissement)
+                if (accelerationFactor === 0) {
+                    this.currentSpeed -= this.friction * dt;
+                }
+
+                // Limite de vitesse (Boost ou Normal)
+                this.currentSpeed = Math.min(Math.max(this.currentSpeed, -this.maxSpeed * 0.5), maxCurrentSpeed);
+                if (Math.abs(this.currentSpeed) < 0.05 && accelerationFactor === 0) {
+                    this.currentSpeed = 0; // Arrêt complet
+                }
+
+                // 3. Direction
+                if (this.keysPressed[this.controls.left] && this.currentSpeed !== 0) {
+                    this.angle -= this.maxTurnSpeed * (this.currentSpeed / this.maxSpeed) * dt;
+                }
+                if (this.keysPressed[this.controls.right] && this.currentSpeed !== 0) {
+                    this.angle += this.maxTurnSpeed * (this.currentSpeed / this.maxSpeed) * dt;
+                }
+
+                // 4. Mouvement
+                this.x += Math.cos(this.angle) * this.currentSpeed * dt;
+                this.y += Math.sin(this.angle) * this.currentSpeed * dt;
+
+                // Mise à jour de la hitbox (centrée)
+                this.hitbox.x = this.x - this.width / 2;
+                this.hitbox.y = this.y - this.height / 2;
+
+                // 5. Boost (Action Spéciale)
+                if (this.keysPressed[this.controls.special] && this.boostReady) {
+                    this.isBoosting = true;
+                    this.boostReady = false;
+                    this.boostTimer = this.boostDuration;
+                    // Empêche de relancer le boost immédiatement après le relâchement de la touche
+                    this.keysPressed[this.controls.special] = false;
+                }
+
+                // 6. Suivi des tours (Lap Time)
+                if (this.currentLap <= WIN_LAPS) {
+                    this.currentLapTime = gameTime - this.lapStartTime;
+                    this.checkLapCompletion();
+                }
+
+                // 7. Mise à jour de l'UI
+                this.updateUI();
+            }
+
+            // Vérifie si la voiture a franchi la ligne d'arrivée
+            checkLapCompletion() {
+                // Uniquement si la voiture n'a pas encore fini
+                if (this.finished) return;
+
+                // Point à vérifier
+                const checkX = this.x;
+                const checkY = this.y;
+
+                // 1. Passage par le segment de détection (seulement dans la bonne zone)
+                if (checkX > lapGate.x1 && checkX < lapGate.x2 && checkY > lapGate.y_min && checkY < lapGate.y_max) {
+                    this.gateCrossed = true;
+                }
+
+                // 2. Franchissement complet de la ligne de départ/arrivée (doit aller de bas en haut pour valider)
+                // On vérifie si la voiture est passée de l'autre côté de la ligne
+                if (this.gateCrossed && checkY <= startFinishLine.y1) {
+                    // Tour validé
+                    const newLapTime = gameTime - this.lapStartTime;
+
+                    if (this.currentLap > 1) { // Ne pas compter le premier "tour" qui est l'initialisation
+                        this.lastLapTime = newLapTime;
+                        if (this.lastLapTime < this.bestLapTime) {
+                            this.bestLapTime = this.lastLapTime;
+                        }
+                        this.currentLap++;
+                    }
+
+                    this.lapStartTime = gameTime;
+                    this.gateCrossed = false; // Réinitialise le drapeau
+
+                    if (this.currentLap > WIN_LAPS) {
+                        this.finished = true;
+                        // Le premier qui finit gagne
+                        if (!winner) {
+                            winner = this.id;
+                            endGame();
+                        }
+                    }
+                }
+            }
+
+            updateUI() {
+                const lapElement = document.getElementById(`p${this.id}-lap`);
+                const lapTimeElement = document.getElementById(`p${this.id}-lap-time`);
+                const bestTimeElement = document.getElementById(`p${this.id}-best-time`);
+                const boostFill = document.getElementById(`p${this.id}-boost-fill`);
+
+                if (lapElement) lapElement.textContent = `${Math.min(this.currentLap, WIN_LAPS)} / ${WIN_LAPS}`;
+                if (lapTimeElement) lapTimeElement.textContent = formatTime(this.currentLapTime);
+                if (bestTimeElement) bestTimeElement.textContent = formatTime(this.bestLapTime);
+
+                // Mise à jour de la barre de boost
+                let boostPercent;
+                if (this.isBoosting) {
+                    boostPercent = (this.boostTimer / this.boostDuration) * 100;
+                    boostFill.style.backgroundColor = 'red'; // Rouge quand actif
+                } else if (this.boostReady) {
+                    boostPercent = 100;
+                    boostFill.style.backgroundColor = this.boostColor;
+                } else {
+                    boostPercent = (this.boostTimer / this.boostCooldown) * 100;
+                    boostFill.style.backgroundColor = '#333'; // Gris en recharge
+                }
+                boostFill.style.width = `${boostPercent}%`;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                // 1. Traînée (Trail/Particules)
+                if (this.currentSpeed > 2 || this.isBoosting) {
+                    const trailLength = this.isBoosting ? 15 : 8;
+                    const trailOpacity = this.isBoosting ? 0.8 : 0.4;
+                    ctx.fillStyle = `rgba(${this.color === 'orange' ? '255, 140, 0' : '0, 255, 255'}, ${trailOpacity})`;
+                    ctx.fillRect(-this.width / 2, this.height * 0.4, this.width, trailLength);
+                }
+
+                // 2. Carrosserie de la voiture
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+
+                // 3. Effet Néon/Glow (Ombre)
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = this.isBoosting ? 20 : 10; // Plus de lueur pendant le boost
+
+                // 4. Détails (Cockpit)
+                ctx.fillStyle = '#0d0d1a'; // Cockpit sombre
+                ctx.fillRect(-this.width / 4, -this.height / 3, this.width / 2, this.height / 3);
+
+                // 5. Contours (pour l'effet néon)
+                ctx.strokeStyle = this.boostColor;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(-this.width / 2, -this.height / 2, this.width, this.height);
+
+                // 6. Réinitialisation de l'ombre pour ne pas affecter le reste du canvas
+                ctx.shadowBlur = 0;
+                ctx.shadowColor = 'transparent';
+
+                ctx.restore();
+            }
+        }
+
+        // Initialisation des voitures
+        const carP1 = new Car(
+            1, spawnPos[0].x, spawnPos[0].y, spawnPos[0].angle,
+            'orange', { forward: 'KeyZ', backward: 'KeyS', left: 'KeyQ', right: 'KeyD', special: 'Space' },
+            '#ff8c00'
+        );
+        const carP2 = new Car(
+            2, spawnPos[1].x, spawnPos[1].y, spawnPos[1].y, spawnPos[1].angle,
+            'cyan', { forward: 'ArrowUp', backward: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', special: 'Enter' },
+            '#00ffff'
+        );
+
+        const cars = [carP1, carP2];
+
+
+        // --- Fonctions de Dessin de la Piste (Track Drawing Functions) ---
+
+        // Dessine un polygone défini par des points
+        function drawTrackSegment(points, fillColor, strokeColor, shadowColor, shadowBlur, lineWidth) {
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            for (let i = 1; i < points.length; i++) {
+                ctx.lineTo(points[i].x, points[i].y);
+            }
+            ctx.closePath();
+
+            ctx.fillStyle = fillColor;
+            ctx.shadowColor = shadowColor;
+            ctx.shadowBlur = shadowBlur;
+            ctx.fill();
+
+            if (strokeColor) {
+                ctx.strokeStyle = strokeColor;
+                ctx.lineWidth = lineWidth;
+                ctx.stroke();
+            }
+
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+        }
+
+        // Dessin de la Piste
+        function drawTrack() {
+            // 1. Fond de l'Arène (Zone Hors Piste - Herbe/Sable)
+            ctx.fillStyle = '#1a331a'; // Vert très foncé/forêt (herbe)
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // 2. Bordure Extérieure (Le Mur/Zone de Piste)
+            drawTrackSegment(
+                trackOuterPoints,
+                '#2d2d4d', // Couleur plus foncée pour le mur
+                '#4a00e0', // Bordure néon
+                '#4a00e0',
+                15,
+                5
+            );
+
+            // 3. La Route (Asphalte Sombre)
+            ctx.fillStyle = '#222222';
+            ctx.beginPath();
+            ctx.moveTo(trackOuterPoints[0].x, trackOuterPoints[0].y);
+            for (let i = 1; i < trackOuterPoints.length; i++) {
+                ctx.lineTo(trackOuterPoints[i].x, trackOuterPoints[i].y);
+            }
+            ctx.lineTo(trackInnerPoints[trackInnerPoints.length - 1].x, trackInnerPoints[trackInnerPoints.length - 1].y);
+            for (let i = trackInnerPoints.length - 2; i >= 0; i--) {
+                ctx.lineTo(trackInnerPoints[i].x, trackInnerPoints[i].y);
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            // 4. Bordure Intérieure (Île)
+            drawTrackSegment(
+                trackInnerPoints,
+                '#1a331a', // Couleur herbe/sable
+                '#4a00e0', // Bordure néon
+                '#4a00e0',
+                15,
+                5
+            );
+
+            // 5. Ligne de Départ/Arrivée
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 4;
+            ctx.setLineDash([10, 10]); // Ligne pointillée
+            ctx.beginPath();
+            ctx.moveTo(startFinishLine.x1, startFinishLine.y1);
+            ctx.lineTo(startFinishLine.x2, startFinishLine.y2);
+            ctx.stroke();
+            ctx.setLineDash([]); // Réinitialiser
+
+            // 6. Ligne de Maintien au sol
+            ctx.strokeStyle = '#333333';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(startFinishLine.x1, startFinishLine.y1);
+            ctx.lineTo(startFinishLine.x2, startFinishLine.y2);
+            ctx.stroke();
+        }
+
+
+        // --- Fonctions de Physique et Collision ---
+
+        // Fonction de test d'appartenance de point à polygone (PNPoly)
+        function isPointInPath(x, y, pathPoints) {
+            let inside = false;
+            for (let i = 0, j = pathPoints.length - 1; i < pathPoints.length; j = i++) {
+                const xi = pathPoints[i].x, yi = pathPoints[i].y;
+                const xj = pathPoints[j].x, yj = pathPoints[j].y;
+
+                const intersect = ((yi > y) !== (yj > y)) &&
+                    (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        // Vérifie si la voiture est en dehors de la route (sur l'herbe/mur)
+        function isOutsideTrack(x, y) {
+            // 1. Est-ce que le point est à l'intérieur de la bordure extérieure ?
+            const isInsideOuter = isPointInPath(x, y, trackOuterPoints);
+            // 2. Est-ce que le point est à l'intérieur de la bordure intérieure (l'île) ?
+            const isInsideInner = isPointInPath(x, y, trackInnerPoints);
+
+            // Est sur la piste si : (Dans l'extérieur ET PAS dans l'intérieur)
+            const isOnTrack = isInsideOuter && !isInsideInner;
+
+            // Est en dehors si : (PAS sur la piste)
+            return !isOnTrack;
+        }
+
+        // Fonction de détection de collision simple entre deux rectangles (hitbox)
+        function checkCarCollision(carA, carB) {
+            return carA.hitbox.x < carB.hitbox.x + carB.hitbox.w &&
+                carA.hitbox.x + carA.hitbox.w > carB.hitbox.x &&
+                carA.hitbox.y < carB.hitbox.y + carB.hitbox.h &&
+                carA.hitbox.y + carA.hitbox.h > carB.hitbox.y;
+        }
+
+        // Gère la collision simple et le rebond entre deux voitures
+        function resolveCarCollision(carA, carB) {
+            const dx = carB.x - carA.x;
+            const dy = carB.y - carA.y;
+            const angle = Math.atan2(dy, dx);
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            // Distance minimale pour éviter la superposition (moyenne des largeurs/hauteurs)
+            const overlap = (carA.width / 2 + carB.width / 2) - distance;
+
+            if (overlap > 0) {
+                // Séparer les voitures
+                const separationX = Math.cos(angle) * overlap / 2;
+                const separationY = Math.sin(angle) * overlap / 2;
+
+                carA.x -= separationX;
+                carA.y -= separationY;
+                carB.x += separationX;
+                carB.y += separationY;
+
+                // Simple échange de vitesse pour l'effet de "choc"
+                const speedA = carA.currentSpeed;
+                const speedB = carB.currentSpeed;
+                carA.currentSpeed = speedB * 0.8; // Réduit l'impact
+                carB.currentSpeed = speedA * 0.8;
+            }
+        }
+
+        // --- Gestion des Entrées (Input Handling) ---
+
+        // Gestionnaire global pour toutes les touches
+        function handleKeyDown(e) {
+            cars.forEach(car => {
+                const key = e.code;
+                if (Object.values(car.controls).includes(key)) {
+                    car.keysPressed[key] = true;
+                    e.preventDefault(); // Empêche le défilement par les flèches et espace
+                }
+            });
+        }
+
+        function handleKeyUp(e) {
+            cars.forEach(car => {
+                const key = e.code;
+                if (Object.values(car.controls).includes(key)) {
+                    car.keysPressed[key] = false;
+                }
+            });
+        }
+
+        document.addEventListener('keydown', handleKeyDown);
+        document.addEventListener('keyup', handleKeyUp);
+
+
+        // --- Boucle Principale du Jeu (Game Loop) ---
+
+        function gameLoop(timestamp) {
+            if (!gameRunning) return;
+
+            const deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+            gameTime += deltaTime;
+
+            // 1. Nettoyage du Canvas
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // 2. Dessin de la Piste
+            drawTrack();
+
+            // 3. Mise à jour et Dessin des Voitures
+            cars.forEach(car => {
+                car.update(deltaTime);
+                car.draw();
+            });
+
+            // 4. Vérification des Collisions entre Voitures
+            if (checkCarCollision(carP1, carP2)) {
+                resolveCarCollision(carP1, carP2);
+            }
+
+            // 5. Mise à jour du Classement
+            updateRanking();
+
+            // 6. Boucle de rappel
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Met à jour l'affichage du classement
+        function updateRanking() {
+            const rankDisplay = document.getElementById('rank-display');
+
+            // Définir le classement: 1er est celui avec le plus grand nombre de tours,
+            // et en cas d'égalité, celui avec le temps de tour actuel le plus court.
+            let rank = [...cars].sort((a, b) => {
+                // 1. Priorité aux tours complétés
+                if (a.currentLap !== b.currentLap) {
+                    return b.currentLap - a.currentLap;
+                }
+                // 2. Priorité au temps de tour actuel le plus court
+                return a.currentLapTime - b.currentLapTime;
+            });
+
+            // Affichage
+            if (rankDisplay) {
+                const p1Rank = rank[0].id === 1 ? '1er' : '2ème';
+                const p2Rank = rank[0].id === 2 ? '1er' : '2ème';
+                rankDisplay.innerHTML = `<span class="text-orange-400">P1: ${p1Rank}</span><br><span class="text-cyan-400">P2: ${p2Rank}</span>`;
+            }
+        }
+
+        // --- Fonctions de Gestion du Jeu ---
+
+        function startGame() {
+            if (!gameRunning) {
+                gameRunning = true;
+                lastTime = performance.now();
+                gameTime = 0;
+                cars.forEach(car => {
+                    car.lapStartTime = 0; // Sera défini à la première mise à jour
+                    car.updateUI(); // Initialisation de l'UI
+                });
+                messageBox.style.display = 'none';
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function endGame() {
+            gameRunning = false;
+            const winningCar = cars.find(c => c.id === winner);
+            const losingCar = cars.find(c => c.id !== winner);
+
+            messageTitle.textContent = `Victoire du Joueur ${winner} !`;
+            messageText.innerHTML = `
+            ${winningCar.color === 'orange' ? 'La voiture Orange' : 'La voiture Cyan'} a terminé les ${WIN_LAPS} tours.<br>
+            Meilleur Tour P1: ${formatTime(carP1.bestLapTime)} | Meilleur Tour P2: ${formatTime(carP2.bestLapTime)}
+        `;
+            messageBox.style.display = 'block';
+        }
+
+        function resetGame() {
+            winner = null;
+            gameTime = 0;
+
+            // Réinitialisation de la Voiture P1
+            carP1.x = spawnPos[0].x;
+            carP1.y = spawnPos[0].y;
+            carP1.angle = spawnPos[0].angle;
+            carP1.currentSpeed = 0;
+            carP1.currentLap = 1;
+            carP1.lapStartTime = 0;
+            carP1.bestLapTime = Infinity;
+            carP1.lastLapTime = 0;
+            carP1.gateCrossed = false;
+            carP1.isBoosting = false;
+            carP1.boostTimer = carP1.boostCooldown;
+            carP1.boostReady = true;
+            carP1.finished = false;
+
+            // Réinitialisation de la Voiture P2
+            carP2.x = spawnPos[1].x;
+            carP2.y = spawnPos[1].y;
+            carP2.angle = spawnPos[1].angle;
+            carP2.currentSpeed = 0;
+            carP2.currentLap = 1;
+            carP2.lapStartTime = 0;
+            carP2.bestLapTime = Infinity;
+            carP2.lastLapTime = 0;
+            carP2.gateCrossed = false;
+            carP2.isBoosting = false;
+            carP2.boostTimer = carP2.boostCooldown;
+            carP2.boostReady = true;
+            carP2.finished = false;
+
+            startGame();
+        }
+
+        // Démarrage initial du jeu
+        window.onload = () => {
+            messageTitle.textContent = "Arcade Racer 1v1";
+            messageText.innerHTML = "Prêt à courir ? Le premier à 3 tours gagne !";
+            messageBox.style.display = 'block';
+        };
+
+    </script>
+</body>
+
+</html>

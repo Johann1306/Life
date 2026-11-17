@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SUPER MARIO BROS - Level 1-1</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+        }
+        #gameContainer {
+            position: relative;
+            border: 4px solid #fff;
+            box-shadow: 0 0 20px rgba(255,255,255,0.5);
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="game" width="768" height="480"></canvas>
+    </div>
+
+    <script>
+        // ==================== MARIO NES LEVEL 1-1 ====================
+
+        // Constants
+        const TILE_SIZE = 16;
+        const GRAVITY = 0.25;
+        const FRICTION = 0.8;
+        const PLAYER_SPEED = 2.5;
+        const MAX_FALL_SPEED = 8;
+        const JUMP_FORCE = 6.0;
+        const BOUNCE_FORCE = 5.0;
+
+        // Game state
+        let canvas, ctx;
+        let keys = {};
+        let gameFrame = 0;
+        let score = 0;
+        let coins = [];
+        let mushrooms = 0;
+        let scoreEl, coinsEl, mushroomsEl;
+        let isGameOver = false;
+        let winScreen = false;
+
+        // ==================== LEVEL MAP (1-1 Inspired) ====================
+        // Legend:
+        // 0 = air, 1 = ground, 2 = pipe, 3 = pipe top, 4 = brick, 5 = mystery box,
+        // 6 = question block, 7 = hollow pipe, 8 = pipe top, 9 = goomba, 10 = coin,
+        // 11 = flag, 12 = castle, 13 = spike, 14 = pipe top, 15 = high ground
+
+        const LEVEL_WIDTH = 280; // tiles
+        const LEVEL_HEIGHT = 32; // tiles
+
+        // Level data - inspired by original 1-1 with unique elements
+        const levelData = [];
+
+        function createLevel() {
+            // Fill with air
+            for (let y = 0; y < LEVEL_HEIGHT; y++) {
+                levelData[y] = [];
+                for (let x = 0; x < LEVEL_WIDTH; x++) {
+                    levelData[y][x] = 0;
+                }
+            }
+
+            // Ground layer (lower areas)
+            for (let x = 0; x < LEVEL_WIDTH; x++) {
+                if (x < 5 || x > LEVEL_WIDTH - 6) {
+                    levelData[LEVEL_HEIGHT - 1][x] = 1;  // Ground
+                }
+            }
+
+            // Create the iconic 1-1 ground pattern
+            const groundY = LEVEL_HEIGHT - 1;
+
+            // Main ground with gaps
+            for (let x = 0; x < LEVEL_WIDTH; x++) {
+                const xPos = x * TILE_SIZE;
+
+                // Initial platform
+                if (x < 40) {
+                    levelData[groundY][x] = 1;
+                }
+                // Gap
+                else if (x < 45) {
+                    levelData[groundY][x] = 0;
+                }
+                else if (x < 200) {
+                    levelData[groundY][x] = 15; // High ground
+                }
+                else if (x < 204) {
+                    levelData[groundY][x] = 0; // Gap to flag
+                }
+                else if (x < 210) {
+                    levelData[groundY][x] = 1;
+                }
+                else {
+                    levelData[groundY][x] = 12; // Castle
+                }
+
+                // Add some ground blocks at different heights
+                if (x < 60) {
+                    levelData[groundY - 1][x] = 1;
+                    levelData[groundY - 2][x] = 1;
+                }
+                if (x < 80) {
+                    levelData[groundY - 2][x] = 1;
+                    levelData[groundY - 3][x] = 1;
+                }
+            }
+
+            // ==================== PIPES ====================
+
+            // First pipe
+            addPipe(55, 24, 1);  // x, y, height
+            // Second pipe
+            addPipe(75, 22, 1);
+            // Third pipe
+            addPipe(105, 22, 1);
+            // Fourth pipe
+            addPipe(135, 22, 1);
+            // Fifth pipe
+            addPipe(165, 22, 1);
+            // Sixth pipe
+            addPipe(195, 22, 1);
+            // Seventh pipe
+            addPipe(225, 22, 1);
+
+            // ==================== BLOCKS ====================
+
+            // Bricks
+            addBrick(5, 5, 5, 2);
+            addBrick(12, 5, 6, 3);
+            addBrick(12, 8, 4, 2);
+
+            // Mystery blocks
+            addMysteryBlock(10, 8);
+            addMysteryBlock(20, 5);
+            addMysteryBlock(25, 5);
+            addMysteryBlock(30, 5);
+            addMysteryBlock(35, 5);
+            addMysteryBlock(40, 5);
+            addMysteryBlock(45, 5);
+            addMysteryBlock(50, 5);
+
+            // High blocks
+            addBlock(80, 4, 4, 1);
+            addBlock(95, 4, 4, 1);
+            addBlock(110, 4, 4, 1);
+            addBlock(125, 4, 4, 1);
+
+            // Staircase near castle
+            for (let i = 0; i < 8; i++) {
+                levelData[LEVEL_HEIGHT - 1 - i][273 - i] = 1;
+            }
+            for (let i = 0; i < 8; i++) {
+                levelData[LEVEL_HEIGHT - 1 - i][273 - i - 1] = 1;
+            }
+
+            // ==================== ENEMIES ====================
+
+            // Goombas
+            addGoomba(45, 23, 1, 0);
+            addGoomba(65, 23, 1, 1);
+            addGoomba(85, 23, 2, 0);
+            addGoomba(105, 23, 3, 1);
+            addGoomba(125, 23, 4, 0);
+            addGoomba(145, 23, 5, 1);
+            addGoomba(165, 23, 6, 0);
+            addGoomba(185, 23, 7, 1);
+            addGoomba(205, 23, 8, 0);
+            addGoomba(225, 23, 9, 1);
+
+            // ==================== COINS ====================
+
+            // Coin blocks (floating)
+            for (let i = 0; i < 4; i++) {
+                addCoin(52 + i * 2, 16);
+                addCoin(72 + i * 2, 18);
+                addCoin(102 + i * 2, 18);
+                addCoin(132 + i * 2, 18);
+                addCoin(162 + i * 2, 18);
+                addCoin(192 + i * 2, 18);
+                addCoin(222 + i * 2, 18);
+            }
+
+            // Coin block patterns
+            for (let i = 0; i < 8; i++) {
+                if (i % 2 === 0) {
+                    addMysteryBlock(50 + i, 8);
+                }
+            }
+
+            // ==================== FLAGS ====================
+
+            // Pole
+            for (let y = 0; y < 28; y++) {
+                levelData[y][279] = 11;
+            }
+
+            // ==================== CASTLE ====================
+
+            // Castle blocks
+            for (let y = 18; y < 28; y++) {
+                for (let x = 268; x < 280; x++) {
+                    levelData[y][x] = 12;
+                }
+            }
+
+            // Castle door
+            for (let y = 26; y < 28; y++) {
+                levelData[y][272] = 12;
+            }
+        }
+
+        function addPipe(x, y, height) {
+            // Bottom pipe
+            for (let i = 0; i < height; i++) {
+                if (y + i < LEVEL_HEIGHT) {
+                    levelData[y + i][x] = 2;
+                }
+            }
+            // Top pipe
+            levelData[y - 1][x] = 3;
+            levelData[y - 2][x] = 3;
+            levelData[y - 3][x] = 3;
+
+            // Connect to ground
+            if (y + height < LEVEL_HEIGHT) {
+                levelData[y + height][x] = 1;
+                levelData[y + height][x - 1] = 1;
+                levelData[y + height][x + 1] = 1;
+            }
+        }
+
+        function addBrick(x, y, w, h) {
+            for (let dy = 0; dy < h; dy++) {
+                for (let dx = 0; dx < w; dx++) {
+                    if (y + dy < LEVEL_HEIGHT && x + dx < LEVEL_WIDTH) {
+                        levelData[y + dy][x + dx] = 4;
+                    }
+                }
+            }
+        }
+
+        function addMysteryBlock(x, y) {
+            if (x < LEVEL_WIDTH && y < LEVEL_HEIGHT) {
+                levelData[y][x] = 6;
+            }
+        }
+
+        function addBlock(x, y, w, h) {
+            for (let dy = 0; dy < h; dy++) {
+                for (let dx = 0; dx < w; dx++) {
+                    if (y + dy < LEVEL_HEIGHT && x + dx < LEVEL_WIDTH) {
+                        levelData[y + dy][x + dx] = 1;
+                    }
+                }
+            }
+        }
+
+        function addGoomba(x, y, dir, speed) {
+            enemies.push({
+                x: x * TILE_SIZE,
+                y: y * TILE_SIZE,
+                width: 32,
+                height: 32,
+                dir: dir,
+                speed: speed,
+                alive: true,
+                wobble: 0
+            });
+        }
+
+        function addCoin(x, y) {
+            coins.push({
+                x: x * TILE_SIZE,
+                y: y * TILE_SIZE,
+                width: 16,
+                height: 16,
+                collected: false
+            });
+        }
+
+        function addFlag(x, y) {
+            flags.push({
+                x: x * TILE_SIZE,
+                y: y * TILE_SIZE,
+                width: 16,
+                height: 128
+            });
+        }
+
+        // ==================== GAME OBJECTS ====================
+
+        let player = {
+            x: 50,
+            y: 0,
+            width: 32,
+            height: 32,
+            vx: 0,
+            vy: 0,
+            grounded: false,
+            facingRight: true,
+            dead: false,
+            invincible: 0,
+            small: true
+        };
+
+        let enemies = [];
+        let particles = [];
+        let floatText = [];
+        let powerUps = [];
+
+        function initGame() {
+            canvas = document.getElementById('game');
+            ctx = canvas.getContext('2d');
+
+            // Create level
+            createLevel();
+
+            // Spawn enemies
+            for (let y = LEVEL_HEIGHT - 2; y < LEVEL_HEIGHT; y++) {
+                for (let x = 0; x < LEVEL_WIDTH; x++) {
+                    if (levelData[y][x] === 9) {
+                        enemies.push({
+                            x: x * TILE_SIZE,
+                            y: y * TILE_SIZE,
+                            width: 32,
+                            height: 32,
+                            vx: -1,
+                            vy: 0,
+                            grounded: true,
+                            alive: true,
+                            wobble: 0
+                        });
+                    }
+                }
+            }
+
+            // Spawn coins
+            for (let y = 0; y < LEVEL_HEIGHT; y++) {
+                for (let x = 0; x < LEVEL_WIDTH; x++) {
+                    if (levelData[y][x] === 10) {
+                        coins.push({
+                            x: x * TILE_SIZE,
+                            y: y * TILE_SIZE,
+                            width: 16,
+                            height: 16,
+                            collected: false,
+                            bobOffset: Math.random() * Math.PI * 2
+                        });
+                    }
+                }
+            }
+
+            // Spawn flags
+            flags = [];
+            for (let x = 0; x < LEVEL_WIDTH; x++) {
+                for (let y = 0; y < LEVEL_HEIGHT; y++) {
+                    if (levelData[y][x] === 11) {
+                        flags.push({
+                            x: x * TILE_SIZE,
+                            y: y * TILE_SIZE,
+                            width: 16,
+                            height: 128
+                        });
+                    }
+                }
+            }
+
+            // Castle blocks
+            castle = {
+                x: 268 * TILE_SIZE,
+                y: 18 * TILE_SIZE,
+                width: 12 * TILE_SIZE,
+                height: 10 * TILE_SIZE,
+                door: {
+                    x: 272 * TILE_SIZE,
+                    y: 26 * TILE_SIZE
+                }
+            };
+
+        }
+
+        // ==================== INPUT HANDLING ====================
+
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+
+            // Jump
+            if (e.code === 'Space' || e.code === 'ArrowUp') {
+                if (player.grounded && !player.dead) {
+                    player.vy = -JUMP_FORCE;
+                    player.grounded = false;
+                }
+            }
+
+            // Restart
+            if (e.code === 'KeyR') {
+                resetGame();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        // ==================== GAME LOGIC ====================
+
+        function resetGame() {
+            // Reset arrays FIRST before creating level
+            enemies = [];
+            coins = [];
+            flags = [];
+
+            // Recreate level so we know where the ground is
+            createLevel();
+
+            // Initialize DOM elements if they don't exist
+            if (!scoreEl) {
+                scoreEl = document.createElement('div');
+                scoreEl.textContent = 'SCORE: 000000';
+                scoreEl.style.position = 'absolute';
+                scoreEl.style.top = '10px';
+                scoreEl.style.left = '10px';
+                scoreEl.style.color = '#fff';
+                scoreEl.style.font = 'bold 14px Courier New';
+                document.body.appendChild(scoreEl);
+            }
+            if (!coinsEl) {
+                coinsEl = document.createElement('div');
+                coinsEl.textContent = 'COINS: 00';
+                coinsEl.style.position = 'absolute';
+                coinsEl.style.top = '26px';
+                coinsEl.style.left = '10px';
+                coinsEl.style.color = '#ffd700';
+                coinsEl.style.font = 'bold 14px Courier New';
+                document.body.appendChild(coinsEl);
+            }
+            if (!mushroomsEl) {
+                mushroomsEl = document.createElement('div');
+                mushroomsEl.textContent = 'MUSHROOMS: 00';
+                mushroomsEl.style.position = 'absolute';
+                mushroomsEl.style.top = '42px';
+                mushroomsEl.style.left = '10px';
+                mushroomsEl.style.color = '#ff4444';
+                mushroomsEl.style.font = 'bold 14px Courier New';
+                document.body.appendChild(mushroomsEl);
+            }
+
+            // Find a good spawn position - start at a reasonable height in the visible area
+            // Canvas is 480px high = 30 tiles (480/16)
+            // We want to spawn at tile row ~8-10 from top (so Mario is visible)
+            const visibleHeight = Math.floor(canvas.height / TILE_SIZE);
+            let spawnY = 0;
+
+            // First, try to find ground at a specific spawn row (tile 8 from top)
+            // This is where we want Mario to appear initially
+            for (let y = 8; y < visibleHeight - 10; y++) {
+                // Find any ground in the first 10 tiles
+                let foundGround = false;
+                for (let x = 0; x < 10 && !foundGround; x++) {
+                    if (levelData[y][x] === 1 || levelData[y][x] === 15) {
+                        spawnY = y;
+                        foundGround = true;
+                        break;
+                    }
+                }
+                if (foundGround) break;
+            }
+
+            // If no ground found in spawn zone, use the highest ground in visible area
+            if (spawnY === 0) {
+                for (let y = 0; y < visibleHeight; y++) {
+                    for (let x = 0; x < 10; x++) {
+                        if (levelData[y][x] === 1 || levelData[y][x] === 15) {
+                            spawnY = y;
+                            break;
+                        }
+                    }
+                    if (spawnY > 0) break;
+                }
+            }
+
+            player.x = 50;
+            // Spawn just above ground in the visible area (tile row ~10 from top)
+            const spawnTileRow = 10;
+            player.y = spawnTileRow * TILE_SIZE - 15; // Start just above spawn tile
+            player.vx = 0;
+            player.vy = 0;
+            player.dead = false;
+            player.invincible = 0;
+            player.small = true;
+            collectedCoins = 0;
+
+            console.log(`Player initialized at (${player.x}, ${player.y})`);
+
+            // Recreate enemies
+            const enemyPositions = [
+                {x: 45, y: 23}, {x: 65, y: 23}, {x: 85, y: 23},
+                {x: 105, y: 23}, {x: 125, y: 23}, {x: 145, y: 23},
+                {x: 165, y: 23}, {x: 185, y: 23}, {x: 205, y: 23},
+                {x: 225, y: 23}
+            ];
+
+            enemyPositions.forEach(pos => {
+                enemies.push({
+                    x: pos.x * TILE_SIZE,
+                    y: pos.y * TILE_SIZE,
+                    width: 32,
+                    height: 32,
+                    vx: -1,
+                    vy: 0,
+                    grounded: true,
+                    alive: true,
+                    wobble: 0
+                });
+            });
+
+            // Recreate coins
+            for (let i = 0; i < 30; i++) {
+                coins.push({
+                    x: 60 + Math.random() * 200,
+                    y: 100 + Math.random() * 100,
+                    width: 16,
+                    height: 16,
+                    collected: false,
+                    bobOffset: Math.random() * Math.PI * 2
+                });
+            }
+        }
+
+        function update() {
+            if (isGameOver) return;
+
+            gameFrame++;
+
+            // ==================== PLAYER COLLISION ====================
+
+            player.grounded = false;
+
+            // Apply gravity FIRST
+            if (!player.dead) {
+                player.vy += GRAVITY;
+                player.vy = Math.min(player.vy, MAX_FALL_SPEED);
+            }
+
+            // Horizontal movement
+            if (keys['ArrowLeft'] || keys['KeyA']) {
+                player.vx -= 0.5;
+                player.facingRight = false;
+            }
+            if (keys['ArrowRight'] || keys['KeyD']) {
+                player.vx += 0.5;
+                player.facingRight = true;
+            }
+
+            // Friction
+            player.vx *= FRICTION;
+
+            // Cap speed
+            const speedLimit = PLAYER_SPEED;
+            if (player.vx > speedLimit) player.vx = speedLimit;
+            if (player.vx < -speedLimit) player.vx = -speedLimit;
+
+            // ==================== PLAYER COLLISION (Y-axis FIRST) ====================
+
+            // Apply Y movement and check collisions BEFORE X
+            player.y += player.vy;
+            checkPlayerBlockCollision(true); // Y collision first
+
+            // THEN apply X movement and check collisions
+            player.x += player.vx;
+            checkPlayerBlockCollision(); // X collision second
+
+            // ==================== INVINCIBILITY ====================
+
+            if (player.invincible > 0) {
+                player.invincible--;
+            }
+
+            // ==================== ENEMIES ====================
+
+            updateEnemies();
+
+            // ==================== PARTICLES ====================
+
+            updateParticles();
+
+            // ==================== FLOAT TEXT ====================
+
+            updateFloatText();
+
+            // ==================== SCORE ====================
+
+            updateScore();
+
+            // ==================== WIN/LOSE ====================
+
+            checkWinLose();
+        }
+
+        function checkPlayerBlockCollision(yOnly = false) {
+            const playerRect = {
+                x: player.x + 4,
+                y: player.y + 4,
+                w: player.width - 8,
+                h: player.height - 8
+            };
+
+            for (let y = 0; y < LEVEL_HEIGHT; y++) {
+                for (let x = 0; x < LEVEL_WIDTH; x++) {
+                    const tile = levelData[y][x];
+                    if (tile === 0) continue;
+
+                    const tileX = x * TILE_SIZE;
+                    const tileY = y * TILE_SIZE;
+                    const tileRect = {
+                        x: tileX + 2,
+                        y: tileY + 2,
+                        w: TILE_SIZE - 4,
+                        h: TILE_SIZE - 4
+                    };
+
+                    if (rectIntersect(playerRect, tileRect)) {
+                        // ==================== X COLLISION (side walls) ====================
+                        if (!yOnly) {
+                            const playerRight = player.x + playerRect.w;
+                            const playerLeft = player.x;
+                            const tileRight = tileX + tileRect.w;
+                            const tileLeft = tileX;
+
+                            // Player's right side is inside tile
+                            const hitRightWall = playerRight > tileLeft && playerRight < tileRight;
+                            // Player's left side is inside tile
+                            const hitLeftWall = playerLeft < tileRight && playerLeft > tileLeft;
+                            // Player is at same X level as tile
+                            const hitX = playerLeft < tileRight && playerRight > tileLeft;
+
+                            // Only handle X collision if player is moving horizontally
+                            if (hitX && Math.abs(player.vx) > 0.1) {
+                                if (player.vx > 0) {
+                                    // Moving right - push to left edge of tile
+                                    player.x = tileLeft - playerRect.w;
+                                    player.vx = 0;
+                                } else if (player.vx < 0) {
+                                    // Moving left - push to right edge of tile
+                                    player.x = tileRight;
+                                    player.vx = 0;
+                                }
+                            }
+                        }
+
+                        // ==================== Y COLLISION (ground/ceiling) ====================
+                        if (!yOnly) {
+                            const playerBottom = player.y + player.height;
+                            const playerTop = player.y;
+
+                            // Player's bottom is inside tile (falling on ground)
+                            const hitGround = playerBottom > tileY && playerBottom < tileY + tileRect.h;
+                            // Player's top is inside tile (hitting ceiling)
+                            const hitCeiling = playerTop < tileY + tileRect.h && playerTop > tileY;
+                            // Player is at same Y level as tile
+                            const hitY = playerTop < tileY + tileRect.h && playerBottom > tileY;
+
+                            // Handle ground collision
+                            if (hitY && player.vy > 0) {
+                                player.y = tileY + tileRect.h - player.height;
+                                player.vy = 0;
+                                player.grounded = true;
+                            }
+                            // Handle ceiling collision
+                            else if (hitY && player.vy < 0) {
+                                player.y = tileY + tileRect.h - player.height;
+                                player.vy = 0;
+                            }
+                        }
+
+                        // ==================== TILE-SPECIFIC LOGIC ====================
+                        if (tile === 4) {
+                            // Brick - stop falling
+                            if (!yOnly && player.vy > 0) {
+                                const playerBottom = player.y + player.height;
+                                if (playerBottom <= tileY + 1) {
+                                    player.vy = 0;
+                                    player.grounded = true;
+                                }
+                            }
+                        }
+
+                        if (tile === 2 || tile === 7) {
+                            // Pipe/hollow pipe - stop falling
+                            if (!yOnly && player.vy > 0) {
+                                const playerBottom = player.y + player.height;
+                                if (playerBottom <= tileY + TILE_SIZE + 1) {
+                                    player.vy = 0;
+                                    player.grounded = true;
+                                }
+                            }
+                        }
+
+                        if (tile === 6) {
+                            // Mystery block - stop falling and break
+                            if (!yOnly && player.vy > 0 && !player.small) {
+                                const playerBottom = player.y + player.height;
+                                if (playerBottom <= tileY + TILE_SIZE + 1) {
+                                    player.vy = 0;
+                                    player.grounded = true;
+                                    breakBlock(tileX, tileY, 6);
+                                }
+                            }
+                        }
+
+                        if (tile === 9) {
+                            // Goomba collision
+                            if (!player.small) {
+                                const enemy = getGoombaAt(tileX, tileY);
+                                if (enemy) {
+                                    playerHit(enemy);
+                                }
+                            }
+                        }
+
+                        if (tile === 10) {
+                            // Coin collection
+                            const coinIndex = getCoinIndex(tileX, tileY);
+                            if (coinIndex !== -1 && !coins[coinIndex].collected) {
+                                collectCoin(coinIndex);
+                            }
+                        }
+
+                        if (tile === 11) {
+                            // Flag pole
+                            player.win = true;
+                        }
+
+                        if (tile === 12) {
+                            // Castle - stop falling
+                            if (!yOnly && player.vy > 0) {
+                                const playerBottom = player.y + player.height;
+                                if (playerBottom <= tileY + TILE_SIZE + 1) {
+                                    player.vy = 0;
+                                    player.grounded = true;
+                                    player.win = true;
+                                }
+                            }
+                        }
+
+                        if (tile === 13) {
+                            // Spike - only kill if hitting bottom
+                            if (!yOnly && player.vy > 0) {
+                                const playerBottom = player.y + player.height;
+                                if (playerBottom > tileY && playerBottom < tileY + TILE_SIZE - 4) {
+                                    die();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function breakBlock(x, y, type) {
+            if (type === 6) {
+                levelData[y][x] = 0;
+                spawnParticles(x * TILE_SIZE, y * TILE_SIZE, '#ffeb3b');
+                showFloatText('+100', x * TILE_SIZE, y * TILE_SIZE, '#ffeb3b');
+            }
+        }
+
+        // ==================== ENEMIES ====================
+
+        function updateEnemies() {
+            enemies.forEach(enemy => {
+                if (!enemy.alive) return;
+
+                // Gravity
+                enemy.vy += GRAVITY;
+                enemy.vy = Math.min(enemy.vy, MAX_FALL_SPEED);
+
+                // Move
+                enemy.x += enemy.vx;
+                checkEnemyGroundCollision(enemy);
+
+                enemy.y += enemy.vy;
+                checkEnemyGroundCollision(enemy, true);
+
+                // Patrol
+                enemy.wobble += 0.05;
+
+                // Collision with player
+                // Use smaller hitbox for small player
+                let playerHitX = player.x;
+                let playerHitY = player.y;
+                let playerHitW = player.width;
+                let playerHitH = player.height;
+
+                if (player.small) {
+                    // Small player uses 32x32 hitbox (centered)
+                    playerHitX = player.x + 4;
+                    playerHitY = player.y + 4;
+                    playerHitW = 24;
+                    playerHitH = 24;
+                }
+
+                const playerRect = {
+                    x: playerHitX,
+                    y: playerHitY,
+                    w: playerHitW,
+                    h: playerHitH
+                };
+
+                if (rectIntersect(playerRect, {x: enemy.x, y: enemy.y, w: enemy.width, h: enemy.height})) {
+                    if (player.small) {
+                        // Small player - check if stomping (player above enemy)
+                        if (player.vy > 0 && player.y + playerHitH < enemy.y + enemy.height / 2) {
+                            // Stomped enemy
+                            killEnemy(enemy);
+                            player.vy = -BOUNCE_FORCE; // Bounce off enemy
+                            showFloatText('+100', enemy.x, enemy.y - 10, '#fff');
+                        } else {
+                            // Didn't stomp, player dies
+                            die();
+                        }
+                    } else {
+                        // Large player - always dies on enemy contact
+                        die();
+                    }
+                }
+            });
+        }
+
+        function checkEnemyGroundCollision(enemy, yOnly = false) {
+            let enemyX = Math.floor(enemy.x / TILE_SIZE);
+            let enemyY = Math.floor(enemy.y / TILE_SIZE);
+
+            if (enemyY >= LEVEL_HEIGHT) {
+                enemy.y = (LEVEL_HEIGHT - 1) * TILE_SIZE;
+                enemy.vy = 0;
+            }
+
+            // Check all tiles below the enemy for solid ground
+            if (!yOnly && enemyY < LEVEL_HEIGHT - 1) {
+                for (let checkY = enemyY; checkY < LEVEL_HEIGHT - 1; checkY++) {
+                    const tile = levelData[checkY][enemyX];
+                    if (tile === 1 || tile === 15) { // Ground or high ground
+                        enemy.y = checkY * TILE_SIZE;
+                        enemy.vy = 0;
+                        enemy.grounded = true;
+                        break;
+                    } else if (tile === 4 || tile === 6) { // Brick or mystery block
+                        enemy.y = checkY * TILE_SIZE;
+                        enemy.vy = 0;
+                        enemy.grounded = true;
+                        break;
+                    } else if (tile === 2 || tile === 7) { // Pipe
+                        enemy.y = checkY * TILE_SIZE;
+                        enemy.vy = 0;
+                        enemy.grounded = true;
+                        break;
+                    } else if (tile === 12) { // Castle
+                        enemy.y = checkY * TILE_SIZE;
+                        enemy.vy = 0;
+                        enemy.grounded = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        function killEnemy(enemy) {
+            enemy.alive = false;
+            spawnParticles(enemy.x, enemy.y, '#8b4513', 10);
+        }
+
+        // ==================== PLAYER DEATH & WIN ====================
+
+        function die() {
+            if (player.dead) return;
+            player.dead = true;
+            isGameOver = true;
+
+            // Spawn death particles
+            spawnParticles(player.x, player.y, '#b22222', 50);
+
+            showFloatText('GAME OVER', player.x, player.y - 40, '#fff', 40);
+
+            // Auto respawn after 2 seconds
+            setTimeout(() => {
+                if (isGameOver) {
+                    resetGame();
+                }
+            }, 2000);
+        }
+
+        function playerHit(enemy) {
+            if (player.invincible > 0) {
+                // Player is invincible - kill enemy
+                enemy.alive = false;
+                spawnParticles(enemy.x, enemy.y, '#8b4513', 10);
+                showFloatText('+100', enemy.x, enemy.y - 10, '#fff');
+                player.vy = -BOUNCE_FORCE;
+                return;
+            }
+
+            player.invincible = 60;
+            die();
+        }
+
+        function checkWinLose() {
+            if (player.win) {
+                if (!player.winScreen) {
+                    isGameOver = true;
+                    player.winScreen = true;
+                    showFloatText('CLEARED!', castle.x - 200, castle.y - 150, '#fff', 30);
+                    showFloatText(`Score: ${score}`, castle.x - 200, castle.y - 100, '#ffeb3b', 25);
+                    showFloatText(`Coins: ${coins.length - collectedCoins}`, castle.x - 200, castle.y - 75, '#ffeb3b', 20);
+                }
+            }
+        }
+
+        // ==================== PARTICLES ====================
+
+        function spawnParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x + TILE_SIZE / 2,
+                    y: y + TILE_SIZE / 2,
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: (Math.random() - 0.5) * 4,
+                    life: 1,
+                    color: color
+                });
+            }
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        // ==================== FLOAT TEXT ====================
+
+        function showFloatText(text, x, y, color, size = 15) {
+            floatText.push({
+                text: text,
+                x: x,
+                y: y,
+                color: color,
+                size: size,
+                life: 60,
+                offsetY: 0
+            });
+        }
+
+        function updateFloatText() {
+            for (let i = floatText.length - 1; i >= 0; i--) {
+                const ft = floatText[i];
+                ft.y += ft.offsetY;
+                ft.offsetY += 0.02;
+                ft.life--;
+
+                if (ft.life <= 0) {
+                    floatText.splice(i, 1);
+                }
+            }
+        }
+
+        // ==================== SCORE ====================
+
+        function updateScore() {
+            score += 0.1; // 1 point per second
+
+            // Add points for collecting coins
+            for (let i = 0; i < coins.length; i++) {
+                if (!coins[i].collected) {
+                    score += 1; // Coin points
+                }
+            }
+        }
+
+
+        // ==================== RENDER ====================
+
+        function draw() {
+            // Debug: show draw is called
+            ctx.fillStyle = '#ffff00';
+            ctx.font = '12px Courier New';
+            ctx.fillText(`Draw Frame: ${gameFrame}`, 10, 15);
+
+            // Debug: show player state
+            ctx.fillStyle = '#00ff00';
+            ctx.fillText(`Player exists: ${!!player}`, 10, 30);
+
+            // Debug: show canvas size
+            ctx.fillStyle = '#aaa';
+            ctx.fillText(`Canvas: ${canvas.width}x${canvas.height}`, 10, 45);
+
+            // Clear
+            ctx.fillStyle = '#5c94fc';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw level
+            for (let y = 0; y < LEVEL_HEIGHT; y++) {
+                for (let x = 0; x < LEVEL_WIDTH; x++) {
+                    const tile = levelData[y][x];
+                    const tx = x * TILE_SIZE;
+                    const ty = y * TILE_SIZE;
+
+                    if (tile === 0) continue;
+
+                    switch (tile) {
+                        case 1: // Ground
+                            ctx.fillStyle = '#c84c0c';
+                            ctx.fillRect(tx, ty, TILE_SIZE, TILE_SIZE);
+                            ctx.fillStyle = '#e8b66c';
+                            ctx.fillRect(tx + 2, ty + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                            break;
+
+                        case 2: // Pipe
+                            ctx.fillStyle = '#00aa00';
+                            ctx.fillRect(tx, ty, TILE_SIZE, TILE_SIZE);
+                            ctx.strokeStyle = '#006600';
+                            ctx.lineWidth = 2;
+                            ctx.strokeRect(tx + 2, ty + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                            break;
+
+                        case 3: // Pipe top
+                            ctx.fillStyle = '#00aa00';
+                            ctx.fillRect(tx, ty, TILE_SIZE, TILE_SIZE);
+                            ctx.fillStyle = '#00cc00';
+                            ctx.fillRect(tx + 4, ty + 4, TILE_SIZE - 8, TILE_SIZE - 8);
+                            break;
+
+                        case 4: // Brick
+                            ctx.fillStyle = '#b84c1c';
+                            ctx.fillRect(tx, ty, TILE_SIZE, TILE_SIZE);
+                            ctx.strokeStyle='#5c2c0c';
+                            ctx.strokeRect(tx + 1, ty + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+                            break;
+
+                        case 6: // Mystery block
+                            const mysteryTime = Math.floor(gameFrame / 10) % 2;
+                            ctx.fillStyle = mysteryTime ? '#ffeb3b' : '#d4a017';
+                            ctx.fillRect(tx, ty, TILE_SIZE, TILE_SIZE);
+                            ctx.fillStyle = '#b86c1c';
+                            ctx.font = 'bold 12px Arial';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText(mysteryTime ? '!' : '?', tx + TILE_SIZE / 2, ty + TILE_SIZE / 2);
+                            break;
+
+                        case 7: // Hollow pipe
+                            ctx.fillStyle = '#00aa00';
+                            ctx.fillRect(tx, ty, TILE_SIZE, TILE_SIZE);
+                            ctx.fillStyle = '#006600';
+                            ctx.fillRect(tx + 4, ty + 4, TILE_SIZE - 8, TILE_SIZE - 8);
+                            break;
+
+                        case 9: // Goomba
+                            if (getGoombaAt(tx, ty)) {
+                                const goomba = getGoombaAt(tx, ty);
+                                drawGoomba(goomba);
+                            }
+                            break;
+
+                        case 10: // Coin
+                            if (getCoinIndex(tx, ty) !== -1 && !coins[getCoinIndex(tx, ty)].collected) {
+                                drawCoin(tx, ty);
+                            }
+                            break;
+
+                        case 11: // Flag pole
+                            drawFlag(tx, ty);
+                            break;
+
+                        case 12: // Castle
+                            drawCastle(tx, ty);
+                            break;
+
+                        case 13: // Spike
+                            drawSpike(tx, ty);
+                            break;
+
+                        case 15: // High ground
+                            ctx.fillStyle = '#c84c0c';
+                            ctx.fillRect(tx, ty, TILE_SIZE, TILE_SIZE);
+                            ctx.fillStyle = '#e8b66c';
+                            ctx.fillRect(tx + 2, ty + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                            break;
+                    }
+                }
+            }
+
+            // Draw particles
+            for (const p of particles) {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 4, 4);
+            }
+            ctx.globalAlpha = 1;
+
+            // Draw float text
+            for (const ft of floatText) {
+                ctx.globalAlpha = ft.life / 60;
+                ctx.font = `bold ${ft.size}px Arial`;
+                ctx.fillStyle = ft.color;
+                ctx.textAlign = 'left';
+                ctx.fillText(ft.text, ft.x, ft.y);
+            }
+            ctx.globalAlpha = 1;
+
+            // Draw player
+            drawPlayer();
+
+            // Draw score UI
+            drawScoreUI();
+
+            // Draw win screen
+            if (player.winScreen) {
+                drawWinScreen();
+            }
+        }
+
+        // ==================== DRAW HELPERS ====================
+
+        function drawPlayer() {
+            const x = player.x;
+            const y = player.y;
+
+            if (player.dead) {
+                // Dead player (falling)
+                ctx.fillStyle = '#b22222';
+                ctx.fillRect(x, y, player.width, player.height);
+                return;
+            }
+
+            // Mario
+            if (player.invincible > 0 && Math.floor(player.invincible / 4) % 2 === 0) {
+                // Blink when invincible
+            } else {
+                // Draw Mario
+                ctx.fillStyle = '#b22222'; // Red hat/shirt
+                ctx.fillRect(x, y, player.width, player.height);
+
+                // Face
+                ctx.fillStyle = '#ffcc99';
+                ctx.fillRect(x + 6, y + 8, 20, 14);
+
+                // Eyes
+                ctx.fillStyle = '#000';
+                if (player.facingRight) {
+                    ctx.fillRect(x + 16, y + 10, 4, 4);
+                } else {
+                    ctx.fillRect(x + 10, y + 10, 4, 4);
+                }
+
+                // Mustache
+                ctx.fillStyle = '#000';
+                ctx.fillRect(x + player.facingRight ? 12 : 8, y + 14, 6, 2);
+
+                // Beard
+                ctx.fillStyle = '#ffcc99';
+                ctx.fillRect(x + 8, y + 16, 16, 4);
+            }
+        }
+
+        function drawGoomba(goomba) {
+            const x = goomba.x;
+            const y = goomba.y;
+
+            // Bobbing animation
+            const bobY = y + Math.sin(goomba.wobble) * 2;
+
+            // Body
+            ctx.fillStyle = '#8b4513';
+            ctx.beginPath();
+            ctx.ellipse(x + 16, bobY + 16, 14, 16, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Head
+            ctx.fillStyle = '#8b4513';
+            ctx.beginPath();
+            ctx.ellipse(x + 16, bobY + 10, 14, 12, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Eyes
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.ellipse(x + 10, bobY + 10, 6, 8, 0, 0, Math.PI * 2);
+            ctx.ellipse(x + 22, bobY + 10, 6, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(x + 10, bobY + 10, 3, 0, Math.PI * 2);
+            ctx.arc(x + 22, bobY + 10, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Eyebrows
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.moveTo(x + 8, bobY + 5);
+            ctx.lineTo(x + 14, bobY + 8);
+            ctx.moveTo(x + 20, bobY + 5);
+            ctx.lineTo(x + 26, bobY + 8);
+            ctx.stroke();
+
+            // Feet
+            const footOffset = Math.sin(gameFrame * 0.1) * 4;
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.ellipse(x + 6, bobY + 26, 8, 6, 0, 0, Math.PI * 2);
+            ctx.ellipse(x + 26, bobY + 26 + (goomba.vx > 0 ? 2 : -2), 8, 6, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawCoin(x, y) {
+            const bobY = y + Math.sin(gameFrame * 0.1 + (x / TILE_SIZE)) * 3;
+
+            ctx.fillStyle = '#ffd700';
+            ctx.beginPath();
+            ctx.ellipse(x + 8, bobY + 8, 7, 10, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = '#b8860b';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.ellipse(x + 8, bobY + 8, 7, 10, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffd700';
+            ctx.font = 'bold 10px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('$', x + 8, bobY + 8);
+        }
+
+        function drawFlag(x, y) {
+            // Pole
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(x + 6, y, 4, TILE_SIZE * 14);
+
+            // Ball on top
+            ctx.fillStyle = '#00aa00';
+            ctx.beginPath();
+            ctx.arc(x + 10, y + 2, 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Flag
+            const wave = Math.sin(gameFrame * 0.05) * 3;
+            ctx.fillStyle = '#ff0000';
+            ctx.beginPath();
+            ctx.moveTo(x + 14, y + 6 + wave);
+            ctx.quadraticCurveTo(x + 30, y + 10 + wave, x + 26, y + 14 + wave);
+            ctx.quadraticCurveTo(x + 30, y + 18 + wave, x + 26, y + 22 + wave);
+            ctx.quadraticCurveTo(x + 30, y + 26 + wave, x + 26, y + 30 + wave);
+            ctx.quadraticCurveTo(x + 30, y + 34 + wave, x + 24, y + 30 + wave);
+            ctx.fill();
+        }
+
+        function drawCastle(x, y) {
+            // Main structure
+            ctx.fillStyle = '#8b7355';
+            ctx.fillRect(x, y, TILE_SIZE * 12, TILE_SIZE * 10);
+
+            // Battlements
+            ctx.fillStyle = '#a08060';
+            for (let i = 0; i < 12; i += 2) {
+                ctx.fillRect(x + i * TILE_SIZE, y, TILE_SIZE, TILE_SIZE);
+            }
+
+            // Doorway
+            ctx.fillStyle = '#3c2818';
+            ctx.fillRect(x + TILE_SIZE * 10, y + TILE_SIZE * 2, TILE_SIZE * 2, TILE_SIZE * 8);
+
+            // Door
+            ctx.fillStyle = '#2a1a0a';
+            ctx.fillRect(x + TILE_SIZE * 10.2, y + TILE_SIZE * 2.2, TILE_SIZE * 1.6, TILE_SIZE * 7);
+
+            // Flag on top
+            drawFlag(x + TILE_SIZE * 5, y - TILE_SIZE * 3);
+            drawFlag(x + TILE_SIZE * 9, y - TILE_SIZE * 3);
+            drawFlag(x + TILE_SIZE * 11, y - TILE_SIZE * 3);
+        }
+
+        function drawSpike(x, y) {
+            ctx.fillStyle = '#aaa';
+            ctx.beginPath();
+            ctx.moveTo(x, y + TILE_SIZE);
+            ctx.lineTo(x + TILE_SIZE / 2, y);
+            ctx.lineTo(x + TILE_SIZE, y + TILE_SIZE);
+            ctx.fill();
+
+            ctx.fillStyle = '#888';
+            ctx.beginPath();
+            ctx.moveTo(x + TILE_SIZE / 2, y + TILE_SIZE / 2);
+            ctx.lineTo(x + TILE_SIZE / 4, y + TILE_SIZE);
+            ctx.lineTo(x + TILE_SIZE * 3 / 4, y + TILE_SIZE);
+            ctx.fill();
+        }
+
+        function drawScoreUI() {
+            // Update DOM elements instead of drawing on canvas
+            if (scoreEl) scoreEl.textContent = 'SCORE: ' + Math.floor(score).toString().padStart(6, '0');
+            if (coinsEl) coinsEl.textContent = 'COINS: ' + (coins.length - collectedCoins).toString().padStart(2, '0');
+            if (mushroomsEl) mushroomsEl.textContent = 'MUSHROOMS: 00';
+        }
+
+        function drawWinScreen() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.font = 'bold 36px Courier New';
+            ctx.fillStyle = '#ffeb3b';
+            ctx.textAlign = 'center';
+            ctx.fillText('CLEARED!', canvas.width / 2, canvas.height / 2 - 30);
+
+            ctx.font = 'bold 20px Courier New';
+            ctx.fillStyle = '#ffd700';
+            ctx.fillText(`Score: ${Math.floor(score)}`, canvas.width / 2, canvas.height / 2 + 5);
+            ctx.fillText(`Coins Collected: ${coins.length - collectedCoins}`, canvas.width / 2, canvas.height / 2 + 25);
+
+            ctx.fillStyle = '#fff';
+            ctx.font = '14px Courier New';
+            ctx.fillText('Press R to play again', canvas.width / 2, canvas.height / 2 + 50);
+        }
+
+        // ==================== COLLECTORS ====================
+
+        function collectCoin(index) {
+            if (index < 0 || index >= coins.length) return;
+
+            coins[index].collected = true;
+            score += 100;
+            collectedCoins++;
+            showFloatText('+100', coins[index].x, coins[index].y, '#ffd700');
+            spawnParticles(coins[index].x, coins[index].y, '#ffd700', 8);
+        }
+
+        // ==================== UTILITIES ====================
+
+        function rectIntersect(r1, r2) {
+            return r1.x < r2.x + r2.w &&
+                   r1.x + r1.w > r2.x &&
+                   r1.y < r2.y + r2.h &&
+                   r1.y + r1.h > r2.y;
+        }
+
+        function getGoombaAt(tx, ty) {
+            const x = Math.floor(tx / TILE_SIZE);
+            const y = Math.floor(ty / TILE_SIZE);
+            const enemy = enemies.find(e => {
+                if (!e.alive) return false;
+                const ex = Math.floor(e.x / TILE_SIZE);
+                const ey = Math.floor(e.y / TILE_SIZE);
+                return ex === x && ey === y;
+            });
+            return enemy || null;
+        }
+
+        function getCoinIndex(tx, ty) {
+            const x = Math.floor(tx / TILE_SIZE);
+            const y = Math.floor(ty / TILE_SIZE);
+            return coins.findIndex(c => {
+                if (c.collected) return false;
+                const cx = Math.floor(c.x / TILE_SIZE);
+                const cy = Math.floor(c.y / TILE_SIZE);
+                return cx === x && cy === y;
+            });
+        }
+
+        // ==================== GAME LOOP ====================
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ==================== INITIALIZATION ====================
+
+        function init() {
+            canvas = document.getElementById('game');
+            ctx = canvas.getContext('2d');
+
+            console.log('init() called');
+
+            resetGame();
+
+            // Level name
+            const levelEl = document.createElement('div');
+            levelEl.textContent = 'WORLD 1-1';
+            levelEl.style.position = 'absolute';
+            levelEl.style.top = '58px';
+            levelEl.style.left = '10px';
+            levelEl.style.color = '#44ff44';
+            levelEl.style.font = 'bold 14px Courier New';
+            document.body.appendChild(levelEl);
+
+            gameLoop();
+        }
+
+        // Start game
+        init();
+    </script>
+</body>
+</html>

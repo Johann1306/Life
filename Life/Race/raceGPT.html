@@ -1,0 +1,866 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>MicroRétro — Course 1v1 (Top-Down)</title>
+    <style>
+        :root {
+            --bg: #071024;
+            --panel-bg: rgba(0, 0, 0, 0.45);
+            --neon-1: #ff6b2d;
+            --neon-2: #2fe8ff;
+            --accent: #8b5cf6;
+            color-scheme: dark;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            background: linear-gradient(180deg, var(--bg), #020616);
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .ui {
+            position: fixed;
+            left: 12px;
+            top: 12px;
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            color: #e6f3ff;
+            z-index: 20;
+            text-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
+        }
+
+        .hud {
+            background: var(--panel-bg);
+            padding: 8px 12px;
+            border-radius: 10px;
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6), 0 0 18px rgba(120, 90, 255, 0.06) inset;
+            backdrop-filter: blur(6px);
+            min-width: 260px;
+            margin-bottom: 8px;
+        }
+
+        .title {
+            font-weight: 700;
+            font-size: 16px;
+            color: var(--accent);
+            margin-bottom: 6px;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            margin: 4px 0;
+        }
+
+        .player {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            font-size: 13px;
+        }
+
+        .keyHint {
+            font-size: 11px;
+            opacity: 0.75;
+        }
+
+        .footer {
+            position: fixed;
+            right: 12px;
+            bottom: 12px;
+            background: var(--panel-bg);
+            padding: 8px 12px;
+            border-radius: 10px;
+            color: #cfe8ff;
+            font-size: 12px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+        }
+
+        .bigWinner {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            font-family: "Impact", "Arial Black", sans-serif;
+            font-size: 64px;
+            color: #fff;
+            text-shadow: 0 0 18px rgba(255, 255, 255, 0.12), 0 0 36px rgba(255, 150, 0, 0.25);
+            pointer-events: none;
+        }
+
+        @media (max-width:600px) {
+            .hud {
+                min-width: 200px;
+                font-size: 12px
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+
+    <div class="ui">
+        <div class="hud">
+            <div class="title">MicroRétro — Duel (Top-Down)</div>
+            <div class="row">
+                <div>Tour cible</div>
+                <div id="targetLaps">3</div>
+            </div>
+            <div class="row">
+                <div>Classement</div>
+                <div id="ranking">—</div>
+            </div>
+            <div class="row">
+                <div>J1 (Rouge)</div>
+                <div id="j1Lap">Lap 0</div>
+            </div>
+            <div class="row">
+                <div>J2 (Bleu)</div>
+                <div id="j2Lap">Lap 0</div>
+            </div>
+        </div>
+
+        <div class="hud">
+            <div class="title">Infos J1 — Rouge</div>
+            <div class="row">
+                <div>Vitesse</div>
+                <div id="j1Speed">0</div>
+            </div>
+            <div class="row">
+                <div>Lap Time</div>
+                <div id="j1Time">0.00</div>
+            </div>
+            <div class="row">
+                <div>Meilleur</div>
+                <div id="j1Best">—</div>
+            </div>
+            <div class="row keyHint">
+                <div>Contrôles</div>
+                <div>Z/S Q/D • Espace = boost</div>
+            </div>
+        </div>
+
+        <div class="hud" style="margin-top:8px;">
+            <div class="title">Infos J2 — Bleu</div>
+            <div class="row">
+                <div>Vitesse</div>
+                <div id="j2Speed">0</div>
+            </div>
+            <div class="row">
+                <div>Lap Time</div>
+                <div id="j2Time">0.00</div>
+            </div>
+            <div class="row">
+                <div>Meilleur</div>
+                <div id="j2Best">—</div>
+            </div>
+            <div class="row keyHint">
+                <div>Contrôles</div>
+                <div>↑/↓ ←/→ • Enter = boost</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer" id="footer">
+        Objectif : 3 tours • Ralentissement sur bord/herbe • Boost (cooldown) • Bonne course !
+    </div>
+
+    <div id="winner" class="bigWinner" style="display:none;"></div>
+
+    <script>
+        (() => {
+            // Canvas setup
+            const canvas = document.getElementById('c');
+            const ctx = canvas.getContext('2d', { alpha: false });
+            let DPR = Math.max(1, window.devicePixelRatio || 1);
+            function resize() {
+                DPR = Math.max(1, window.devicePixelRatio || 1);
+                canvas.width = Math.floor(window.innerWidth * DPR);
+                canvas.height = Math.floor(window.innerHeight * DPR);
+                canvas.style.width = window.innerWidth + 'px';
+                canvas.style.height = window.innerHeight + 'px';
+                ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+                buildTrack(); // rebuild paths for new size
+            }
+            window.addEventListener('resize', resize);
+
+            // Game config
+            const TARGET_LAPS = 3;
+            document.getElementById('targetLaps').textContent = TARGET_LAPS;
+
+            // Track geometry (will be created in buildTrack)
+            let outerPath, innerPath, trackPath, grassGradient;
+            let finishLine = { a: null, b: null }; // 2 points (in screen coords)
+            let center = { x: 0, y: 0 };
+
+            function buildTrack() {
+                const w = canvas.clientWidth;
+                const h = canvas.clientHeight;
+                center = { x: w / 2, y: h / 2 };
+
+                // Track is an irregular oval built with bezier arcs
+                outerPath = new Path2D();
+                innerPath = new Path2D();
+                trackPath = new Path2D();
+
+                // Parameters control track complexity
+                const ox = w / 2, oy = h / 2;
+                const rw = Math.min(w, h) * 0.42;
+                const rh = Math.min(w, h) * 0.28;
+
+                // Create 8-point jagged oval using sin/cos to get a wobbly shape
+                const ptsOuter = [];
+                const ptsInner = [];
+                const n = 24;
+                for (let i = 0; i < n; i++) {
+                    const t = (i / n) * Math.PI * 2;
+                    const noise = 1 + 0.09 * Math.sin(t * 3.2) + 0.06 * Math.cos(t * 1.7);
+                    ptsOuter.push([ox + Math.cos(t) * rw * noise, oy + Math.sin(t) * rh * noise]);
+                    ptsInner.push([ox + Math.cos(t) * (rw * 0.56) * noise, oy + Math.sin(t) * (rh * 0.56) * noise]);
+                }
+
+                // outer
+                outerPath.moveTo(ptsOuter[0][0], ptsOuter[0][1]);
+                for (let i = 1; i < ptsOuter.length; i++) {
+                    const [x, y] = ptsOuter[i];
+                    outerPath.lineTo(x, y);
+                }
+                outerPath.closePath();
+
+                // inner
+                innerPath.moveTo(ptsInner[0][0], ptsInner[0][1]);
+                for (let i = 1; i < ptsInner.length; i++) {
+                    const [x, y] = ptsInner[i];
+                    innerPath.lineTo(x, y);
+                }
+                innerPath.closePath();
+
+                // trackPath = outer minus inner (we'll use isPointInPath checks with outer and inner)
+                // finish line: choose a segment near top-right of inner to outer
+                const fi = Math.floor(n * 0.98);
+                finishLine.a = { x: ptsInner[fi][0], y: ptsInner[fi][1] };
+                finishLine.b = { x: ptsOuter[fi][0], y: ptsOuter[fi][1] };
+
+                // grass gradient
+                grassGradient = ctx.createLinearGradient(0, 0, w, 0);
+                grassGradient.addColorStop(0, '#123220');
+                grassGradient.addColorStop(0.5, '#223a1f');
+                grassGradient.addColorStop(1, '#183527');
+            }
+
+            // initial resize and build
+            resize();
+
+            // Utility functions
+            function now() { return performance.now(); }
+
+            function segmentIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+                // Check if segment AB intersects CD
+                const s1_x = bx - ax, s1_y = by - ay;
+                const s2_x = dx - cx, s2_y = dy - cy;
+                const s = (-s1_y * (ax - cx) + s1_x * (ay - cy)) / (-s2_x * s1_y + s1_x * s2_y);
+                const t = (s2_x * (ay - cy) - s2_y * (ax - cx)) / (-s2_x * s1_y + s1_x * s2_y);
+                if (!isFinite(s) || !isFinite(t)) return false;
+                return s >= 0 && s <= 1 && t >= 0 && t <= 1;
+            }
+
+            function dist(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy); }
+
+            // Car class
+            class Car {
+                constructor(opts) {
+                    this.x = opts.x; this.y = opts.y; this.angle = opts.angle || 0;
+                    this.color = opts.color;
+                    this.plate = opts.name;
+                    this.w = 22; this.h = 12; // visual size
+                    this.speed = 0;
+                    this.maxSpeed = 380; // in px per second
+                    this.acc = 700; // px/s^2
+                    this.brake = 1000;
+                    this.friction = 350; // speed drag
+                    this.turnRate = 160; // deg/s at base, scaled by speed
+                    this.boostPower = 700;
+                    this.boostCooldown = 3000; // ms
+                    this.boostDuration = 220; // ms
+                    this.boostReady = 0;
+                    this.boostingUntil = 0;
+                    this.inputs = { up: false, down: false, left: false, right: false, boost: false };
+                    this.trail = [];
+                    this.maxTrail = 26;
+                    this.lap = 0;
+                    this.lapTimes = [];
+                    this.currentLapStart = now();
+                    this.bestLap = null;
+                    this.lastPos = { x: this.x, y: this.y };
+                    this.prevPositions = [{ x: this.x, y: this.y }];
+                    this.prevCross = false;
+                    this.completed = false;
+                }
+                update(dt) {
+                    // Controls -> acceleration
+                    const forward = this.inputs.up ? 1 : (this.inputs.down ? -1 : 0);
+
+                    // accelerate/brake
+                    if (forward > 0) {
+                        this.speed += this.acc * forward * dt;
+                    } else if (forward < 0) {
+                        this.speed += this.brake * forward * dt; // negative
+                    } else {
+                        // natural friction
+                        if (this.speed > 0) this.speed = Math.max(0, this.speed - this.friction * dt);
+                        else this.speed = Math.min(0, this.speed + this.friction * dt * 0.6);
+                    }
+
+                    // clamp base maxSpeed; boost temporarily increases limit and acceleration
+                    let effectiveMax = this.maxSpeed;
+                    if (now() < this.boostingUntil) {
+                        effectiveMax += this.boostPower;
+                    }
+                    if (this.speed > effectiveMax) this.speed = effectiveMax;
+                    if (this.speed < -80) this.speed = -80;
+
+                    // steering scale with speed
+                    const speedFactor = Math.min(1, Math.max(0.12, Math.abs(this.speed) / this.maxSpeed));
+                    const turn = (this.inputs.left ? 1 : 0) - (this.inputs.right ? 1 : 0);
+                    this.angle += (turn * this.turnRate * speedFactor) * dt * (this.speed >= 0 ? 1 : -0.7);
+                    // move
+                    const rad = this.angle * Math.PI / 180;
+                    const vx = Math.cos(rad) * this.speed * dt;
+                    const vy = Math.sin(rad) * this.speed * dt;
+                    this.lastPos.x = this.x; this.lastPos.y = this.y;
+                    this.x += vx; this.y += vy;
+
+                    // trail & particles
+                    const speedWeight = Math.abs(this.speed) / this.maxSpeed;
+                    this.trail.push({ x: this.x, y: this.y, life: 0.6 * speedWeight + 0.2, size: 2 + 6 * speedWeight });
+                    if (this.trail.length > this.maxTrail) this.trail.shift();
+
+                    // handle boost input (activate on keydown elsewhere)
+                    // boost cooldown handled externally
+
+                    // cap small speeds
+                    if (Math.abs(this.speed) < 6) this.speed = 0;
+
+                    // collision with track edges is handled in main loop (slowing)
+                    this.prevPositions.push({ x: this.x, y: this.y });
+                    if (this.prevPositions.length > 6) this.prevPositions.shift();
+                }
+
+                tryBoost() {
+                    const t = now();
+                    if (t >= this.boostReady) {
+                        this.boostingUntil = t + this.boostDuration;
+                        this.boostReady = t + this.boostCooldown;
+                        // immediate speed impulse
+                        this.speed += 250;
+                        return true;
+                    }
+                    return false;
+                }
+
+                draw(ctx) {
+                    // draw trail glow and particles
+                    // trail
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'lighter';
+                    for (let i = 0; i < this.trail.length; i++) {
+                        const p = this.trail[i];
+                        const a = (i / this.trail.length) * 0.55;
+                        ctx.beginPath();
+                        ctx.fillStyle = this.color;
+                        ctx.globalAlpha = a * 0.6;
+                        ctx.shadowBlur = 8 + i * 1.2;
+                        ctx.shadowColor = this.color;
+                        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.globalAlpha = 1;
+                    ctx.restore();
+
+                    // car body
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+                    ctx.rotate(this.angle * Math.PI / 180);
+
+                    // glow
+                    ctx.shadowBlur = 18;
+                    ctx.shadowColor = this.color;
+
+                    // body
+                    ctx.fillStyle = '#0a0a0a';
+                    ctx.strokeStyle = this.color;
+                    ctx.lineWidth = 2;
+                    roundRect(ctx, -this.w / 2, -this.h / 2, this.w, this.h, 3);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // windshield / highlight
+                    ctx.fillStyle = this.color + '66';
+                    ctx.fillRect(-this.w * 0.12, -this.h / 2, this.w * 0.5, this.h * 0.45);
+
+                    // wheels (simple)
+                    ctx.fillStyle = '#050505';
+                    ctx.fillRect(-this.w / 2 + 1, -this.h / 2 - 1, 4, 2);
+                    ctx.fillRect(this.w / 2 - 5, -this.h / 2 - 1, 4, 2);
+                    ctx.fillRect(-this.w / 2 + 1, this.h / 2 - 1, 4, 2);
+                    ctx.fillRect(this.w / 2 - 5, this.h / 2 - 1, 4, 2);
+
+                    // plate
+                    ctx.fillStyle = this.color;
+                    ctx.fillRect(-this.w / 6, this.h / 6, this.w / 3, this.h / 4);
+
+                    // boost flame (when boosting)
+                    if (now() < this.boostingUntil) {
+                        ctx.save();
+                        ctx.translate(-this.w / 2 - 3, 0);
+                        ctx.rotate(0.4 * Math.sin(now() / 40));
+                        ctx.beginPath();
+                        ctx.fillStyle = this.color;
+                        ctx.globalAlpha = 0.9;
+                        ctx.moveTo(0, -3);
+                        ctx.bezierCurveTo(-6, -8, -12, 0, 0, 10);
+                        ctx.bezierCurveTo(-4, 2, 2, 4, 0, -3);
+                        ctx.fill();
+                        ctx.restore();
+                    }
+
+                    ctx.restore();
+
+                    // small shadow under car
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.ellipse(this.x, this.y + this.h * 0.9, this.w * 0.7, this.h * 0.6, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+
+            function roundRect(ctx, x, y, w, h, r) {
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.lineTo(x + w - r, y);
+                ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+                ctx.lineTo(x + w, y + h - r);
+                ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+                ctx.lineTo(x + r, y + h);
+                ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+                ctx.lineTo(x, y + r);
+                ctx.quadraticCurveTo(x, y, x + r, y);
+                ctx.closePath();
+            }
+
+            // Create two cars starting near bottom
+            const spawnOffset = 70;
+            const p1Start = { x: center.x - 30, y: center.y + (Math.min(canvas.clientWidth, canvas.clientHeight) * 0.28) - spawnOffset };
+            const p2Start = { x: center.x + 30, y: center.y + (Math.min(canvas.clientWidth, canvas.clientHeight) * 0.28) - spawnOffset };
+            let car1 = new Car({ x: p1Start.x, y: p1Start.y, angle: -90, color: '#ff6b2d', name: 'J1' });
+            let car2 = new Car({ x: p2Start.x, y: p2Start.y, angle: -90, color: '#2fe8ff', name: 'J2' });
+
+            // Input handling
+            const keys = {};
+            window.addEventListener('keydown', (e) => {
+                if (e.repeat) return;
+                keys[e.code] = true;
+                // J1
+                if (e.code === 'KeyZ') car1.inputs.up = true;
+                if (e.code === 'KeyS') car1.inputs.down = true;
+                if (e.code === 'KeyQ') car1.inputs.left = true;
+                if (e.code === 'KeyD') car1.inputs.right = true;
+                if (e.code === 'Space') {
+                    if (car1.tryBoost()) {
+                        playBeep();
+                    }
+                }
+                // J2
+                if (e.code === 'ArrowUp') car2.inputs.up = true;
+                if (e.code === 'ArrowDown') car2.inputs.down = true;
+                if (e.code === 'ArrowLeft') car2.inputs.left = true;
+                if (e.code === 'ArrowRight') car2.inputs.right = true;
+                if (e.code === 'Enter') {
+                    if (car2.tryBoost()) {
+                        playBeep();
+                    }
+                }
+            });
+            window.addEventListener('keyup', (e) => {
+                keys[e.code] = false;
+                if (e.code === 'KeyZ') car1.inputs.up = false;
+                if (e.code === 'KeyS') car1.inputs.down = false;
+                if (e.code === 'KeyQ') car1.inputs.left = false;
+                if (e.code === 'KeyD') car1.inputs.right = false;
+                if (e.code === 'ArrowUp') car2.inputs.up = false;
+                if (e.code === 'ArrowDown') car2.inputs.down = false;
+                if (e.code === 'ArrowLeft') car2.inputs.left = false;
+                if (e.code === 'ArrowRight') car2.inputs.right = false;
+            });
+
+            // sound beep for boost (tiny)
+            function playBeep() {
+                try {
+                    const ctxA = new (window.AudioContext || window.webkitAudioContext)();
+                    const o = ctxA.createOscillator();
+                    const g = ctxA.createGain();
+                    o.type = 'sine';
+                    o.frequency.value = 600;
+                    g.gain.value = 0.003;
+                    o.connect(g); g.connect(ctxA.destination);
+                    o.start();
+                    setTimeout(() => { o.stop(); ctxA.close(); }, 90);
+                } catch (e) { }
+            }
+
+            // Main loop
+            let last = performance.now();
+            let winnerShown = false;
+            function loop() {
+                const t = performance.now();
+                const dt = Math.min(40, t - last) / 1000;
+                last = t;
+                update(dt);
+                render();
+                if (!winnerShown) requestAnimationFrame(loop);
+            }
+
+            // Update logic
+            function update(dt) {
+                // update cars
+                car1.update(dt);
+                car2.update(dt);
+
+                // Collision / track detection
+                [car1, car2].forEach(car => {
+                    // check if on track (outer in && NOT inner)
+                    const onOuter = ctx.isPointInPath(outerPath, car.x, car.y);
+                    const inInner = ctx.isPointInPath(innerPath, car.x, car.y);
+                    const onTrack = onOuter && !inInner;
+                    if (!onTrack) {
+                        // slow sharply and add slight bounce back effect
+                        car.speed *= 0.72;
+                        // nudge back a bit towards center of track
+                        const dirToCenter = Math.atan2(center.y - car.y, center.x - car.x);
+                        car.x += Math.cos(dirToCenter) * 6 * dt * 60;
+                        car.y += Math.sin(dirToCenter) * 6 * dt * 60;
+                    }
+                });
+
+                // Lap detection - crossing finish line from one side to the other.
+                [car1, car2].forEach(car => {
+                    // segment from lastPos to current
+                    const A = car.lastPos;
+                    const B = { x: car.x, y: car.y };
+                    const C = finishLine.a;
+                    const D = finishLine.b;
+                    if (segmentIntersect(A.x, A.y, B.x, B.y, C.x, C.y, D.x, D.y)) {
+                        // Determine direction: compute vector along finish line and car movement dot product
+                        const lineVec = { x: D.x - C.x, y: D.y - C.y };
+                        const moveVec = { x: B.x - A.x, y: B.y - A.y };
+                        const dot = (lineVec.x * moveVec.x + lineVec.y * moveVec.y);
+                        // We want crossing in specific direction (dot < 0 for one direction); choose >0 as forward
+                        if (dot > 0) {
+                            // avoid multiple triggers: ensure a small time since last cross via prevCross toggle
+                            if (!car.prevCross) {
+                                // count lap
+                                const cur = now();
+                                const lapTime = (cur - car.currentLapStart) / 1000;
+                                if (car.lap > 0 || (car.lap === 0 && lapTime > 0.6)) { // avoid counting spawn crossing at start too quickly
+                                    car.lap += 1;
+                                    car.lapTimes.push(lapTime);
+                                    // update best
+                                    if (car.bestLap === null || lapTime < car.bestLap) car.bestLap = lapTime;
+                                }
+                                car.currentLapStart = cur;
+                                // victory check
+                                if (car.lap >= TARGET_LAPS && !car.completed) {
+                                    car.completed = true;
+                                    // Show winner if first to reach
+                                    if (!winnerShown) {
+                                        winnerShown = true;
+                                        showWinner(car);
+                                    }
+                                }
+                                car.prevCross = true;
+                            }
+                        } else {
+                            // crossing opposite direction -> ignore
+                        }
+                    } else {
+                        car.prevCross = false;
+                    }
+                });
+
+                // update UI
+                updateUI();
+            }
+
+            function showWinner(car) {
+                const w = document.getElementById('winner');
+                w.style.display = 'block';
+                w.textContent = (car === car1 ? 'J1 — ROUGE' : 'J2 — BLEU') + ' GAGNE !';
+                // small confetti-like particle burst (visual only)
+                for (let i = 0; i < 40; i++) {
+                    confettiBurst.push({
+                        x: car.x + (Math.random() - 0.5) * 40, y: car.y + (Math.random() - 0.5) * 40,
+                        vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 1.5) * 8,
+                        life: 2.0 + Math.random() * 1.6, color: (Math.random() > 0.5 ? car.color : '#fff')
+                    });
+                }
+                // stop loop after short delay so screen stays
+                setTimeout(() => { /* keep rendering but stop further frames? we will continue minimal render */ }, 400);
+            }
+
+            // confetti particles for winner
+            const confettiBurst = [];
+
+            // UI update
+            function formatTime(s) {
+                if (s === null || s === undefined) return '—';
+                return s.toFixed(2) + 's';
+            }
+            function updateUI() {
+                document.getElementById('j1Lap').textContent = `Lap ${car1.lap}/${TARGET_LAPS}`;
+                document.getElementById('j2Lap').textContent = `Lap ${car2.lap}/${TARGET_LAPS}`;
+                document.getElementById('j1Speed').textContent = Math.round(car1.speed) + ' px/s';
+                document.getElementById('j2Speed').textContent = Math.round(car2.speed) + ' px/s';
+                const cur1 = (now() - car1.currentLapStart) / 1000;
+                const cur2 = (now() - car2.currentLapStart) / 1000;
+                document.getElementById('j1Time').textContent = formatTime(cur1);
+                document.getElementById('j2Time').textContent = formatTime(cur2);
+                document.getElementById('j1Best').textContent = car1.bestLap ? formatTime(car1.bestLap) : '—';
+                document.getElementById('j2Best').textContent = car2.bestLap ? formatTime(car2.bestLap) : '—';
+
+                // ranking: by lap, then distance to finish line (less distance = closer to finishing)
+                const rank = [car1, car2].sort((a, b) => {
+                    if (a.lap !== b.lap) return b.lap - a.lap;
+                    // distance to finish line:
+                    const da = pointToSegmentDistance({ x: a.x, y: a.y }, finishLine.a, finishLine.b);
+                    const db = pointToSegmentDistance({ x: b.x, y: b.y }, finishLine.a, finishLine.b);
+                    return da - db;
+                });
+                const first = rank[0] === car1 ? 'J1' : 'J2';
+                const second = rank[1] === car1 ? 'J1' : 'J2';
+                document.getElementById('ranking').textContent = `${first} — 1er • ${second} — 2ème`;
+            }
+
+            function pointToSegmentDistance(p, a, b) {
+                const vx = b.x - a.x, vy = b.y - a.y;
+                const wx = p.x - a.x, wy = p.y - a.y;
+                const c1 = vx * wx + vy * wy;
+                if (c1 <= 0) return Math.hypot(p.x - a.x, p.y - a.y);
+                const c2 = vx * vx + vy * vy;
+                if (c2 <= c1) return Math.hypot(p.x - b.x, p.y - b.y);
+                const t = c1 / c2;
+                const projx = a.x + t * vx, projy = a.y + t * vy;
+                return Math.hypot(p.x - projx, p.y - projy);
+            }
+
+            // rendering
+            function render() {
+                const w = canvas.clientWidth;
+                const h = canvas.clientHeight;
+                // background asphalt gradient
+                ctx.fillStyle = '#06080f';
+                ctx.fillRect(0, 0, w, h);
+
+                // draw grass outside outerPath
+                ctx.save();
+                ctx.fillStyle = grassGradient;
+                ctx.fillRect(0, 0, w, h);
+                ctx.restore();
+
+                // draw outer track (using composite to "cut out" the inner)
+                // asphalt fill (dark)
+                ctx.save();
+                ctx.beginPath();
+                ctx.fillStyle = '#0a0f1a';
+                ctx.fill(outerPath);
+                ctx.clip();
+                // asphalt pattern
+                const asphalt = ctx.createLinearGradient(0, 0, w, h);
+                asphalt.addColorStop(0, '#0b1623');
+                asphalt.addColorStop(1, '#071021');
+                ctx.fillStyle = asphalt;
+                ctx.fillRect(0, 0, w, h);
+                ctx.restore();
+
+                // inner "island" (grass/sand)
+                ctx.save();
+                ctx.fillStyle = '#0f2a18';
+                ctx.fill(innerPath);
+                ctx.restore();
+
+                // track borders glow
+                ctx.save();
+                ctx.lineWidth = 6;
+                ctx.strokeStyle = '#111827';
+                ctx.shadowBlur = 22;
+                ctx.shadowColor = '#000';
+                ctx.stroke(outerPath);
+                ctx.stroke(innerPath);
+                ctx.restore();
+
+                // decorative stripes and signs along track edges
+                drawEdgeDecor();
+
+                // draw start/finish line
+                ctx.save();
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = '#ffffff';
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = '#ffffff44';
+                ctx.beginPath();
+                ctx.moveTo(finishLine.a.x, finishLine.a.y);
+                ctx.lineTo(finishLine.b.x, finishLine.b.y);
+                ctx.stroke();
+                ctx.restore();
+
+                // draw cars and trails
+                car1.draw(ctx);
+                car2.draw(ctx);
+
+                // draw small HUD overlays near cars (lap and boost cooldown)
+                drawCarUI(car1);
+                drawCarUI(car2);
+
+                // confetti
+                renderConfetti(dt = 1 / 60);
+
+                // small vignette
+                ctx.save();
+                const g = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.2, w / 2, h / 2, Math.max(w, h));
+                g.addColorStop(0, 'rgba(0,0,0,0)');
+                g.addColorStop(1, 'rgba(0,0,0,0.45)');
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, w, h);
+                ctx.restore();
+            }
+
+            function drawEdgeDecor() {
+                // dashed neon edge lines on inner and outer edges to give retro feel
+                ctx.save();
+                ctx.lineWidth = 3;
+                ctx.setLineDash([8, 6]);
+                ctx.lineDashOffset = ((Date.now() / 80) % 14) * -1;
+                ctx.strokeStyle = '#7a1cff';
+                ctx.shadowBlur = 14;
+                ctx.shadowColor = '#7a1cff88';
+                ctx.stroke(outerPath);
+                ctx.stroke(innerPath);
+                ctx.restore();
+
+                // small rumble strips near finishline
+                ctx.save();
+                ctx.translate((finishLine.a.x + finishLine.b.x) / 2, (finishLine.a.y + finishLine.b.y) / 2);
+                ctx.rotate(Math.atan2(finishLine.b.y - finishLine.a.y, finishLine.b.x - finishLine.a.x));
+                for (let i = -40; i <= 40; i += 8) {
+                    ctx.fillStyle = i % 16 === 0 ? '#fff' : '#000';
+                    ctx.fillRect(i, -6, 6, 12);
+                }
+                ctx.restore();
+            }
+
+            function drawCarUI(car) {
+                // boost cooldown bar above car
+                const cx = car.x, cy = car.y - 28;
+                ctx.save();
+                ctx.beginPath();
+                ctx.globalAlpha = 0.95;
+                ctx.roundRect ? ctx.roundRect(cx - 24, cy - 6, 48, 10, 3) : roundRect(ctx, cx - 24, cy - 6, 48, 10, 3);
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fill();
+
+                // fill proportion
+                const t = Math.max(0, (car.boostReady - now()) / car.boostCooldown);
+                const pct = 1 - t;
+                ctx.beginPath();
+                ctx.fillStyle = car.color;
+                ctx.roundRect ? ctx.roundRect(cx - 22, cy - 4, 44 * pct, 6, 2) : roundRect(ctx, cx - 22, cy - 4, 44 * pct, 6, 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            function renderConfetti(dt) {
+                if (confettiBurst.length === 0) return;
+                ctx.save();
+                confettiBurst.forEach((p, i) => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vy += 0.2;
+                    p.life -= dt * 0.8;
+                    if (p.life < 0) { confettiBurst.splice(i, 1); return; }
+                    ctx.beginPath();
+                    ctx.fillStyle = p.color;
+                    ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 2));
+                    ctx.fillRect(p.x, p.y, 6, 4);
+                });
+                ctx.restore();
+            }
+
+            // Polyfill for roundRect if needed
+            if (!CanvasRenderingContext2D.prototype.roundRect) {
+                CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+                    this.beginPath();
+                    this.moveTo(x + r, y);
+                    this.lineTo(x + w - r, y);
+                    this.quadraticCurveTo(x + w, y, x + w, y + r);
+                    this.lineTo(x + w, y + h - r);
+                    this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+                    this.lineTo(x + r, y + h);
+                    this.quadraticCurveTo(x, y + h, x, y + h - r);
+                    this.lineTo(x, y + r);
+                    this.quadraticCurveTo(x, y, x + r, y);
+                    this.closePath();
+                };
+            }
+
+            // Initialize spawn after track built
+            function placeInitialCars() {
+                const fi = finishLine;
+                // spawn a bit after finishline on track
+                const dir = { x: fi.b.x - fi.a.x, y: fi.b.y - fi.a.y };
+                const len = Math.hypot(dir.x, dir.y);
+                const nx = -dir.y / len, ny = dir.x / len; // normal pointing roughly into track
+                car1.x = fi.a.x + dir.x * 0.12 + nx * 10;
+                car1.y = fi.a.y + dir.y * 0.12 + ny * 10;
+                car2.x = fi.a.x + dir.x * 0.12 - nx * 10;
+                car2.y = fi.a.y + dir.y * 0.12 - ny * 10;
+                const baseAngle = Math.atan2(dir.y, dir.x) * 180 / Math.PI + 90;
+                car1.angle = baseAngle;
+                car2.angle = baseAngle;
+                car1.speed = 0;
+                car2.speed = 0;
+                car1.lap = 0; car2.lap = 0;
+                car1.currentLapStart = now(); car2.currentLapStart = now();
+                car1.lapTimes = []; car2.lapTimes = [];
+                car1.bestLap = null; car2.bestLap = null;
+                car1.completed = false; car2.completed = false;
+                winnerShown = false;
+                document.getElementById('winner').style.display = 'none';
+            }
+
+            // start game
+            placeInitialCars();
+            loop();
+
+            // helpers
+            // small polyfill for older browsers
+            if (!Array.prototype.at) Array.prototype.at = function (i) { return this[i < 0 ? this.length + i : i]; };
+
+            // Provide simple touch controls hint (optional)
+            // End of IIFE
+        })();
+    </script>
+</body>
+
+</html>

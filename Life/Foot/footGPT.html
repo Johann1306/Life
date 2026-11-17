@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Football 5v5 - Top Down</title>
+    <style>
+        body {
+            margin: 0;
+            background: #0b3d2e;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+
+        canvas {
+            display: block;
+            margin: auto;
+            background: #1e7f4f;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="game"></canvas>
+
+    <script>
+        // =======================
+        // CONFIGURATION GLOBALE
+        // =======================
+
+        const canvas = document.getElementById("game");
+        const ctx = canvas.getContext("2d");
+
+        canvas.width = 1000;
+        canvas.height = 600;
+
+        const FIELD = {
+            x: 50,
+            y: 50,
+            w: 900,
+            h: 500,
+            goalW: 80,
+            penaltyW: 140,
+            penaltyH: 300
+        };
+
+        const PLAYER_RADIUS = 10;
+        const BALL_RADIUS = 6;
+
+        // =======================
+        // UTILITAIRES
+        // =======================
+
+        function clamp(v, min, max) {
+            return Math.max(min, Math.min(max, v));
+        }
+
+        function dist(a, b) {
+            return Math.hypot(a.x - b.x, a.y - b.y);
+        }
+
+        // =======================
+        // ENTITÉS
+        // =======================
+
+        class Ball {
+            constructor() {
+                this.x = canvas.width / 2;
+                this.y = canvas.height / 2;
+                this.vx = 0;
+                this.vy = 0;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Frottements
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+
+                // Rebonds sur les limites du terrain
+                if (this.x < FIELD.x + BALL_RADIUS || this.x > FIELD.x + FIELD.w - BALL_RADIUS)
+                    this.vx *= -0.8;
+                if (this.y < FIELD.y + BALL_RADIUS || this.y > FIELD.y + FIELD.h - BALL_RADIUS)
+                    this.vy *= -0.8;
+
+                this.x = clamp(this.x, FIELD.x + BALL_RADIUS, FIELD.x + FIELD.w - BALL_RADIUS);
+                this.y = clamp(this.y, FIELD.y + BALL_RADIUS, FIELD.y + FIELD.h - BALL_RADIUS);
+            }
+
+            draw() {
+                ctx.fillStyle = "#fff";
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, BALL_RADIUS, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        class Player {
+            constructor(x, y, team, isGoalie = false, controlled = false) {
+                this.x = x;
+                this.y = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.team = team;
+                this.isGoalie = isGoalie;
+                this.controlled = controlled;
+                this.speed = isGoalie ? 1.6 : 2;
+                this.home = { x, y }; // position de référence IA
+            }
+
+            update() {
+                if (!this.controlled) this.ai();
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Limites terrain
+                this.x = clamp(this.x, FIELD.x + PLAYER_RADIUS, FIELD.x + FIELD.w - PLAYER_RADIUS);
+                this.y = clamp(this.y, FIELD.y + PLAYER_RADIUS, FIELD.y + FIELD.h - PLAYER_RADIUS);
+
+                // Inertie
+                this.vx *= 0.9;
+                this.vy *= 0.9;
+            }
+
+            ai() {
+                // === IA VECTORIELLE ===
+                // Attraction vers balle + position de base
+                let ax = 0;
+                let ay = 0;
+
+                const dBall = dist(this, ball);
+
+                // Les joueurs proches poursuivent la balle
+                if (dBall < 200 || this.isGoalie) {
+                    ax += (ball.x - this.x) * 0.002;
+                    ay += (ball.y - this.y) * 0.002;
+                }
+
+                // Retour à la position de base (placement défensif)
+                ax += (this.home.x - this.x) * 0.001;
+                ay += (this.home.y - this.y) * 0.001;
+
+                // Gardiens limités à leur surface
+                if (this.isGoalie) {
+                    const minX = this.team === 0 ? FIELD.x : FIELD.x + FIELD.w - 60;
+                    const maxX = this.team === 0 ? FIELD.x + 60 : FIELD.x + FIELD.w;
+                    this.x = clamp(this.x, minX, maxX);
+                }
+
+                this.vx += clamp(ax, -this.speed, this.speed);
+                this.vy += clamp(ay, -this.speed, this.speed);
+            }
+
+            draw() {
+                ctx.fillStyle = this.team === 0 ? "#3498db" : "#e74c3c";
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, PLAYER_RADIUS, 0, Math.PI * 2);
+                ctx.fill();
+
+                if (this.controlled) {
+                    ctx.strokeStyle = "#fff";
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // =======================
+        // INITIALISATION
+        // =======================
+
+        const ball = new Ball();
+        const players = [];
+        let controlledPlayer = null;
+
+        // Création équipes
+        for (let t = 0; t < 2; t++) {
+            for (let i = 0; i < 5; i++) {
+                const x = t === 0 ? 200 : 800;
+                const y = 150 + i * 80;
+                const isGoalie = i === 0;
+                const p = new Player(x, y, t, isGoalie, false);
+                players.push(p);
+            }
+        }
+
+        // Joueur contrôlé initial
+        controlledPlayer = players[1];
+        controlledPlayer.controlled = true;
+
+        // =======================
+        // CONTRÔLES
+        // =======================
+
+        const keys = {};
+        let mouse = { x: 0, y: 0, down: false, power: 0 };
+
+        document.addEventListener("keydown", e => {
+            keys[e.key.toLowerCase()] = true;
+            if (e.key === " ") switchPlayer();
+        });
+
+        document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+        canvas.addEventListener("mousemove", e => {
+            const r = canvas.getBoundingClientRect();
+            mouse.x = e.clientX - r.left;
+            mouse.y = e.clientY - r.top;
+        });
+
+        canvas.addEventListener("mousedown", () => mouse.down = true);
+        canvas.addEventListener("mouseup", () => shoot());
+
+        // =======================
+        // MÉCANIQUES
+        // =======================
+
+        function switchPlayer() {
+            controlledPlayer.controlled = false;
+            let best = null;
+            let bestD = Infinity;
+
+            players.forEach(p => {
+                if (p.team === 0 && !p.isGoalie) {
+                    const d = dist(p, ball);
+                    if (d < bestD) {
+                        bestD = d;
+                        best = p;
+                    }
+                }
+            });
+
+            controlledPlayer = best;
+            controlledPlayer.controlled = true;
+        }
+
+        function shoot() {
+            if (dist(controlledPlayer, ball) < 20) {
+                const dx = mouse.x - controlledPlayer.x;
+                const dy = mouse.y - controlledPlayer.y;
+                const len = Math.hypot(dx, dy) || 1;
+
+                ball.vx = (dx / len) * mouse.power * 0.4;
+                ball.vy = (dy / len) * mouse.power * 0.4;
+            }
+            mouse.down = false;
+            mouse.power = 0;
+        }
+
+        // =======================
+        // BOUCLE PRINCIPALE
+        // =======================
+
+        function update() {
+            // Déplacement joueur contrôlé
+            if (controlledPlayer) {
+                if (keys["z"] || keys["arrowup"]) controlledPlayer.vy -= controlledPlayer.speed;
+                if (keys["s"] || keys["arrowdown"]) controlledPlayer.vy += controlledPlayer.speed;
+                if (keys["q"] || keys["arrowleft"]) controlledPlayer.vx -= controlledPlayer.speed;
+                if (keys["d"] || keys["arrowright"]) controlledPlayer.vx += controlledPlayer.speed;
+
+                // Conduite de balle (poussée)
+                if (dist(controlledPlayer, ball) < 14) {
+                    ball.vx += controlledPlayer.vx * 0.2;
+                    ball.vy += controlledPlayer.vy * 0.2;
+                }
+            }
+
+            if (mouse.down) mouse.power = Math.min(mouse.power + 0.5, 20);
+
+            players.forEach(p => p.update());
+            ball.update();
+        }
+
+        function drawField() {
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 2;
+
+            // Terrain
+            ctx.strokeRect(FIELD.x, FIELD.y, FIELD.w, FIELD.h);
+
+            // Ligne centrale
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, FIELD.y);
+            ctx.lineTo(canvas.width / 2, FIELD.y + FIELD.h);
+            ctx.stroke();
+
+            // Cercle central
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, 50, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Surfaces
+            ctx.strokeRect(FIELD.x, FIELD.y + 100, FIELD.penaltyW, FIELD.penaltyH);
+            ctx.strokeRect(FIELD.x + FIELD.w - FIELD.penaltyW, FIELD.y + 100, FIELD.penaltyW, FIELD.penaltyH);
+
+            // Buts
+            ctx.strokeRect(FIELD.x - 10, canvas.height / 2 - 40, 10, 80);
+            ctx.strokeRect(FIELD.x + FIELD.w, canvas.height / 2 - 40, 10, 80);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawField();
+            players.forEach(p => p.draw());
+            ball.draw();
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+
+</html>
