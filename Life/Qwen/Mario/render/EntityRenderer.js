@@ -12,7 +12,7 @@ class EntityRenderer {
 
         switch (entity.type) {
             case 'mario':
-                this.renderer.drawMario(sx, sy, entity.facing, entity.state, entity.animFrame, entity.grounded);
+                this.renderer.drawMario(sx, sy, entity.facing, entity.state, entity.animFrame, entity.grounded, entity.isMoving);
                 break;
             case 'goomba':
                 this.renderer.drawGoomba(sx, sy, entity.animFrame, entity.squished);

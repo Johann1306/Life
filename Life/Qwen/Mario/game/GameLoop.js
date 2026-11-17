@@ -203,33 +203,22 @@ class GameLoop {
         const ctx = this.ctx;
         const camX = this.camera.getOffset();
 
-        // Sky background
-        ctx.fillStyle = '#5C94FC';
+        // Gradient sky
+        const skyGrad = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
+        skyGrad.addColorStop(0, '#5C94FC');
+        skyGrad.addColorStop(0.6, '#87CEFB');
+        skyGrad.addColorStop(1, '#B0E0FF');
+        ctx.fillStyle = skyGrad;
         ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-        // Clouds (parallax)
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        const clouds = [
-            { x: 100, y: 60, w: 80, h: 30 },
-            { x: 400, y: 40, w: 100, h: 35 },
-            { x: 700, y: 70, w: 60, h: 25 },
-            { x: 1100, y: 50, w: 90, h: 30 },
-        ];
-        for (const c of clouds) {
-            const sx = c.x - camX * 0.3;
-            ctx.fillRect(Math.round(sx), Math.round(c.y), c.w, c.h);
-            ctx.fillRect(Math.round(sx + 15), Math.round(c.y - 10), c.w - 30, 20);
-        }
+        // Distant mountains (parallax layer 0)
+        this._drawMountains(ctx, camX);
+
+        // Clouds (parallax layer 1)
+        this._drawClouds(ctx, camX);
 
         // Hills background (parallax layer 2)
-        ctx.fillStyle = '#00A800';
-        const hills = [{ x: 50, r: 40 }, { x: 350, r: 60 }, { x: 750, r: 45 }];
-        for (const h of hills) {
-            const hx = h.x - camX * 0.15;
-            ctx.beginPath();
-            ctx.arc(Math.round(hx), GAME_HEIGHT - 32, h.r, Math.PI, 0);
-            ctx.fill();
-        }
+        this._drawHills(ctx, camX);
 
         // Tiles
         this.tileRenderer.drawVisible(this.tileMap, camX, GAME_WIDTH);
@@ -255,41 +244,172 @@ class GameLoop {
         else if (this.state.state === 'gameover') this._drawGameOverScreen(ctx);
     }
 
+    _drawMountains(ctx, camX) {
+        ctx.fillStyle = '#6B8FC8';
+        const mountains = [
+            { x: 100, w: 200, h: 100 },
+            { x: 500, w: 280, h: 130 },
+            { x: 900, w: 180, h: 90 },
+            { x: 1300, w: 300, h: 120 },
+            { x: 1800, w: 220, h: 110 },
+        ];
+        for (const m of mountains) {
+            const mx = ((m.x - camX * 0.05) % 2200 + 2200) % 2200 - 200;
+            ctx.beginPath();
+            ctx.moveTo(mx, GAME_HEIGHT - 32);
+            ctx.lineTo(mx + m.w / 2, GAME_HEIGHT - 32 - m.h);
+            ctx.lineTo(mx + m.w, GAME_HEIGHT - 32);
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
+
+    _drawClouds(ctx, camX) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        const cloudPositions = [
+            { x: 100, y: 60, s: 1.0 },
+            { x: 400, y: 40, s: 1.2 },
+            { x: 700, y: 70, s: 0.8 },
+            { x: 1100, y: 50, s: 1.1 },
+            { x: 1500, y: 35, s: 0.9 },
+            { x: 1900, y: 65, s: 1.0 },
+        ];
+        for (const c of cloudPositions) {
+            const sx = ((c.x - camX * 0.2) % 2200 + 2200) % 2200 - 100;
+            const sy = c.y;
+            const s = c.s;
+            // Fluffy cloud shape
+            ctx.beginPath();
+            ctx.arc(sx, sy, 15 * s, 0, Math.PI * 2);
+            ctx.arc(sx + 18 * s, sy - 8 * s, 18 * s, 0, Math.PI * 2);
+            ctx.arc(sx + 38 * s, sy - 4 * s, 16 * s, 0, Math.PI * 2);
+            ctx.arc(sx + 55 * s, sy + 2 * s, 12 * s, 0, Math.PI * 2);
+            ctx.arc(sx + 20 * s, sy + 5 * s, 14 * s, 0, Math.PI * 2);
+            ctx.arc(sx + 40 * s, sy + 4 * s, 13 * s, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    _drawHills(ctx, camX) {
+        const hillColors = ['#00A800', '#009800', '#00B800'];
+        const hills = [{ x: 50, r: 40 }, { x: 350, r: 60 }, { x: 750, r: 45 }, { x: 1100, r: 55 }, { x: 1500, r: 38 }, { x: 1900, r: 50 }];
+
+        // Back layer (darker, smaller)
+        ctx.fillStyle = '#007A00';
+        for (const h of hills) {
+            const hx = ((h.x - camX * 0.1) % 2100 + 2100) % 2100 - 100;
+            ctx.beginPath();
+            ctx.arc(hx, GAME_HEIGHT - 32, h.r * 0.6, Math.PI, 0);
+            ctx.fill();
+        }
+
+        // Front layer
+        for (let i = 0; i < hills.length; i++) {
+            const h = hills[i];
+            const hx = ((h.x - camX * 0.15) % 2100 + 2100) % 2100 - 100;
+            ctx.fillStyle = hillColors[i % hillColors.length];
+            ctx.beginPath();
+            ctx.arc(hx, GAME_HEIGHT - 32, h.r, Math.PI, 0);
+            ctx.fill();
+
+            // Hill highlight
+            ctx.fillStyle = 'rgba(255,255,255,0.08)';
+            ctx.beginPath();
+            ctx.ellipse(hx - h.r * 0.2, GAME_HEIGHT - 32 - h.r * 0.4, h.r * 0.3, h.r * 0.2, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
     _drawMenuScreen(ctx) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        // Overlay
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
         ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 36px monospace';
+
+        // Title box
+        const bx = GAME_WIDTH / 2 - 160, by = GAME_HEIGHT / 2 - 100, bw = 320, bh = 160;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.strokeStyle = '#FFD700';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.fillStyle = 'rgba(255,215,0,0.1)';
+        ctx.fillRect(bx, by, bw, 3);
+
+        // Title
+        ctx.fillStyle = '#E52521';
+        ctx.font = 'bold 32px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('SUPER MARIO CLONE', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40);
-        ctx.font = '18px monospace';
-        ctx.fillText('Press SPACE to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20);
-        ctx.fillText('Arrow Keys / WASD / Z to Move  |  SPACE / W / Z to Jump', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 50);
+        ctx.fillText('SUPER MARIO', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 45);
+        ctx.fillStyle = '#FFD700';
+        ctx.fillText('CLONE', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 15);
+
+        // Blinking start text
+        if (Math.floor(performance.now() / 600) % 2 === 0) {
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 18px monospace';
+            ctx.fillText('Press SPACE to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 25);
+        }
+
+        // Controls
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.font = '12px monospace';
+        ctx.fillText('Arrow Keys / WASD / Z to Move  |  SPACE / W to Jump', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 55);
     }
 
     _drawGameOverScreen(ctx) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
         ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+        const bx = GAME_WIDTH / 2 - 120, by = GAME_HEIGHT / 2 - 70, bw = 240, bh = 140;
+        ctx.fillStyle = 'rgba(20,0,0,0.8)';
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.strokeStyle = '#E52521';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(bx, by, bw, bh);
+
         ctx.fillStyle = '#E52521';
         ctx.font = 'bold 36px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('GAME OVER', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20);
+        ctx.fillText('GAME OVER', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 15);
+
         ctx.fillStyle = '#fff';
-        ctx.font = '18px monospace';
-        ctx.fillText(`Final Score: ${this.state.score}`, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20);
-        ctx.fillText('Press SPACE for Menu', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 50);
+        ctx.font = '16px monospace';
+        ctx.fillText(`Score: ${this.state.score}`, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 25);
+
+        if (Math.floor(performance.now() / 600) % 2 === 0) {
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.font = '14px monospace';
+            ctx.fillText('Press SPACE', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 55);
+        }
     }
 
     _drawWinScreen(ctx) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
         ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+        const bx = GAME_WIDTH / 2 - 140, by = GAME_HEIGHT / 2 - 80, bw = 280, bh = 160;
+        ctx.fillStyle = 'rgba(20,15,0,0.8)';
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.strokeStyle = '#FFD700';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.fillStyle = 'rgba(255,215,0,0.08)';
+        ctx.fillRect(bx, by, bw, 3);
+
         ctx.fillStyle = '#FFD700';
-        ctx.font = 'bold 36px monospace';
+        ctx.font = 'bold 28px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('LEVEL COMPLETE!', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20);
+        ctx.fillText('LEVEL COMPLETE!', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 25);
+
         ctx.fillStyle = '#fff';
-        ctx.font = '18px monospace';
-        ctx.fillText(`Score: ${this.state.score}`, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20);
-        ctx.fillText('Press SPACE for Menu', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 50);
+        ctx.font = '16px monospace';
+        ctx.fillText(`Score: ${this.state.score}`, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 15);
+        ctx.fillText(`Coins: ${this.state.coins}`, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 40);
+
+        if (Math.floor(performance.now() / 600) % 2 === 0) {
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.font = '14px monospace';
+            ctx.fillText('Press SPACE', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 70);
+        }
     }
 }

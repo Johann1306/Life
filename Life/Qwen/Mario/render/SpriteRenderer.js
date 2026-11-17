@@ -11,7 +11,7 @@ class SpriteRenderer {
     }
 
     // ---- Mario: stylized, animated character ----
-    drawMario(x, y, facing, state, frame, grounded) {
+    drawMario(x, y, facing, state, frame, grounded, isMoving) {
         const ctx = this.ctx;
         const px = Math.round(x), py = Math.round(y);
 
@@ -19,7 +19,7 @@ class SpriteRenderer {
 
         // Idle breathing: bob the whole sprite slightly
         let bobY = 0;
-        if (grounded && Math.abs(this._getLastMarioVx?.() ?? 0) < 0.1) {
+        if (grounded && !isMoving) {
             bobY = Math.sin(frame * 0.4) * 1;
         }
         const offY = Math.round(bobY);
@@ -30,7 +30,7 @@ class SpriteRenderer {
             // Stretch while jumping
             squashX = -2;
             squashY = 2;
-        } else if (Math.abs(this._getLastMarioVx?.() ?? 0) > 0.5) {
+        } else if (isMoving) {
             const walkPhase = frame % 4;
             squashX = (walkPhase === 1 || walkPhase === 3) ? 1 : -1;
             squashY = (walkPhase === 1 || walkPhase === 3) ? -1 : 1;

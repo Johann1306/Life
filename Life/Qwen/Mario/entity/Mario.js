@@ -16,6 +16,8 @@ class Mario extends Entity {
         this.score = 0;
         this.coins = 0;
         this.lives = 3;
+        this.isMoving = false;          // for idle vs walk animation
+        this.idleTimer = 0;             // for idle breathing
     }
 
     update(input, tileMap) {
@@ -66,6 +68,8 @@ class Mario extends Entity {
         // Animation
         this.animTimer++;
         if (this.animTimer >= 6) { this.animTimer = 0; this.animFrame++; }
+        this.isMoving = Math.abs(this.vx) > 0.5;
+        this.idleTimer++;
         if (this.state === 'invincible') {
             this.invincibleTimer--;
             if (this.invincibleTimer <= 0) this.state = 'large';
