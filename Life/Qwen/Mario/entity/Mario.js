@@ -36,9 +36,13 @@ class Mario extends Entity {
         }
         if (Math.abs(this.vx) > MARIO_SPEED) this.vx = Math.sign(this.vx) * MARIO_SPEED;
 
-        // Gravity
-        this.vy += GRAVITY;
-        if (this.vy > MAX_FALL_SPEED) this.vy = MAX_FALL_SPEED;
+        // Gravity (only when airborne — grounded entities get vy=0 from resolveY)
+        if (!this.grounded) {
+            this.vy += GRAVITY;
+            if (this.vy > MAX_FALL_SPEED) this.vy = MAX_FALL_SPEED;
+        } else {
+            this.vy = 0;
+        }
 
         // Jump trigger
         if (this.grounded && input.consumeJump()) {
@@ -56,7 +60,6 @@ class Mario extends Entity {
         resolveX(this, tileMap);
 
         this.y += this.vy;
-        this.grounded = false;
         const yResult = resolveY(this, tileMap);
         if (yResult.hitBlockCol !== null) {
             // Trigger block hit — handled by GameLoop
@@ -67,7 +70,7 @@ class Mario extends Entity {
 
         // Animation
         this.animTimer++;
-        if (this.animTimer >= 6) { this.animTimer = 0; this.animFrame++; }
+        if (this.animTimer >= 10) { this.animTimer = 0; this.animFrame++; }
         this.isMoving = Math.abs(this.vx) > 0.5;
         this.idleTimer++;
         if (this.state === 'invincible') {

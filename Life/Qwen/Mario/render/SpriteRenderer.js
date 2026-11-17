@@ -20,24 +20,11 @@ class SpriteRenderer {
         // Idle breathing: bob the whole sprite slightly
         let bobY = 0;
         if (grounded && !isMoving) {
-            bobY = Math.sin(frame * 0.4) * 1;
+            bobY = Math.sin(frame * 0.15) * 1.5;
         }
         const offY = Math.round(bobY);
 
-        // Walk cycle: slight squash/stretch
-        let squashX = 0, squashY = 0;
-        if (!grounded) {
-            // Stretch while jumping
-            squashX = -2;
-            squashY = 2;
-        } else if (isMoving) {
-            const walkPhase = frame % 4;
-            squashX = (walkPhase === 1 || walkPhase === 3) ? 1 : -1;
-            squashY = (walkPhase === 1 || walkPhase === 3) ? -1 : 1;
-        }
-
         const cx = px + 12; // center X
-        const top = py + offY + squashY;
 
         // Shadow (subtle)
         if (grounded) {
@@ -49,7 +36,7 @@ class SpriteRenderer {
 
         // === LEGS ===
         ctx.fillStyle = '#3B82F6';
-        const legBase = py + 26 + offY + squashY;
+        const legBase = py + 26 + offY;
         if (!grounded) {
             // Jump pose: one leg forward, one back
             ctx.fillRect(px + 2, legBase, 7, 7);
@@ -59,49 +46,38 @@ class SpriteRenderer {
             ctx.fillRect(px + 1, legBase + 6, 8, 3);
             ctx.fillRect(px + 16, legBase + 6, 8, 3);
         } else {
-            const walkPhase = frame % 4;
+            // 2-phase walk: legs alternate, but stay close to center to avoid vibration
+            const walkPhase = Math.floor(frame / 2) % 2;
             if (walkPhase === 0) {
+                ctx.fillRect(px + 3, legBase, 6, 7);
+                ctx.fillRect(px + 15, legBase, 6, 7);
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(px + 2, legBase + 6, 8, 3);
+                ctx.fillRect(px + 14, legBase + 6, 8, 3);
+            } else {
                 ctx.fillRect(px + 4, legBase, 6, 7);
                 ctx.fillRect(px + 14, legBase, 6, 7);
                 ctx.fillStyle = '#8B4513';
                 ctx.fillRect(px + 3, legBase + 6, 8, 3);
                 ctx.fillRect(px + 13, legBase + 6, 8, 3);
-            } else if (walkPhase === 1) {
-                ctx.fillRect(px + 1, legBase - 1, 7, 7);
-                ctx.fillRect(px + 16, legBase + 1, 7, 7);
-                ctx.fillStyle = '#8B4513';
-                ctx.fillRect(px, legBase + 5, 8, 3);
-                ctx.fillRect(px + 15, legBase + 5, 8, 3);
-            } else if (walkPhase === 2) {
-                ctx.fillRect(px + 5, legBase, 6, 7);
-                ctx.fillRect(px + 13, legBase, 6, 7);
-                ctx.fillStyle = '#8B4513';
-                ctx.fillRect(px + 4, legBase + 6, 8, 3);
-                ctx.fillRect(px + 12, legBase + 6, 8, 3);
-            } else {
-                ctx.fillRect(px + 2, legBase + 1, 7, 7);
-                ctx.fillRect(px + 15, legBase - 1, 7, 7);
-                ctx.fillStyle = '#8B4513';
-                ctx.fillRect(px + 1, legBase + 5, 8, 3);
-                ctx.fillRect(px + 14, legBase + 5, 8, 3);
             }
         }
 
-        // === OVERALLS ===
+        // === OVERALLS (static — fixed pixel positions) ===
         ctx.fillStyle = '#3B82F6';
-        ctx.fillRect(px + 4 + squashX, py + 20 + offY + squashY, 16 - squashX * 2, 7);
+        ctx.fillRect(px + 4, py + 20 + offY, 16, 7);
         // Overall straps
         ctx.fillStyle = '#3B82F6';
-        ctx.fillRect(px + 5 + squashX, py + 17 + offY + squashY, 4, 5);
-        ctx.fillRect(px + 15 - squashX, py + 17 + offY + squashY, 4, 5);
+        ctx.fillRect(px + 5, py + 17 + offY, 4, 5);
+        ctx.fillRect(px + 15, py + 17 + offY, 4, 5);
         // Belt & buttons
         ctx.fillStyle = '#FFD700';
         ctx.fillRect(px + 8, py + 23 + offY, 2, 2);
         ctx.fillRect(px + 14, py + 23 + offY, 2, 2);
 
-        // === BODY / SHIRT ===
+        // === BODY / SHIRT (static — fixed pixel positions) ===
         ctx.fillStyle = '#E52521';
-        ctx.fillRect(px + 4 + squashX, py + 15 + offY, 16 - squashX * 2, 5);
+        ctx.fillRect(px + 4, py + 15 + offY, 16, 5);
 
         // === ARMS ===
         ctx.fillStyle = '#E52521';
@@ -114,8 +90,8 @@ class SpriteRenderer {
             ctx.fillRect(px, py + 12 + offY, 5, 4);
             ctx.fillRect(px + 19, py + 10 + offY, 5, 4);
         } else {
-            const walkPhase = frame % 4;
-            const armSwing = walkPhase % 2 === 0 ? -2 : 2;
+            // Arm swing: 2-phase, alternates every 2 frames, small amplitude
+            const armSwing = Math.floor(frame / 2) % 2 === 0 ? -2 : 2;
             ctx.fillRect(px + 1 + armSwing, py + 17 + offY, 4, 8);
             ctx.fillRect(px + 19 - armSwing, py + 17 + offY, 4, 8);
             ctx.fillStyle = '#FDBA65';
@@ -124,7 +100,7 @@ class SpriteRenderer {
         }
 
         // === HEAD ===
-        const headTop = py + offY + squashY;
+        const headTop = py + offY;
         // Hat
         ctx.fillStyle = '#E52521';
         ctx.fillRect(px + 4, headTop, 16, 7);
@@ -272,7 +248,6 @@ class SpriteRenderer {
         const ctx = this.ctx;
         const widths = [16, 12, 4, 12];
         const w = widths[frame % 4];
-        const ox = (16 - w) / 2;
         const cx = Math.round(x) + 8;
         const cy = Math.round(y) + 12;
 

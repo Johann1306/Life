@@ -19,8 +19,13 @@ class Goomba extends Entity {
             return;
         }
 
-        this.vy += GRAVITY;
-        if (this.vy > MAX_FALL_SPEED) this.vy = MAX_FALL_SPEED;
+        // Gravity (only when airborne)
+        if (!this.grounded) {
+            this.vy += GRAVITY;
+            if (this.vy > MAX_FALL_SPEED) this.vy = MAX_FALL_SPEED;
+        } else {
+            this.vy = 0;
+        }
 
         this.x += this.vx;
         resolveX(this, tileMap);
@@ -28,8 +33,8 @@ class Goomba extends Entity {
         if (this.vx !== 0 && !this._wasMovingThisFrame) { /* keep direction */ }
 
         this.y += this.vy;
-        this.grounded = false;
-        resolveY(this, tileMap);
+        const yResult = resolveY(this, tileMap);
+        this.grounded = yResult.grounded;
 
         // Edge detection: if about to walk off platform, turn around
         const footCol = Math.floor((this.vx > 0 ? this.x + this.width : this.x) / TILE_SIZE);

@@ -18,6 +18,18 @@ function resolveX(entity, tileMap) {
     if (entity.vx > 0) {
         for (let row = top; row <= bottom; row++) {
             if (tileMap.isSolid(right, row)) {
+                // Grounded entities: only block if there's ground support beneath them.
+                // If no support (walking off a ledge), allow passage so they can fall.
+                if (entity.grounded) {
+                    let hasSupport = false;
+                    for (let col = left; col <= right; col++) {
+                        if (tileMap.isSolid(col, bottom + 1)) {
+                            hasSupport = true;
+                            break;
+                        }
+                    }
+                    if (!hasSupport) continue; // let entity walk off edge
+                }
                 entity.x = right * TILE_SIZE - entity.width;
                 entity.vx = 0;
                 hitWall = true;
@@ -27,6 +39,16 @@ function resolveX(entity, tileMap) {
     } else if (entity.vx < 0) {
         for (let row = top; row <= bottom; row++) {
             if (tileMap.isSolid(left, row)) {
+                if (entity.grounded) {
+                    let hasSupport = false;
+                    for (let col = left; col <= right; col++) {
+                        if (tileMap.isSolid(col, bottom + 1)) {
+                            hasSupport = true;
+                            break;
+                        }
+                    }
+                    if (!hasSupport) continue; // let entity walk off edge
+                }
                 entity.x = (left + 1) * TILE_SIZE;
                 entity.vx = 0;
                 hitWall = true;
@@ -61,6 +83,19 @@ function resolveY(entity, tileMap) {
                 entity.vy = 0;
                 entity.grounded = false;
                 return { grounded: false, hitBlockCol: col };
+            }
+        }
+    } else if (!grounded) {
+        // vy == 0 and not yet grounded: check for actual ground support.
+        // When an entity walks off a ledge, 'bottom' still points to the old
+        // platform tiles from the previous frame — we must look one row deeper
+        // to find real support beneath the entity's feet.
+        const supportRow = bottom + 1;
+        for (let col = left; col <= right; col++) {
+            if (tileMap.isSolid(col, supportRow)) {
+                entity.grounded = true;
+                grounded = true;
+                break;
             }
         }
     }
